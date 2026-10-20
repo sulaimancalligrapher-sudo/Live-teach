@@ -1,0 +1,10 @@
+{
+  "name": "منظومة البث والتفاعل المباشر والتحديات",
+  "description": "نظام مستقل متكامل للحصص التفاعلية المباشرة (Questions-T/Answers-T)، الشرح المباشر (Questions-Live/Answers-Live)، وساحة تحدي كويز (Questions-Qui/Answers-Qui) مع ربط Google Sheets وقوالب التصميم.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

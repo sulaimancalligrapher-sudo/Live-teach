@@ -224,7 +224,7 @@ export default function SettingsPanel({ onClose, onSave }: SettingsPanelProps) {
 }
 
 // Full Upgraded Apps Script Code compiled for easy user setup
-function getFullAppsScriptCode(): string {
+export function getFullAppsScriptCode(): string {
   return `/**
  * Google Apps Script - كود الخلفية المطور لقاعدة بيانات الطلاب والدروس التفاعلية
  * يدعم الاستدعاء كـ API كامل لصفحة الـ React الخارجية بدون مشاكل CORS وبأقصى درجات الحماية والأمان.
@@ -313,16 +313,26 @@ function doGet(e) {
     } else if (action === 'getLiveAnswersT') {
       response = getLiveAnswersT();
     } else if (action === 'getLiveQuestionsDirect') {
-      response = getLiveQuestionsDirect();
+      var sName = (e && e.parameter && (e.parameter.sheetName || e.parameter.sheet)) ? (e.parameter.sheetName || e.parameter.sheet) : 'Questions-Live';
+      if (sName === 'Questions-Qui' || sName === 'Questions_Qui' || sName === 'QuestionsQui') {
+        response = getQuizQuestionsDirect();
+      } else {
+        response = getLiveQuestionsDirect(sName);
+      }
     } else if (action === 'getLiveAnswersDirect') {
-      response = getLiveAnswersDirect();
+      var aName = (e && e.parameter && (e.parameter.sheetName || e.parameter.sheet)) ? (e.parameter.sheetName || e.parameter.sheet) : 'Answers-Live';
+      if (aName === 'Answers-Qui' || aName === 'Answers_Qui' || aName === 'AnswersQui') {
+        response = getQuizAnswersDirect();
+      } else {
+        response = getLiveAnswersDirect(aName);
+      }
     } else if (action === 'setupLiveDirectSheets') {
       response = setupLiveDirectSheets();
-    } else if (action === 'getQuizQuestionsDirect') {
+    } else if (action === 'getQuizQuestionsDirect' || action === 'getQuizQuestions' || action === 'getQuestionsQui' || action === 'getQuestions-Qui') {
       response = getQuizQuestionsDirect();
-    } else if (action === 'getQuizAnswersDirect') {
+    } else if (action === 'getQuizAnswersDirect' || action === 'getQuizAnswers' || action === 'getAnswersQui' || action === 'getAnswers-Qui') {
       response = getQuizAnswersDirect();
-    } else if (action === 'setupQuizDirectSheets') {
+    } else if (action === 'setupQuizDirectSheets' || action === 'setupQuizSheets') {
       response = setupQuizDirectSheets();
     } else if (action === 'getAdminQuestions') {
       response = getAdminQuestions();
@@ -457,18 +467,32 @@ function doPost(e) {
     } else if (action === 'batchRecordLiveAnswersT') {
       response = batchRecordLiveAnswersT(payload.records);
     } else if (action === 'saveLiveLessonDirect') {
-      response = saveLiveLessonDirect(payload.lesson || payload);
+      var sTarget = (payload && (payload.sheetName || payload.sheet)) || 'Questions-Live';
+      if (sTarget === 'Questions-Qui' || sTarget === 'Questions_Qui' || sTarget === 'QuestionsQui') {
+        response = saveQuizLessonDirect(payload.lesson || payload);
+      } else {
+        response = saveLiveLessonDirect(payload.lesson || payload);
+      }
     } else if (action === 'saveLiveAnswerDirect') {
       response = saveLiveAnswerDirect(payload);
     } else if (action === 'batchRecordLiveAnswersDirect') {
-      response = batchRecordLiveAnswersDirect(payload.records || []);
+      var aTarget = (payload && (payload.sheetName || payload.sheet)) || 'Answers-Live';
+      if (aTarget === 'Answers-Qui' || aTarget === 'Answers_Qui' || aTarget === 'AnswersQui') {
+        response = batchRecordQuizAnswersDirect(payload.records || []);
+      } else {
+        response = batchRecordLiveAnswersDirect(payload.records || []);
+      }
     } else if (action === 'setupLiveDirectSheets') {
       response = setupLiveDirectSheets();
-    } else if (action === 'saveQuizLessonDirect') {
+    } else if (action === 'getQuizQuestionsDirect' || action === 'getQuizQuestions' || action === 'getQuestionsQui' || action === 'getQuestions-Qui') {
+      response = getQuizQuestionsDirect();
+    } else if (action === 'getQuizAnswersDirect' || action === 'getQuizAnswers' || action === 'getAnswersQui' || action === 'getAnswers-Qui') {
+      response = getQuizAnswersDirect();
+    } else if (action === 'saveQuizLessonDirect' || action === 'saveQuizLesson' || action === 'saveQuiz') {
       response = saveQuizLessonDirect(payload.lesson || payload);
-    } else if (action === 'batchRecordQuizAnswersDirect') {
+    } else if (action === 'batchRecordQuizAnswersDirect' || action === 'batchRecordQuizAnswers' || action === 'saveQuizAnswers' || action === 'recordQuizAnswers') {
       response = batchRecordQuizAnswersDirect(payload.records || []);
-    } else if (action === 'setupQuizDirectSheets') {
+    } else if (action === 'setupQuizDirectSheets' || action === 'setupQuizSheets') {
       response = setupQuizDirectSheets();
     } else if (action === 'getAllSettingsStudents') {
       response = getAllSettingsStudents();
@@ -3668,18 +3692,101 @@ function setupQuizDirectSheets() {
 
 function getQuizQuestionsDirect() {
   try {
-    var sheet = getOrCreateQuizQuestionsDirectSheet();
+    var ss = getSpreadsheet();
+    var sheet = ss.getSheetByName('Questions-Qui') || ss.getSheetByName('Questions_Qui') || ss.getSheetByName('QuestionsQui');
+    if (!sheet) {
+      sheet = getOrCreateQuizQuestionsDirectSheet();
+    }
     var lastRow = sheet.getLastRow();
     if (lastRow <= 1) return { success: true, data: [] };
     
     var lastCol = sheet.getLastColumn();
     if (lastCol < 2) return { success: true, data: [] };
     
-    var rows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
-    var list = [];
+    var allRows = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+    var headerRow = allRows[0];
+    var dataRows = allRows.slice(1);
+
+    // التحقق التلقائي مما إذا كان الشيت منسقاً عمودياً (كل سطر هو سؤال منفصل)
+    var h0 = String(headerRow[0] || '').trim().toLowerCase();
+    var h1 = String(headerRow[1] || '').trim().toLowerCase();
+    var isVerticalFormat = (
+      h0.indexOf('سؤال') !== -1 || 
+      h0.indexOf('question') !== -1 || 
+      h1.indexOf('سؤال') !== -1 || 
+      h1.indexOf('question') !== -1 ||
+      (lastCol <= 6 && dataRows.length >= 1)
+    );
+
+    if (isVerticalFormat) {
+      // 1. التنسيق الرأسي: كل صف في الشيت يمثل سؤالاً مستقلاً
+      var vQuestions = [];
+      var topicTitle = 'مسابقة تحدي كويز';
+
+      for (var vr = 0; vr < dataRows.length; vr++) {
+        var vRow = dataRows[vr];
+        var qText = '';
+        var qOptsStr = '';
+        var qCorrect = '';
+        var qImg = '';
+
+        if (h0.indexOf('موضوع') !== -1 || h0.indexOf('topic') !== -1) {
+          if (String(vRow[0] || '').trim()) topicTitle = String(vRow[0]).trim();
+          qText = String(vRow[1] || '').trim();
+          qOptsStr = String(vRow[2] || '').trim();
+          qCorrect = String(vRow[3] !== undefined ? vRow[3] : '').trim();
+          qImg = String(vRow[4] || '').trim();
+        } else if (!isNaN(parseInt(vRow[0], 10)) && String(vRow[0]).trim().length <= 3) {
+          // العمود الأول هو رقم السؤال
+          qText = String(vRow[1] || '').trim();
+          qOptsStr = String(vRow[2] || '').trim();
+          qCorrect = String(vRow[3] !== undefined ? vRow[3] : '').trim();
+          qImg = String(vRow[4] || '').trim();
+        } else {
+          // العمود الأول هو نص السؤال مباشرة
+          qText = String(vRow[0] || '').trim();
+          qOptsStr = String(vRow[1] || '').trim();
+          qCorrect = String(vRow[2] !== undefined ? vRow[2] : '').trim();
+          qImg = String(vRow[3] || '').trim();
+        }
+
+        if (!qText && !qOptsStr && !qImg) continue;
+
+        var vOpts = [];
+        var vIsText = false;
+        if (qOptsStr.toLowerCase() === 'نص' || qOptsStr.toLowerCase() === 'text') {
+          vIsText = true;
+        } else if (qOptsStr) {
+          vOpts = qOptsStr.split('،').join(',').split(',').map(function(s) { return s.trim(); }).filter(Boolean);
+        }
+
+        vQuestions.push({
+          index: vr,
+          image: formatDriveImageUrl(qImg),
+          question: qText || ('سؤال رقم ' + (vr + 1)),
+          options: vOpts,
+          isTextAnswer: vIsText,
+          correctAnswer: qCorrect,
+          timeLimit: 30
+        });
+      }
+
+      if (vQuestions.length > 0) {
+        return {
+          success: true,
+          data: [{
+            rowIndex: 2,
+            title: topicTitle,
+            questions: vQuestions
+          }]
+        };
+      }
+    }
     
-    for (var r = 0; r < rows.length; r++) {
-      var row = rows[r];
+    // 2. التنسيق الأفقي التقليدي: كل سطر يمثل موضوع مسابقة، والأسئلة ممتدة عبر الأعمدة
+    var list = [];
+    for (var r = 0; r < dataRows.length; r++) {
+      var row = dataRows[r];
       var title = String(row[0] || '').trim();
       if (!title) continue;
       
@@ -3752,6 +3859,8 @@ function getQuizQuestionsDirect() {
     return { success: false, message: err.message };
   }
 }
+    
+
 
 function saveQuizLessonDirect(lesson) {
   try {

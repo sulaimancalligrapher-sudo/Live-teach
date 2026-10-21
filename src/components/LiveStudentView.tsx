@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { 
-  LiveSessionState, LiveQuestionItem, evaluateLiveAnswer, LiveStudentMessage
+  LiveSessionState, LiveQuestionItem, evaluateLiveAnswer, LiveStudentMessage, getQuizStudentKey
 } from '../types';
 import { 
   getLiveSessionState, joinLiveSession, pingLiveSession, leaveLiveSession, submitLiveAnswer, 
@@ -865,12 +865,13 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
   }
 
   // 1.5. Live Challenge Quiz Mode (Quiz Arena - Questions-Qui & Answers-Qui)
-  const studentQuizKey = `${username.trim().toLowerCase()}_${sheetNumber.trim()}`;
+  const studentQuizKey = getQuizStudentKey(username, sheetNumber);
   const isEnrolledInQuiz = Boolean(sessionState?.quizState?.participants?.[studentQuizKey]);
 
   if (sessionState?.quizState?.isActive && (hasAcceptedQuizChallenge || isEnrolledInQuiz)) {
     return (
       <StudentQuizView
+        key={studentQuizKey}
         quizState={sessionState.quizState}
         username={username}
         sheetNumber={sheetNumber}

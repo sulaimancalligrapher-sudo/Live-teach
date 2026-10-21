@@ -4,7 +4,7 @@ import {
   Trophy, Flame, CheckCircle2, XCircle, Send, Clock, 
   Sparkles, Award, RefreshCw, ArrowLeft, ArrowRight, Zap, Check, HelpCircle
 } from 'lucide-react';
-import { QuizActiveState, QuizQuestionItem, normalizeArabicText } from '../types';
+import { QuizActiveState, QuizQuestionItem, normalizeArabicText, getQuizStudentKey } from '../types';
 import { submitStudentQuizAnswer, markStudentQuizFinished, setStudentQuizRetryMode } from '../api';
 
 interface StudentQuizViewProps {
@@ -48,7 +48,8 @@ export default function StudentQuizView({
   studentName,
   onExit,
 }: StudentQuizViewProps) {
-  const studentKey = `${username.trim().toLowerCase()}_${sheetNumber.trim()}`;
+  // Guaranteed unified student key
+  const studentKey = getQuizStudentKey(username || studentName || 'طالب', sheetNumber);
   const studentProgress = quizState.participants?.[studentKey];
 
   // Base questions from state
@@ -71,16 +72,53 @@ export default function StudentQuizView({
         setQuestionQueue(baseQuestions);
       }
     }
-  }, [quizState.questions, quizState.shuffleQuestions, studentKey]);
+  }, [baseQuestions.length, quizState.shuffleQuestions, studentKey]);
 
   // Guaranteed active questions list
   const activeQuestions = (questionQueue && questionQueue.length > 0) ? questionQueue : baseQuestions;
   const totalQuestions = activeQuestions.length;
 
-  // Local step index - initialized only on mount to prevent remote sync race conditions
+  // Persistent storage key for session progress (prevents resetting on re-renders)
+  const storageKey = `quiz_step_${studentKey}_${quizState.startTime || quizState.quizTitle || 'active'}`;
+
+  // Local step index - initialized from sessionStorage or from already recorded answers
   const [localStep, setLocalStep] = useState<number>(() => {
-    return studentProgress?.currentQuestionIndex || 0;
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = sessionStorage.getItem(storageKey);
+        if (saved !== null) {
+          const parsed = parseInt(saved, 10);
+          if (!isNaN(parsed) && parsed >= 0) return parsed;
+        }
+      } catch {}
+    }
+    if (studentProgress?.answers) {
+      const answeredCount = Object.keys(studentProgress.answers).length;
+      if (answeredCount > 0 && totalQuestions > 0) {
+        return Math.min(answeredCount, totalQuestions);
+      }
+    }
+    return 0;
   });
+
+  // Keep sessionStorage in sync with localStep
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.setItem(storageKey, String(localStep));
+      } catch {}
+    }
+  }, [localStep, storageKey]);
+
+  // If studentProgress has more answers than localStep, smoothly fast-forward
+  useEffect(() => {
+    if (studentProgress?.answers) {
+      const answeredCount = Object.keys(studentProgress.answers).length;
+      if (answeredCount > localStep && totalQuestions > 0) {
+        setLocalStep(Math.min(answeredCount, totalQuestions));
+      }
+    }
+  }, [studentProgress?.answers, totalQuestions]);
 
   // Current active question index in the queue
   const currentStep = localStep;
@@ -121,10 +159,9 @@ export default function StudentQuizView({
     setIsSubmitting(false);
   }, [currentStep, isRetryRound, currentRetryIdx]);
 
-  // Check if finished - only when all questions in queue are answered, or teacher ended the quiz
+  // Check if finished - student is finished ONLY when they have stepped through all questions or quiz status is ended!
   const isFinished = (totalQuestions > 0 && currentStep >= totalQuestions) || 
-    (quizState.quizStatus === 'ended') || 
-    (Boolean(studentProgress?.isFinished) && totalQuestions > 0 && Object.keys(studentProgress?.answers || {}).length >= totalQuestions);
+    (quizState.quizStatus === 'ended');
 
   // When student finishes all questions in queue, notify server
   useEffect(() => {
@@ -133,7 +170,7 @@ export default function StudentQuizView({
     }
   }, [isFinished, isRetryRound, studentKey, studentProgress?.isFinished]);
 
-  // Advance step helper (clears inputs, increments question index smoothly)
+  // Advance step helper (clears inputs, increments question index smoothly and saves to sessionStorage)
   const advanceToNext = () => {
     if (advanceTimerRef.current) {
       clearTimeout(advanceTimerRef.current);
@@ -151,7 +188,13 @@ export default function StudentQuizView({
         setStudentQuizRetryMode(studentKey, false);
       }
     } else {
-      setLocalStep(prev => prev + 1);
+      setLocalStep(prev => {
+        const next = prev + 1;
+        try {
+          sessionStorage.setItem(storageKey, String(next));
+        } catch {}
+        return next;
+      });
     }
   };
 

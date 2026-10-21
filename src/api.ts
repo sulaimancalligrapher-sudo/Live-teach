@@ -2001,10 +2001,66 @@ export async function setupLiveDirectSheetsApi(): Promise<{ success: boolean; me
 const LOCAL_STORAGE_QUIZ_QUESTIONS = 'local_quiz_challenge_questions_cache';
 const LOCAL_STORAGE_QUIZ_ANSWERS = 'local_quiz_challenge_answers_cache';
 
-// Fetch Quiz Lessons / Question Sets from Google Sheets (Questions-Qui)
-export async function fetchQuizQuestionsDirect(): Promise<QuizLessonRow[]> {
+// Fetch Quiz Lessons / Question Sets from Google Sheets (Questions-Qui) with detailed reporting
+export async function fetchQuizQuestionsDirectDetailed(): Promise<{ 
+  success: boolean; 
+  data: QuizLessonRow[]; 
+  error?: string;
+  source: 'sheet' | 'cache' | 'none';
+}> {
+  if (!isApiConfigured()) {
+    const cached = localStorage.getItem(LOCAL_STORAGE_QUIZ_QUESTIONS);
+    let parsed: QuizLessonRow[] = [];
+    if (cached) {
+      try { parsed = JSON.parse(cached); } catch {}
+    }
+    return {
+      success: false,
+      data: parsed,
+      error: 'لم يتم تكوين رابط Google Apps Script Web App بعد. يرجى إدخال الرابط في الإعدادات.',
+      source: parsed.length > 0 ? 'cache' : 'none'
+    };
+  }
+
+  // 1. Try GET with primary action name and multiple fallback aliases
   try {
-    const res = await fetchGas({ action: 'getQuizQuestionsDirect' }, 'GET');
+    let res: any = await fetchGas({ action: 'getQuizQuestionsDirect' }, 'GET');
+    
+    // Fallback 1: getQuestionsQui
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      try {
+        res = await fetchGas({ action: 'getQuestionsQui' }, 'GET');
+      } catch (e) {}
+    }
+
+    // Fallback 2: getQuizQuestions
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      try {
+        res = await fetchGas({ action: 'getQuizQuestions' }, 'GET');
+      } catch (e) {}
+    }
+
+    // Fallback 3: getLiveQuestionsDirect with sheetName parameter
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      try {
+        res = await fetchGas({ action: 'getLiveQuestionsDirect', sheetName: 'Questions-Qui' }, 'GET');
+      } catch (e) {}
+    }
+
+    // Fallback 4: getLiveQuestionsDirect with sheet parameter
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      try {
+        res = await fetchGas({ action: 'getLiveQuestionsDirect', sheet: 'Questions-Qui' }, 'GET');
+      } catch (e) {}
+    }
+
+    // Fallback 5: POST method
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      try {
+        res = await fetchGas({ action: 'getQuizQuestionsDirect' }, 'POST', { action: 'getQuizQuestionsDirect' });
+      } catch (e) {}
+    }
+
     if (res && res.success && Array.isArray(res.data)) {
       const sanitized = res.data.map((lesson: any) => ({
         ...lesson,
@@ -2015,20 +2071,41 @@ export async function fetchQuizQuestionsDirect(): Promise<QuizLessonRow[]> {
         })),
       }));
       localStorage.setItem(LOCAL_STORAGE_QUIZ_QUESTIONS, JSON.stringify(sanitized));
-      return sanitized;
+      return { success: true, data: sanitized, source: 'sheet' };
     }
-  } catch (err) {
-    console.warn('Could not fetch Questions-Qui from Google Sheets, checking local cache:', err);
+
+    if (res && res.message && res.message.includes('غير معروف')) {
+      const cached = localStorage.getItem(LOCAL_STORAGE_QUIZ_QUESTIONS);
+      let parsed: QuizLessonRow[] = [];
+      if (cached) {
+        try { parsed = JSON.parse(cached); } catch {}
+      }
+      return {
+        success: false,
+        data: parsed,
+        error: 'خادم Google Apps Script بالشيت يحتاج إلى تحديث الكود ليتعرف على ورقة Questions-Qui. اضغط زر (كود Apps Script المحدث) أدناه لنسخه وتحديثه بالشيت.',
+        source: parsed.length > 0 ? 'cache' : 'none'
+      };
+    }
+  } catch (err: any) {
+    console.warn('Could not fetch Questions-Qui from Google Sheets:', err);
   }
 
   const cached = localStorage.getItem(LOCAL_STORAGE_QUIZ_QUESTIONS);
   if (cached) {
     try {
-      return JSON.parse(cached);
+      const parsed = JSON.parse(cached);
+      return { success: false, data: parsed, error: 'تعذر الاتصال بالشيت، تم تحميل النسخة المحفوظة محلياً', source: 'cache' };
     } catch {}
   }
 
-  return [];
+  return { success: false, data: [], error: 'تعذر جلب أسئلة التحدي من الشيت ولا توجد نسخة محفوظة محلياً', source: 'none' };
+}
+
+// Fetch Quiz Lessons / Question Sets from Google Sheets (Questions-Qui) - standard backward-compatible signature
+export async function fetchQuizQuestionsDirect(): Promise<QuizLessonRow[]> {
+  const result = await fetchQuizQuestionsDirectDetailed();
+  return result.data;
 }
 
 // Save or Update a Quiz Lesson in Google Sheets (Questions-Qui)
@@ -2043,7 +2120,16 @@ export async function saveQuizLessonDirect(lesson: QuizLessonRow): Promise<{ suc
   localStorage.setItem(LOCAL_STORAGE_QUIZ_QUESTIONS, JSON.stringify(existing));
 
   try {
-    const res = await fetchGas({ action: 'saveQuizLessonDirect' }, 'POST', lesson);
+    let res = await fetchGas({ action: 'saveQuizLessonDirect' }, 'POST', lesson);
+    if (!res || res.message === 'الإجراء المطلوب غير معروف') {
+      res = await fetchGas({ action: 'saveQuizLesson' }, 'POST', lesson);
+    }
+    if (!res || res.message === 'الإجراء المطلوب غير معروف') {
+      res = await fetchGas({ action: 'saveLiveLessonDirect', sheetName: 'Questions-Qui' }, 'POST', {
+        ...lesson,
+        sheetName: 'Questions-Qui',
+      });
+    }
     return res || { success: true, message: 'تم حفظ أسئلة التحدي في ورقة Questions-Qui بنجاح! 🎯' };
   } catch (err: any) {
     console.error('Failed to save to Google Sheets Questions-Qui:', err);
@@ -2054,7 +2140,13 @@ export async function saveQuizLessonDirect(lesson: QuizLessonRow): Promise<{ suc
 // Fetch Quiz Answers & Scores from Google Sheets (Answers-Qui)
 export async function fetchQuizAnswersDirect(): Promise<QuizAnswerRecord[]> {
   try {
-    const res = await fetchGas({ action: 'getQuizAnswersDirect' }, 'GET');
+    let res = await fetchGas({ action: 'getQuizAnswersDirect' }, 'GET');
+    if (!res || res.message === 'الإجراء المطلوب غير معروف') {
+      res = await fetchGas({ action: 'getAnswersQui' }, 'GET');
+    }
+    if (!res || res.message === 'الإجراء المطلوب غير معروف') {
+      res = await fetchGas({ action: 'getLiveAnswersDirect', sheetName: 'Answers-Qui' }, 'GET');
+    }
     if (res && res.success && Array.isArray(res.data)) {
       localStorage.setItem(LOCAL_STORAGE_QUIZ_ANSWERS, JSON.stringify(res.data));
       return res.data;
@@ -2074,11 +2166,34 @@ export async function fetchQuizAnswersDirect(): Promise<QuizAnswerRecord[]> {
 // Batch Record Student Quiz Answers & Scores to Google Sheets (Answers-Qui)
 export async function recordQuizAnswersBatchDirect(records: QuizAnswerRecord[]): Promise<{ success: boolean; count?: number; message?: string }> {
   try {
-    const res = await fetchGas({ action: 'batchRecordQuizAnswersDirect' }, 'POST', {
+    let res = await fetchGas({ action: 'batchRecordQuizAnswersDirect' }, 'POST', {
       action: 'batchRecordQuizAnswersDirect',
       records: records
     });
-    return res || { success: true, count: records.length };
+
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      // Try alias action
+      res = await fetchGas({ action: 'saveQuizAnswers' }, 'POST', {
+        action: 'saveQuizAnswers',
+        records: records
+      });
+    }
+
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      // Try fallback to batchRecordLiveAnswersDirect with sheet target
+      res = await fetchGas({ action: 'batchRecordLiveAnswersDirect' }, 'POST', {
+        action: 'batchRecordLiveAnswersDirect',
+        sheetName: 'Answers-Qui',
+        sheet: 'Answers-Qui',
+        records: records
+      });
+    }
+
+    if (res && res.success) {
+      return { success: true, count: records.length, message: res.message || 'تم ترحيل النتائج بنجاح' };
+    }
+
+    return res || { success: false, message: 'لم يتم استلام تأكيد من خادم Google Sheets' };
   } catch (err: any) {
     console.error('Error recording batch answers to Answers-Qui:', err);
     return { success: false, message: err.message };

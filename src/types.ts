@@ -541,6 +541,8 @@ export function formatSecondsToTime(sec: number): string {
   const s = Math.floor(sec % 60);
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
-
-
-
+export function getQuizStudentKey(username: string, sheetNumber?: string): string {
+  const u = (username || 'طالب').trim().toLowerCase();
+  const s = (sheetNumber || '').trim();
+  return s ? `${u}_${s}` : u;
+}

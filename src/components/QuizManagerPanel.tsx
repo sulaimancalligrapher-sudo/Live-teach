@@ -16,26 +16,90 @@ import {
   fetchQuizAnswersDirect, recordQuizAnswersBatchDirect, 
   setupQuizDirectSheetsApi, startLiveQuiz, endLiveQuiz, 
   resetLiveQuiz, updateLiveQuizSettings, formatDriveImageUrl,
-  openLiveQuizLobby, launchLiveQuizQuestions
+  openLiveQuizLobby, launchLiveQuizQuestions,
+  subscribeToLiveSession, fetchQuizQuestionsDirectDetailed,
+  isApiConfigured, getWebAppUrl
 } from '../api';
+import { getFullAppsScriptCode } from './SettingsPanel';
+
+// Comprehensive default question bank (5 multi-choice questions) to prevent single-question termination
+export const DEFAULT_QUIZ_BANK: QuizLessonRow[] = [
+  {
+    title: 'تحدي المعرفة والخط العربي (نموذج شامل)',
+    questions: [
+      {
+        index: 0,
+        question: 'ما هو الخط العربي الذي يُلقب بـ "أم الخطوط" لجماله ودقته؟',
+        options: ['خط الثلث', 'خط النسخ', 'خط الرقعة', 'الخط الكوفي'],
+        correctAnswer: '1',
+        timeLimit: 30,
+      },
+      {
+        index: 1,
+        question: 'أي من الخطوط التالية يتميز بالسرعة في الكتابة وسهولة التركيب اليومي؟',
+        options: ['الخط الديواني', 'خط الرقعة', 'خط الثلث', 'خط الإجازة'],
+        correctAnswer: '2',
+        timeLimit: 30,
+      },
+      {
+        index: 2,
+        question: 'ما هي الوحدة الأساسية القياسية لضبط أبعاد وموازين الحروف في الخط العربي؟',
+        options: ['المسطرة', 'نقطة القلم (المربعة)', 'الميلي متر', 'زاوية الميل'],
+        correctAnswer: '2',
+        timeLimit: 30,
+      },
+      {
+        index: 3,
+        question: 'من هو الوزير العباسي الشهير الذي وضع القواعد الهندسية الأولى للخط المنسوب؟',
+        options: ['ابن البواب', 'ابن مقلة', 'ياقوت المستعصمي', 'مير علي التبريزي'],
+        correctAnswer: '2',
+        timeLimit: 30,
+      },
+      {
+        index: 4,
+        question: 'ما هو الخط الذي نُسخت به معظم المصاحف الشريفة لوضوحه وسهولة قراءته؟',
+        options: ['خط النسخ', 'خط الثلث', 'الخط الكوفي القديم', 'خط الطغراء'],
+        correctAnswer: '1',
+        timeLimit: 30,
+      },
+    ],
+  },
+];
 
 interface QuizManagerPanelProps {
   sessionState?: LiveSessionState | null;
   onOpenArenaDisplay?: () => void;
+  onOpenSettings?: () => void;
 }
 
 export default function QuizManagerPanel({
   sessionState,
   onOpenArenaDisplay,
+  onOpenSettings,
 }: QuizManagerPanelProps) {
   // Tabs: 'control' | 'questions' | 'answers'
   const [activeTab, setActiveTab] = useState<'control' | 'questions' | 'answers'>('control');
+
+  // Real-time live session listener so panel always has live students and scores!
+  const [internalLiveSessionState, setInternalLiveSessionState] = useState<LiveSessionState | null>(sessionState || null);
+
+  useEffect(() => {
+    const unsub = subscribeToLiveSession((st) => {
+      setInternalLiveSessionState(st);
+    });
+    return () => unsub();
+  }, []);
+
+  const activeLiveState = sessionState || internalLiveSessionState;
+  const currentQuizState = activeLiveState?.quizState || null;
+  const isQuizActive = Boolean(currentQuizState?.isActive && currentQuizState.quizStatus === 'in_progress');
 
   // Lessons list & Active lesson for quiz
   const [quizzes, setQuizzes] = useState<QuizLessonRow[]>([]);
   const [selectedQuizIdx, setSelectedQuizIdx] = useState<number>(0);
   const [loadingQuizzes, setLoadingQuizzes] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+  const [noticeBanner, setNoticeBanner] = useState<{ text: string; type: 'success' | 'warning' | 'error' | 'info' } | null>(null);
 
   // Settings for the challenge
   const [timerMinutes, setTimerMinutes] = useState<number>(0); // 0 = unlimited
@@ -58,6 +122,10 @@ export default function QuizManagerPanel({
   const [isSettingUpSheets, setIsSettingUpSheets] = useState(false);
   const [setupFeedback, setSetupFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
+  // Script code modal status for Google Sheets deployment
+  const [isScriptModalOpen, setIsScriptModalOpen] = useState(false);
+  const [copiedScript, setCopiedScript] = useState(false);
+
   // Load quizzes and answers on mount
   useEffect(() => {
     loadQuizzes();
@@ -66,43 +134,38 @@ export default function QuizManagerPanel({
 
   const loadQuizzes = async () => {
     setLoadingQuizzes(true);
+    setNoticeBanner(null);
     try {
-      const data = await fetchQuizQuestionsDirect();
-      if (data && data.length > 0) {
-        setQuizzes(data);
+      const res = await fetchQuizQuestionsDirectDetailed();
+      if (res.success && res.data.length > 0) {
+        setQuizzes(res.data);
+        const totalQCount = res.data.reduce((acc, curr) => acc + (curr.questions?.length || 0), 0);
+        setSaveSuccessMsg(`تم جلب وتحديث ${res.data.length} موضوع مسابقة (${totalQCount} سؤال) من ورقة Questions-Qui بنجاح! 🎯`);
+        setTimeout(() => setSaveSuccessMsg(null), 4000);
+      } else if (res.data.length > 0) {
+        setQuizzes(res.data);
+        if (res.error) {
+          setNoticeBanner({ text: res.error, type: 'warning' });
+        }
       } else {
-        // Sample default quiz to get started immediately
-        const defaultSample: QuizLessonRow = {
-          title: 'مسابقة التحدي التجريبية الأولى 🏆',
-          description: 'تحدي سريع لقياس سرعة وفهم الطلاب',
-          questions: [
-            {
-              index: 0,
-              question: 'ما هي عاصمة المملكة العربية السعودية؟',
-              options: ['الرياض', 'جدة', 'الدمام', 'مكة المكرمة'],
-              correctAnswer: '1',
-              timeLimit: 30,
-            },
-            {
-              index: 1,
-              question: 'كم عدد أركان الإسلام؟',
-              options: ['أربعة', 'خمسة', 'ستة', 'سبعة'],
-              correctAnswer: '2',
-              timeLimit: 30,
-            },
-            {
-              index: 2,
-              question: 'في أي شهر نزل القرآن الكريم؟',
-              options: ['شعبان', 'رمضان', 'شوال', 'رجب'],
-              correctAnswer: '2',
-              timeLimit: 30,
-            }
-          ]
-        };
-        setQuizzes([defaultSample]);
+        // Fallback to rich default questions bank if sheet has none or error
+        setQuizzes(prev => prev.length > 0 ? prev : DEFAULT_QUIZ_BANK);
+        if (res.error) {
+          setNoticeBanner({ 
+            text: res.error, 
+            type: res.error.includes('غير معروف') ? 'error' : 'warning' 
+          });
+        } else {
+          setNoticeBanner({ 
+            text: 'ورقة Questions-Qui في الشيت فارغة حالياً. تم تفعيل بنك الأسئلة النموذجي (5 أسئلة كاملة) لضمان تجربة سلسة.', 
+            type: 'info' 
+          });
+        }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Failed to load quizzes:', err);
+      setQuizzes(prev => prev.length > 0 ? prev : DEFAULT_QUIZ_BANK);
+      setNoticeBanner({ text: 'خطأ أثناء الاتصال بالشيت: ' + err.message, type: 'error' });
     } finally {
       setLoadingQuizzes(false);
     }
@@ -119,10 +182,6 @@ export default function QuizManagerPanel({
       setLoadingAnswers(false);
     }
   };
-
-  // Active quiz state from live session
-  const currentQuizState = sessionState?.quizState || null;
-  const isQuizActive = Boolean(currentQuizState?.isActive && currentQuizState.quizStatus === 'in_progress');
 
   // Trigger Start Quiz directly
   const handleStartQuiz = async () => {
@@ -268,7 +327,14 @@ export default function QuizManagerPanel({
         setSaveSuccessMsg(`تم ترحيل وحفظ ${recordsToSave.length} نتيجة في ورقة Answers-Qui بنجاح! ⚡`);
         loadAnswers();
       } else {
-        alert('حدث خطأ أثناء الترحيل للشيت: ' + res.message);
+        const isUnknown = res.message && (res.message.includes('غير معروف') || res.message.includes('unknown'));
+        if (isUnknown) {
+          setIsScriptModalOpen(true);
+        }
+        alert(
+          'خطأ أثناء الترحيل للشيت: ' + (res.message || 'فشل الاتصال') + 
+          (isUnknown ? '\n\n💡 ملاحظة هامة: سكريبت الويب في الشيت يحتاج إلى كود ترحيل كويز. تم فتح نافذة الكود؛ انسخه واضغط نشر (إصدار جديد) في الشيت.' : '')
+        );
       }
     } catch (err: any) {
       alert('تعذر ترحيل النتائج: ' + err.message);
@@ -335,7 +401,7 @@ export default function QuizManagerPanel({
         </div>
 
         {/* Action button for display screen */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {onOpenArenaDisplay && (
             <button
               onClick={onOpenArenaDisplay}
@@ -345,6 +411,15 @@ export default function QuizManagerPanel({
               <span>شاشة العرض الكبرى (Arena)</span>
             </button>
           )}
+
+          <button
+            onClick={() => setIsScriptModalOpen(true)}
+            className="px-3.5 py-2.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 font-bold text-xs rounded-xl border border-purple-500/40 flex items-center gap-1.5 transition-all cursor-pointer"
+            title="عرض ونسخ كود Apps Script المحدث لربط ورقتي Questions-Qui و Answers-Qui"
+          >
+            <Copy className="w-4 h-4 text-purple-400" />
+            <span>كود Apps Script للشيت 📋</span>
+          </button>
 
           <button
             onClick={handleSetupSheets}
@@ -357,6 +432,52 @@ export default function QuizManagerPanel({
           </button>
         </div>
       </div>
+
+      {/* Notice Banner (Errors, Warnings, Unknown Action guidance) */}
+      {noticeBanner && (
+        <div className={`p-4 rounded-2xl border text-xs font-bold flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg ${
+          noticeBanner.type === 'error'
+            ? 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+            : noticeBanner.type === 'warning'
+              ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+              : 'bg-indigo-500/15 border-indigo-500/40 text-indigo-300'
+        }`}>
+          <div className="flex items-start gap-2.5">
+            {noticeBanner.type === 'error' ? (
+              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+            ) : noticeBanner.type === 'warning' ? (
+              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            ) : (
+              <CheckCircle2 className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+            )}
+            <div className="space-y-1">
+              <span className="leading-relaxed">{noticeBanner.text}</span>
+              {noticeBanner.text.includes('غير معروف') && (
+                <div className="text-[11px] text-slate-400 font-normal">
+                  💡 سبب الخطأ: سكريبت الويب في الشيت يحتاج نشر أحدث إصدار للتعرف على أوامر مسابقة كويز وترحيل النتائج.
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
+            {noticeBanner.text.includes('Apps Script') && (
+              <button
+                onClick={() => setIsScriptModalOpen(true)}
+                className="px-3.5 py-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded-xl text-xs font-black shadow flex items-center gap-1.5 cursor-pointer"
+              >
+                <Copy className="w-3.5 h-3.5" />
+                <span>نسخ وتحديث الكود بالشيت 📋</span>
+              </button>
+            )}
+            <button
+              onClick={() => setNoticeBanner(null)}
+              className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-white/10 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Setup Feedback Banner */}
       {setupFeedback && (
@@ -1170,6 +1291,95 @@ export default function QuizManagerPanel({
           )}
         </div>
       )}
+
+      {/* ============================================================== */}
+      {/* MODAL: GOOGLE APPS SCRIPT CODE & DEPLOYMENT INSTRUCTIONS */}
+      {/* ============================================================== */}
+      <AnimatePresence>
+        {isScriptModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-fade-in">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden"
+              dir="rtl"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-purple-500/10 rounded-xl text-purple-400 border border-purple-500/20">
+                    <Copy className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-100">
+                      كود Apps Script المحدث لشيت التحدي (Questions-Qui & Answers-Qui)
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      انسخ هذا الكود بالكامل واستبدله في محرر Apps Script بالشيت ليعمل جلب الأسئلة وترحيل النتائج فوراً
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsScriptModalOpen(false)}
+                  className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-700 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Instructions steps */}
+              <div className="py-3 px-4 bg-slate-950/70 border border-slate-800 rounded-2xl my-3 text-xs space-y-2">
+                <div className="font-bold text-amber-400 flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4" />
+                  <span>طريقة التحديث في 4 خطوات بسيطة (لحل مشكلة الإجراء غير معروف وترحيل النتائج):</span>
+                </div>
+                <ol className="text-slate-300 list-decimal list-inside space-y-1 text-[11px] leading-relaxed">
+                  <li>افتح جدول البيانات (Google Sheet) الخاص بك، ومن القائمة العلوية اختر: <b>الإضافات (Extensions) &larr; Apps Script</b>.</li>
+                  <li>امسح أي كود قديم في المحرر، والصق هذا الكود المحدث بالكامل.</li>
+                  <li>اضغط على زر <b>نشر (Deploy)</b> بالأعلى &larr; ثم اختر <b>إدارة عمليات النشر (Manage Deployments)</b>.</li>
+                  <li>اضغط على أيقونة <b>القلم (تعديل Edit)</b> &larr; اختر في الإصدار: <b>إصدار جديد (New version)</b> &larr; ثم اضغط <b>نشر (Deploy)</b>.</li>
+                </ol>
+              </div>
+
+              {/* Code viewer */}
+              <div className="flex-1 overflow-hidden flex flex-col bg-slate-950 border border-slate-800 rounded-2xl relative">
+                <div className="flex items-center justify-between px-4 py-2 border-b border-slate-800 bg-slate-900/50">
+                  <span className="text-xs font-mono text-slate-400">Code.gs</span>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(getFullAppsScriptCode());
+                      setCopiedScript(true);
+                      setTimeout(() => setCopiedScript(false), 3000);
+                    }}
+                    className={`px-4 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                      copiedScript
+                        ? 'bg-emerald-500 text-slate-950'
+                        : 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 hover:from-amber-400 hover:to-orange-400'
+                    }`}
+                  >
+                    {copiedScript ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    <span>{copiedScript ? 'تم نسخ الكود بالكامل!' : 'نسخ الكود بالكامل 📋'}</span>
+                  </button>
+                </div>
+                <textarea
+                  readOnly
+                  value={getFullAppsScriptCode()}
+                  className="w-full flex-1 p-4 bg-transparent text-slate-300 font-mono text-[11px] leading-relaxed resize-none outline-none overflow-y-auto custom-scrollbar"
+                />
+              </div>
+
+              <div className="pt-3 flex justify-end">
+                <button
+                  onClick={() => setIsScriptModalOpen(false)}
+                  className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold cursor-pointer"
+                >
+                  إغلاق النافذة
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

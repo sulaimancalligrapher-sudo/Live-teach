@@ -1468,10 +1468,10 @@ export async function submitStudentQuizAnswer(
     const participants = { ...(currentQuiz.participants || {}) };
     let student = participants[studentKey];
     // Calculate true total questions from quizState or payload
-    const quizCount = Array.isArray(currentQuiz.questions) ? currentQuiz.questions.length : 0;
-    const payloadCount = typeof payload.totalQuizQuestions === 'number' ? payload.totalQuizQuestions : 0;
-    const studentCount = typeof student?.totalQuestions === 'number' ? student.totalQuestions : 0;
-    const effectiveTotal = Math.max(quizCount, payloadCount, studentCount, 1);
+    const actualQuizQuestions = Array.isArray(currentQuiz.questions) ? currentQuiz.questions.length : 0;
+    const payloadQuestions = typeof payload.totalQuizQuestions === 'number' && payload.totalQuizQuestions > 0 ? payload.totalQuizQuestions : 0;
+    const studentRecordedTotal = typeof student?.totalQuestions === 'number' && student.totalQuestions > 0 ? student.totalQuestions : 0;
+    const trueTotalQuestions = Math.max(actualQuizQuestions, payloadQuestions, studentRecordedTotal, 1);
 
     if (!student) {
       student = {
@@ -1484,16 +1484,14 @@ export async function submitStudentQuizAnswer(
         totalScore: 0,
         correctCount: 0,
         wrongCount: 0,
-        totalQuestions: effectiveTotal,
+        totalQuestions: trueTotalQuestions,
         streak: 0,
         isFinished: false,
         totalTimeTaken: 0,
         wrongQuestionIndices: [],
       };
     } else {
-      if (effectiveTotal > student.totalQuestions) {
-        student.totalQuestions = effectiveTotal;
-      }
+      student.totalQuestions = trueTotalQuestions;
     }
 
     // Points calculation (Quizizz / Kahoot style)
@@ -1542,9 +1540,11 @@ export async function submitStudentQuizAnswer(
     const newTotalTime = (student.totalTimeTaken || 0) + payload.timeTaken;
     const nextQIndex = payload.isRetry ? student.currentQuestionIndex : (student.currentQuestionIndex + 1);
     
-    // Only mark finished if all questions have truly been answered
+    // Only mark finished if all questions have truly been answered and student reached the end
     const totalAnswered = Object.keys(updatedAnswers).length;
-    const isNowFinished = !payload.isRetry && (effectiveTotal > 1 ? totalAnswered >= effectiveTotal : (quizCount === 1 && totalAnswered >= 1));
+    const isNowFinished = !payload.isRetry && 
+      (totalAnswered >= trueTotalQuestions) && 
+      (nextQIndex >= trueTotalQuestions);
 
     student = {
       ...student,

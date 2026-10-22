@@ -2258,6 +2258,7 @@ export {
   sendTeacherBroadcastMessage,
   updateLivePdfState,
   toggleShowPdfInRoom,
+  toggleShowPdfToStudents,
   updateLivePdfLaser,
   updateLivePdfAnnotations,
   startLiveQuiz,

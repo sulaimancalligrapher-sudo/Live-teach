@@ -28,6 +28,7 @@ interface AdminPanelProps {
   onStartTeacherTheater?: (lesson: LiveLessonRow) => void;
   onOpenLiveDirectDisplay?: () => void;
   onOpenQuizArenaDisplay?: () => void;
+  onOpenSmartDisplay?: () => void;
   initialTab?: 'live' | 'live-direct' | 'quiz-challenge' | 'broadcast' | 'sheets-design';
 }
 
@@ -36,6 +37,7 @@ export default function AdminPanel({
   onStartTeacherTheater, 
   onOpenLiveDirectDisplay,
   onOpenQuizArenaDisplay,
+  onOpenSmartDisplay,
   initialTab = 'live'
 }: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState<'live' | 'live-direct' | 'quiz-challenge' | 'broadcast' | 'sheets-design'>(initialTab);
@@ -123,6 +125,8 @@ export default function AdminPanel({
 
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
   const studentUrl = `${baseUrl}/?page=live-student`;
+  const smartHubDisplayUrl = `${baseUrl}/?page=display`;
+  const liveTeacherUrl = `${baseUrl}/?page=live-teacher`;
   const directDisplayUrl = `${baseUrl}/?page=live-direct-display`;
   const quizArenaUrl = `${baseUrl}/?page=quiz-arena`;
 
@@ -326,6 +330,43 @@ export default function AdminPanel({
                   </div>
                 </div>
 
+                {/* Card 0: Featured Smart Hub Display (Recommended for Projectors) */}
+                <div className="mb-6 p-6 rounded-3xl bg-gradient-to-r from-amber-500/15 via-blue-500/15 to-purple-500/15 border-2 border-amber-500/50 shadow-xl relative overflow-hidden">
+                  <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                    <div className="space-y-1.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-[11px] uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                          <Sparkles className="w-3.5 h-3.5" />
+                          الشاشة الرابعة الجامعة (موصى بها للبروجكتر)
+                        </span>
+                        <h3 className="font-black text-white text-lg sm:text-xl">
+                          الشاشة الجامعة الذكية (Smart Hub Display) ⚡
+                        </h3>
+                      </div>
+                      <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
+                        شاشة بروجكتر واحدة برابط موحد تجمع كافة الأقسام. تدعم <b>التحويل الذكي التلقائي (Auto-Switch)</b> لمتابعة نشاط المدرس المباشر تلقائياً، مع <b>شريط تبديل سريع</b> للتنقل اليدوي الفوري بنقرة واحدة.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center gap-2 w-full lg:w-auto shrink-0">
+                      <button
+                        onClick={onOpenSmartDisplay || (() => window.open(smartHubDisplayUrl, '_blank'))}
+                        className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-sm flex items-center justify-center gap-2 transition shadow-lg shadow-amber-500/20 cursor-pointer"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        فتح الشاشة الجامعة 🖥️✨
+                      </button>
+                      <button
+                        onClick={() => handleCopy(smartHubDisplayUrl, 'smart-hub-screen')}
+                        className="w-full sm:w-auto px-4 py-3 rounded-2xl bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center justify-center gap-2 transition border border-slate-700 cursor-pointer"
+                      >
+                        {copiedLink === 'smart-hub-screen' ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                        {copiedLink === 'smart-hub-screen' ? 'تم نسخ الرابط!' : 'نسخ رابط الشاشة'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* Card 1: Live Class Theater */}
                   <div className="p-5 rounded-2xl bg-slate-900/90 border border-slate-700/80 flex flex-col justify-between">
@@ -354,6 +395,13 @@ export default function AdminPanel({
                         <Play className="w-4 h-4" />
                         بدء المسرح التفاعلي
                       </button>
+                      <button
+                        onClick={() => handleCopy(liveTeacherUrl, 'teacher-screen')}
+                        className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center justify-center gap-2 transition cursor-pointer"
+                      >
+                        {copiedLink === 'teacher-screen' ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiedLink === 'teacher-screen' ? 'تم نسخ الرابط!' : 'نسخ رابط المسرح'}
+                      </button>
                     </div>
                   </div>
 
@@ -363,9 +411,9 @@ export default function AdminPanel({
                       <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center mb-3">
                         <Mic className="w-5 h-5" />
                       </div>
-                      <h3 className="font-bold text-white text-base mb-1">شاشة الشرح المباشر</h3>
+                      <h3 className="font-bold text-white text-base mb-1">شاشة الشرح المباشر والـ PDF</h3>
                       <p className="text-xs text-slate-400 mb-4">
-                        شاشة العرض المخصصة للمحاضرات المباشرة لعرض السؤال والعداد التنازلي وتوزيع إجابات الطلاب فورياً.
+                        شاشة العرض المخصصة للمحاضرات المباشرة لعرض ملف الـ PDF المتزامن، السؤال والعداد، وتوزيع الإجابات.
                       </p>
                     </div>
                     <div className="space-y-2 pt-2 border-t border-slate-800">
@@ -374,7 +422,7 @@ export default function AdminPanel({
                         className="w-full py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
                       >
                         <ExternalLink className="w-4 h-4" />
-                        فتح شاشة العرض المباشر
+                        فتح شاشة الشرح المباشر
                       </button>
                       <button
                         onClick={() => handleCopy(directDisplayUrl, 'direct-screen')}
@@ -392,7 +440,7 @@ export default function AdminPanel({
                       <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center mb-3">
                         <Trophy className="w-5 h-5" />
                       </div>
-                      <h3 className="font-bold text-white text-base mb-1">ساحة تحدي كويز الكبرى</h3>
+                      <h3 className="font-bold text-white text-base mb-1">ساحة تحدي كويز ومنصة التتويج</h3>
                       <p className="text-xs text-slate-400 mb-4">
                         شاشة الحلبة والتنافس الكبرى مع منصة التتويج ثلاثية الأبعاد، العدادات الحماسية وترتيب المتصدرين.
                       </p>

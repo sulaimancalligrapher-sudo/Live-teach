@@ -1166,8 +1166,10 @@ export async function updateLivePdfState({
   pdfTotalPages,
   pdfFitMode,
   pdfZoom,
+  showPdfToStudents,
 }: {
   showPdfInRoom?: boolean;
+  showPdfToStudents?: boolean;
   pdfUrl?: string;
   pdfTitle?: string;
   pdfPage?: number;
@@ -1180,6 +1182,7 @@ export async function updateLivePdfState({
       updatedAt: serverTimestamp(),
     };
     if (showPdfInRoom !== undefined) updatePayload.showPdfInRoom = showPdfInRoom;
+    if (showPdfToStudents !== undefined) updatePayload.showPdfToStudents = showPdfToStudents;
     if (pdfUrl !== undefined) updatePayload.pdfUrl = pdfUrl;
     if (pdfTitle !== undefined) updatePayload.pdfTitle = pdfTitle;
     if (pdfPage !== undefined) updatePayload.pdfPage = pdfPage;
@@ -1191,6 +1194,7 @@ export async function updateLivePdfState({
     cachedState = {
       ...cachedState,
       ...(showPdfInRoom !== undefined ? { showPdfInRoom } : {}),
+      ...(showPdfToStudents !== undefined ? { showPdfToStudents } : {}),
       ...(pdfUrl !== undefined ? { pdfUrl } : {}),
       ...(pdfTitle !== undefined ? { pdfTitle } : {}),
       ...(pdfPage !== undefined ? { pdfPage } : {}),
@@ -1207,6 +1211,10 @@ export async function updateLivePdfState({
 
 export async function toggleShowPdfInRoom(show: boolean): Promise<{ success: boolean; state?: LiveSessionState }> {
   return updateLivePdfState({ showPdfInRoom: show });
+}
+
+export async function toggleShowPdfToStudents(show: boolean): Promise<{ success: boolean; state?: LiveSessionState }> {
+  return updateLivePdfState({ showPdfToStudents: show });
 }
 
 // Realtime sync of laser pointer or live pen tip (debounced/throttled on caller side)

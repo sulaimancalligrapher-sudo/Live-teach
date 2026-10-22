@@ -89,6 +89,7 @@ import {
   formatPdfEmbedUrl,
   updateLivePdfState,
   toggleShowPdfInRoom,
+  toggleShowPdfToStudents,
   updateLivePdfLaser,
   updateLivePdfAnnotations,
   savePdfToIndexedDB,
@@ -164,6 +165,7 @@ export default function LiveDirectManager({
   // PDF Lessons & Educational Tools State
   const [pdfLessons, setPdfLessons] = useState<LivePdfItem[]>(() => getSavedPdfLessons());
   const [isUpdatingPdfVisibility, setIsUpdatingPdfVisibility] = useState(false);
+  const [isUpdatingPdfToStudents, setIsUpdatingPdfToStudents] = useState(false);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [editingPdfItem, setEditingPdfItem] = useState<LivePdfItem | null>(null);
   const [pdfFormTitle, setPdfFormTitle] = useState('');
@@ -262,6 +264,22 @@ export default function LiveDirectManager({
       showNotice('حدث خطأ أثناء تعديل ظهور ملف الـ PDF', 'error');
     } finally {
       setIsUpdatingPdfVisibility(false);
+    }
+  };
+
+  // Toggle PDF on student mobile/tablet screens
+  const handleTogglePdfToStudents = async (show: boolean) => {
+    setIsUpdatingPdfToStudents(true);
+    try {
+      const res = await toggleShowPdfToStudents(show);
+      if (res.success && res.state) {
+        setSessionState(res.state);
+        showNotice(show ? 'تم إظهار ومزامنة ملف الـ PDF في أجهزة الطلاب 📱' : 'تم إخفاء ملف الـ PDF من أجهزة الطلاب 📱');
+      }
+    } catch (e) {
+      showNotice('حدث خطأ أثناء تعديل ظهور ملف الـ PDF للطلاب', 'error');
+    } finally {
+      setIsUpdatingPdfToStudents(false);
     }
   };
 
@@ -1559,6 +1577,24 @@ export default function LiveDirectManager({
                     </button>
                   )}
 
+                  {/* Toggle Show/Hide on Student Screens (التحكم بظهور الـ PDF لدى الطلاب) */}
+                  {sessionState?.pdfUrl && (
+                    <button
+                      type="button"
+                      onClick={() => handleTogglePdfToStudents(!sessionState?.showPdfToStudents)}
+                      disabled={isUpdatingPdfToStudents}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border shadow-sm ${
+                        sessionState?.showPdfToStudents
+                          ? 'bg-sky-600 text-white border-sky-500 shadow-sky-600/20 ring-1 ring-sky-400'
+                          : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                      }`}
+                      title={sessionState?.showPdfToStudents ? 'إخفاء ملف الـ PDF من أجهزة هواتف الطلاب' : 'إظهار ومزامنة ملف الـ PDF في أجهزة هواتف الطلاب'}
+                    >
+                      {sessionState?.showPdfToStudents ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                      <span>{sessionState?.showPdfToStudents ? 'معروض للطلاب 📱' : 'مخفي عن الطلاب 📱'}</span>
+                    </button>
+                  )}
+
                   {/* Page Navigator Stepper */}
                   {Boolean(sessionState?.showPdfInRoom) && sessionState?.pdfUrl && (
                     <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 p-1 rounded-xl">
@@ -2212,7 +2248,24 @@ export default function LiveDirectManager({
                   }`}
                 >
                   {sessionState?.showPdfInRoom ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  <span>{sessionState?.showPdfInRoom ? 'إخفاء عن شاشة البروجكتر' : 'إظهار على شاشة البروجكتر'}</span>
+                  <span>{sessionState?.showPdfInRoom ? 'إخفاء عن البروجكتر' : 'إظهار على البروجكتر'}</span>
+                </button>
+              )}
+
+              {sessionState?.pdfUrl && (
+                <button
+                  type="button"
+                  onClick={() => handleTogglePdfToStudents(!sessionState?.showPdfToStudents)}
+                  disabled={isUpdatingPdfToStudents}
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border shadow-sm ${
+                    sessionState?.showPdfToStudents
+                      ? 'bg-sky-600 hover:bg-sky-500 text-white border-sky-400 shadow-lg shadow-sky-600/20 ring-1 ring-sky-300'
+                      : 'bg-slate-800 hover:bg-slate-750 text-slate-300 border-slate-700'
+                  }`}
+                  title={sessionState?.showPdfToStudents ? 'إخفاء ملف الـ PDF عن أجهزة الطلاب' : 'إظهار ومزامنة ملف الـ PDF على أجهزة هواتف الطلاب'}
+                >
+                  {sessionState?.showPdfToStudents ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                  <span>{sessionState?.showPdfToStudents ? 'مفعل لدى الطلاب 📱' : 'إظهار لدى الطلاب 📱'}</span>
                 </button>
               )}
             </div>

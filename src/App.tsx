@@ -21,6 +21,7 @@ import LiveTeacherRoom from './components/LiveTeacherRoom';
 import LiveStudentView from './components/LiveStudentView';
 import LiveDirectDisplayRoom from './components/LiveDirectDisplayRoom';
 import LiveQuizArenaDisplay from './components/LiveQuizArenaDisplay';
+import SmartHubDisplayRoom from './components/SmartHubDisplayRoom';
 import StudentQuizView from './components/StudentQuizView';
 import LanguageSelector from './components/LanguageSelector';
 import SettingsPanel from './components/SettingsPanel';
@@ -32,12 +33,13 @@ export default function App() {
   const [isConfigured, setIsConfigured] = useState(isApiConfigured());
   const [headerConfig, setHeaderConfig] = useState<HeaderConfig | null>(null);
 
-  // Page Routing Mode: 'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz'
-  const [pageMode, setPageMode] = useState<'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz'>(() => {
+  // Page Routing Mode: 'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display'
+  const [pageMode, setPageMode] = useState<'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display'>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const p = params.get('page');
       if (p === 'admin') return 'admin';
+      if (p === 'display' || p === 'smart-display') return 'display';
       if (p === 'live-teacher') return 'live-teacher';
       if (p === 'live-student') return 'live-student';
       if (p === 'live-direct-display' || p === 'live-direct' || p === 'live-display') return 'live-direct-display';
@@ -96,12 +98,14 @@ export default function App() {
   }, [webAppUrl, isConfigured]);
 
   // URL sync & history navigation
-  const navigateToPage = (mode: 'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz') => {
+  const navigateToPage = (mode: 'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display') => {
     setPageMode(mode);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
       if (mode === 'admin') {
         url.searchParams.set('page', 'admin');
+      } else if (mode === 'display') {
+        url.searchParams.set('page', 'display');
       } else if (mode === 'live-teacher') {
         url.searchParams.set('page', 'live-teacher');
       } else if (mode === 'live-student') {
@@ -124,6 +128,7 @@ export default function App() {
       const params = new URLSearchParams(window.location.search);
       const p = params.get('page');
       if (p === 'admin') setPageMode('admin');
+      else if (p === 'display' || p === 'smart-display') setPageMode('display');
       else if (p === 'live-teacher') setPageMode('live-teacher');
       else if (p === 'live-student') setPageMode('live-student');
       else if (p === 'live-direct-display') setPageMode('live-direct-display');
@@ -219,19 +224,23 @@ export default function App() {
     );
   }
 
-  // Route: Quiz Arena Big Screen Display (Projector / Theater Screen)
+  // Route: Unified Smart Hub Display (الشاشة الرابعة الجامعة للبروجكتر مع التحويل التلقائي والتبديل السريع)
+  if (pageMode === 'display') {
+    return (
+      <SmartHubDisplayRoom
+        initialMode="auto"
+        onBackToMain={() => navigateToPage('student')}
+      />
+    );
+  }
+
+  // Route: Quiz Arena Big Screen Display (ساحة تحدي كويز ومنصة التتويج المستقلة)
   if (pageMode === 'quiz-arena') {
     return (
-      <div className="relative min-h-screen bg-slate-950">
-        <button
-          onClick={() => navigateToPage('student')}
-          className="fixed top-3 right-3 z-50 px-3 py-1.5 rounded-xl bg-slate-800/90 text-slate-300 hover:text-white border border-slate-700 text-xs flex items-center gap-1.5 backdrop-blur-md cursor-pointer transition shadow-lg"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          العودة للرئيسية
-        </button>
-        <LiveDirectDisplayRoom />
-      </div>
+      <SmartHubDisplayRoom
+        initialMode="quiz"
+        onBackToMain={() => navigateToPage('student')}
+      />
     );
   }
 
@@ -392,6 +401,37 @@ export default function App() {
 
           </div>
         </section>
+
+        {/* ----------------- SMART HUB DISPLAY BANNER ----------------- */}
+        <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-amber-500/10 via-blue-500/10 to-purple-500/10 border border-amber-500/30 dark:border-amber-500/20 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3 text-right">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-500 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <Monitor className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-black text-slate-900 dark:text-white text-sm">
+                  الشاشة الجامعة الذكية للبروجكتر (Smart Hub Display)
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-slate-950">
+                  شاشة موحدة ⚡
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                شاشة عرض كبرى واحدة تجمع مسرح الحصص، شرح مباشر و PDF، وتحدي كويز مع تحويل ذكي تلقائي وشريط تبديل سريع.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+            <button
+              onClick={() => navigateToPage('display')}
+              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>فتح الشاشة الجامعة</span>
+            </button>
+          </div>
+        </div>
 
         {/* ----------------- THREE EXTRACTED CORE SECTIONS ----------------- */}
         <section className="space-y-4">
@@ -774,6 +814,10 @@ export default function App() {
             }}
             onOpenQuizArenaDisplay={() => {
               navigateToPage('quiz-arena');
+              setIsAdminPanelOpen(false);
+            }}
+            onOpenSmartDisplay={() => {
+              navigateToPage('display');
               setIsAdminPanelOpen(false);
             }}
           />

@@ -267,6 +267,7 @@ export interface LiveSessionState {
   showChatInRoom?: boolean; // Controls whether chat window / badge appears on projector display screen
   showConnectedCountInRoom?: boolean; // Controls whether connected students badge appears on projector display screen
   showPdfInRoom?: boolean; // Controls whether PDF / lesson book is displayed on projector screen
+  showPdfToStudents?: boolean; // Controls whether PDF / lesson book is displayed on student mobile/tablet devices
   pdfUrl?: string; // Direct or Google Drive PDF URL or local file ID
   pdfTitle?: string; // Title / name of active PDF lesson or book
   pdfPage?: number; // Active page number (1-indexed)

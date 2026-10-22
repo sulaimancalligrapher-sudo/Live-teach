@@ -5,7 +5,7 @@ import {
   User, Hash, LogOut, ArrowRight, Volume2, HelpCircle, 
   Award, ShieldAlert, Wifi, WifiOff, Loader2,
   KeyRound, ShieldCheck, Camera, QrCode, X, MessageSquare, Hand, ThumbsUp, ThumbsDown,
-  Image as ImageIcon, Zap
+  Image as ImageIcon, Zap, BookOpen, FileText, ZoomIn, ZoomOut
 } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { 
@@ -18,6 +18,7 @@ import {
 } from '../api';
 import LiveChatModal from './LiveChatModal';
 import StudentQuizView from './StudentQuizView';
+import { NativePdfViewer } from './NativePdfViewer';
 import { useLanguage } from '../translations';
 
 interface LiveStudentViewProps {
@@ -1219,6 +1220,49 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
               <p className="text-xs text-indigo-400 font-bold animate-pulse">
                 شاهد الشاشة الكبيرة لمتابعة شرح الأستاذ ومواصلة الدرس 👨‍🏫
               </p>
+            </motion.div>
+          ) : (sessionState && sessionState.showPdfToStudents && sessionState.pdfUrl) ? (
+            /* CASE C-PDF: Live Synchronized PDF Viewer on Student Screen */
+            <motion.div
+              key="student-pdf"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="w-full bg-slate-900 border border-emerald-500/30 rounded-3xl overflow-hidden shadow-2xl flex flex-col"
+            >
+              {/* PDF Header Pill */}
+              <div className="bg-slate-950 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 truncate">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                  <span className="text-emerald-400 font-bold shrink-0">شرح مباشر متزامن 📖:</span>
+                  <span className="text-slate-200 font-bold truncate">
+                    {sessionState?.pdfTitle || 'ملف الشرح المباشر'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-mono text-[11px] font-bold border border-emerald-500/30">
+                    ص {sessionState?.pdfPage || 1}
+                  </span>
+                </div>
+              </div>
+
+              {/* PDF Canvas View */}
+              <div className="w-full h-[62vh] min-h-[380px] bg-slate-950/80 relative">
+                <NativePdfViewer
+                  pdfUrl={sessionState?.pdfUrl || ''}
+                  page={sessionState?.pdfPage || 1}
+                  isTeacherControl={false}
+                  readOnly={true}
+                  realtimeLaser={sessionState?.pdfLaser || null}
+                  realtimeAnnotations={sessionState?.pdfAnnotations || {}}
+                  fitMode={sessionState?.pdfFitMode || 'width'}
+                  zoom={sessionState?.pdfZoom || 1.0}
+                />
+              </div>
+
+              {/* PDF Footer helper */}
+              <div className="px-4 py-2 bg-slate-950/90 border-t border-slate-800/80 text-center text-[11px] text-slate-400">
+                <span>يتم تقليب الصفحات والشرح تلقائياً بالتزامن مع شاشة الأستاذ 👨‍🏫</span>
+              </div>
             </motion.div>
           ) : (
             /* CASE C: Watching / Listening State (Video Playing on Projector) */

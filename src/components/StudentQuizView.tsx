@@ -4,7 +4,11 @@ import {
   Trophy, Flame, CheckCircle2, XCircle, Send, Clock, 
   Sparkles, Award, RefreshCw, ArrowLeft, ArrowRight, Zap, Check, HelpCircle
 } from 'lucide-react';
-import { QuizActiveState, QuizQuestionItem, normalizeArabicText, getQuizStudentKey, QuizAnswerRecord, QuizStudentAnswerDetail } from '../types';
+import { 
+  QuizActiveState, QuizQuestionItem, normalizeArabicText, 
+  getQuizStudentKey, QuizAnswerRecord, QuizStudentAnswerDetail, 
+  formatQuizAnswerForRecord 
+} from '../types';
 import { submitStudentQuizAnswer, markStudentQuizFinished, setStudentQuizRetryMode, recordQuizAnswersBatchDirect } from '../api';
 
 interface StudentQuizViewProps {
@@ -132,13 +136,9 @@ export default function StudentQuizView({
     }
   }, [localStep, storageKey]);
 
-  // If studentProgress has more answers than localStep, smoothly fast-forward
+  // Sync background score & counts from studentProgress without touching localStep during gameplay
   useEffect(() => {
-    if (studentProgress?.answers) {
-      const answeredCount = Object.keys(studentProgress.answers).length;
-      if (answeredCount > localStep && totalQuestions > 0) {
-        setLocalStep(Math.min(answeredCount, totalQuestions));
-      }
+    if (studentProgress) {
       if (studentProgress.totalScore && studentProgress.totalScore > localScore) {
         setLocalScore(studentProgress.totalScore);
       }
@@ -149,7 +149,7 @@ export default function StudentQuizView({
         setLocalWrongCount(studentProgress.wrongCount);
       }
     }
-  }, [studentProgress?.answers, studentProgress?.totalScore, totalQuestions]);
+  }, [studentProgress?.totalScore, studentProgress?.correctCount, studentProgress?.wrongCount]);
 
   // Current active question index in the queue
   const currentStep = localStep;
@@ -220,8 +220,10 @@ export default function StudentQuizView({
           ? studentProgress.answers
           : localAnswers;
 
-        Object.values(sourceAnswers).forEach(a => {
-          answersMap[a.questionIndex] = a.isCorrect ? 'صح' : (a.answer || 'خطأ');
+        // Iterate across all quiz questions to ensure every question column (س1, س2, س3, ...) is populated with no blanks
+        baseQuestions.forEach((q, qIdx) => {
+          const detail = sourceAnswers[q.index ?? qIdx] || Object.values(sourceAnswers).find(a => a.questionIndex === (q.index ?? qIdx));
+          answersMap[q.index ?? qIdx] = formatQuizAnswerForRecord(q, detail);
         });
 
         const singleRecord: QuizAnswerRecord = {
@@ -362,9 +364,13 @@ export default function StudentQuizView({
     setIsSubmitting(true);
 
     const timeTaken = Math.max(1, Math.round((Date.now() - questionStartTimeRef.current) / 1000));
-    const cleanCorrect = normalizeArabicText(currentQ.correctAnswer || '').trim().toLowerCase();
+    const rawCorrect = (currentQ.correctAnswer || '').trim();
+    const cleanCorrect = normalizeArabicText(rawCorrect).trim().toLowerCase();
     const cleanInput = normalizeArabicText(textInput).trim().toLowerCase();
-    const isCorrect = cleanCorrect === cleanInput;
+    
+    // Free text question: no model answer in sheet (correctAnswer is empty)
+    const isFreeText = !cleanCorrect && (Boolean(currentQ.isTextAnswer) || !currentQ.options || currentQ.options.length === 0);
+    const isCorrect = isFreeText ? true : (cleanCorrect === cleanInput);
 
     let points = 0;
     if (isCorrect) {
@@ -552,24 +558,77 @@ export default function StudentQuizView({
             </div>
 
             {/* Score & Answers Count Cards */}
-            <div className="grid grid-cols-3 gap-3 max-w-md mx-auto">
-              <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl">
-                <div className="text-[11px] text-emerald-400 font-bold mb-1">الإجابات الصحيحة</div>
-                <div className="text-2xl font-black text-emerald-300 font-mono">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 max-w-md mx-auto">
+              <div className="p-3 bg-slate-800/80 border border-slate-700/60 rounded-2xl">
+                <div className="text-[10px] text-slate-400 font-bold mb-1">إجمالي الأسئلة</div>
+                <div className="text-xl font-black text-slate-200 font-mono">
+                  {totalQuestions}
+                </div>
+              </div>
+              <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl">
+                <div className="text-[10px] text-emerald-400 font-bold mb-1">إجابات صحيحة</div>
+                <div className="text-xl font-black text-emerald-300 font-mono">
                   {effectiveCorrect}
                 </div>
               </div>
-              <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-2xl">
-                <div className="text-[11px] text-rose-400 font-bold mb-1">الإجابات الخاطئة</div>
-                <div className="text-2xl font-black text-rose-300 font-mono">
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-2xl">
+                <div className="text-[10px] text-rose-400 font-bold mb-1">إجابات خاطئة</div>
+                <div className="text-xl font-black text-rose-300 font-mono">
                   {effectiveWrong}
                 </div>
               </div>
-              <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl">
-                <div className="text-[11px] text-amber-400 font-bold mb-1">إجمالي النقاط</div>
-                <div className="text-2xl font-black text-amber-300 font-mono">
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl">
+                <div className="text-[10px] text-amber-400 font-bold mb-1">النقاط المحققة</div>
+                <div className="text-xl font-black text-amber-300 font-mono">
                   {effectiveScore.toLocaleString()}
                 </div>
+              </div>
+            </div>
+
+            {/* Questions Answer Details Breakdown */}
+            <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 max-w-md mx-auto text-right space-y-3">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-300 border-b border-slate-800 pb-2">
+                <span className="flex items-center gap-1.5 text-amber-400">
+                  <Sparkles className="w-4 h-4" />
+                  <span>تفاصيل إجابات كافة الأسئلة ({baseQuestions.length} أسئلة)</span>
+                </span>
+                <span className="text-[11px] text-slate-400 font-mono">
+                  {effectiveCorrect} من {baseQuestions.length} صحيح
+                </span>
+              </div>
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                {baseQuestions.map((q, idx) => {
+                  const studentAns = (studentProgress?.answers && studentProgress.answers[q.index ?? idx]) || localAnswers[q.index ?? idx];
+                  const recordedValue = formatQuizAnswerForRecord(q, studentAns);
+                  const isCorrect = recordedValue === 'صح' || (studentAns?.isCorrect);
+                  const isFreeText = (!q.correctAnswer || q.correctAnswer.trim() === '') && (Boolean(q.isTextAnswer) || !q.options || q.options.length === 0);
+
+                  return (
+                    <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs">
+                      <div className="truncate pl-2">
+                        <span className="font-bold text-amber-400 font-mono ml-1.5">س{idx + 1}:</span>
+                        <span className="text-slate-200">{q.question}</span>
+                      </div>
+                      <div className="shrink-0 flex items-center gap-1">
+                        {isFreeText ? (
+                          <span className="px-2 py-0.5 rounded-lg bg-sky-500/20 border border-sky-500/30 text-sky-300 font-bold text-[11px]">
+                            {recordedValue}
+                          </span>
+                        ) : isCorrect ? (
+                          <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 font-bold text-[11px] flex items-center gap-1">
+                            <Check className="w-3 h-3" />
+                            <span>صح</span>
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-lg bg-rose-500/20 border border-rose-500/30 text-rose-300 font-bold text-[11px] flex items-center gap-1">
+                            <XCircle className="w-3 h-3" />
+                            <span>خطأ</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 

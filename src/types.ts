@@ -442,6 +442,54 @@ export interface QuizAnswerRecord {
   percentage?: number;
 }
 
+/**
+ * Helper to format student's quiz answer for recording into Google Sheets (Answers-Qui)
+ * Requirements:
+ * 1. Graded Question (Multiple Choice OR Text with model answer):
+ *    - 'صح' if student selected the correct option / entered the correct text
+ *    - 'خطأ' if student selected wrong option / entered wrong text / unanswered
+ * 2. Free Text Question (text answer with no model answer / correctAnswer is empty):
+ *    - Student's actual entered text (نص حر)
+ *    - 'خطأ' if unanswered / blank
+ */
+export function formatQuizAnswerForRecord(
+  question?: QuizQuestionItem,
+  answerDetail?: { answer?: string; isCorrect?: boolean } | string,
+  isCorrectParam?: boolean | null
+): string {
+  let answerStr = '';
+  let isCorrect: boolean | null | undefined = undefined;
+
+  if (typeof answerDetail === 'object' && answerDetail !== null) {
+    answerStr = (answerDetail.answer || '').trim();
+    isCorrect = answerDetail.isCorrect;
+  } else if (typeof answerDetail === 'string') {
+    answerStr = answerDetail.trim();
+    isCorrect = isCorrectParam;
+  }
+
+  // Check if question is free text (isTextAnswer is true OR options empty, AND correctAnswer is empty)
+  const isFreeText = question ? (
+    (!question.correctAnswer || question.correctAnswer.trim() === '') &&
+    (Boolean(question.isTextAnswer) || !question.options || question.options.length === 0)
+  ) : false;
+
+  if (isFreeText) {
+    // If student provided an answer, record their exact text.
+    // If student left unanswered or blank, record 'خطأ'
+    if (answerStr.length > 0) {
+      return answerStr;
+    }
+    return 'خطأ';
+  }
+
+  // Graded question: strictly 'صح' or 'خطأ'
+  if (isCorrect === true || answerStr === 'صح') {
+    return 'صح';
+  }
+  return 'خطأ';
+}
+
 export interface LiveAnswerRecord {
   rowIndex?: number;
   timestamp: string; // Column A (تاريخ وتوقيت الإجابة)

@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { 
   QuizActiveState, QuizLessonRow, QuizQuestionItem, 
-  QuizAnswerRecord, LiveSessionState 
+  QuizAnswerRecord, LiveSessionState, formatQuizAnswerForRecord 
 } from '../types';
 import { 
   fetchQuizQuestionsDirect, saveQuizLessonDirect, 
@@ -255,10 +255,13 @@ export default function QuizManagerPanel({
       if (currentQuizState?.participants) {
         const participantsList = Object.values(currentQuizState.participants);
         if (participantsList.length > 0) {
+          const quizQuestions = currentQuizState.questions || [];
           const recordsToSave: QuizAnswerRecord[] = participantsList.map((p, idx) => {
             const answersMap: Record<number, string> = {};
-            Object.values(p.answers || {}).forEach((a) => {
-              answersMap[a.questionIndex] = a.isCorrect ? 'صح' : (a.answer || 'خطأ');
+            // Iterate over all questions in the quiz to ensure all columns (س1, س2, ...) are populated without gaps
+            quizQuestions.forEach((q, qIdx) => {
+              const detail = p.answers?.[q.index ?? qIdx] || Object.values(p.answers || {}).find((a: any) => a.questionIndex === (q.index ?? qIdx));
+              answersMap[q.index ?? qIdx] = formatQuizAnswerForRecord(q, detail);
             });
             return {
               timestamp: new Date().toLocaleString('ar-SA'),
@@ -348,10 +351,12 @@ export default function QuizManagerPanel({
 
     setSyncingSheet(true);
     try {
+      const quizQuestions = currentQuizState.questions || [];
       const recordsToSave: QuizAnswerRecord[] = participantsList.map((p, idx) => {
         const answersMap: Record<number, string> = {};
-        Object.values(p.answers || {}).forEach((a) => {
-          answersMap[a.questionIndex] = a.isCorrect ? 'صح' : (a.answer || 'خطأ');
+        quizQuestions.forEach((q, qIdx) => {
+          const detail = p.answers?.[q.index ?? qIdx] || Object.values(p.answers || {}).find((a: any) => a.questionIndex === (q.index ?? qIdx));
+          answersMap[q.index ?? qIdx] = formatQuizAnswerForRecord(q, detail);
         });
 
         return {

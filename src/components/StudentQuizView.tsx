@@ -4,8 +4,8 @@ import {
   Trophy, Flame, CheckCircle2, XCircle, Send, Clock, 
   Sparkles, Award, RefreshCw, ArrowLeft, ArrowRight, Zap, Check, HelpCircle
 } from 'lucide-react';
-import { QuizActiveState, QuizQuestionItem, normalizeArabicText, getQuizStudentKey } from '../types';
-import { submitStudentQuizAnswer, markStudentQuizFinished, setStudentQuizRetryMode } from '../api';
+import { QuizActiveState, QuizQuestionItem, normalizeArabicText, getQuizStudentKey, QuizAnswerRecord, QuizStudentAnswerDetail } from '../types';
+import { submitStudentQuizAnswer, markStudentQuizFinished, setStudentQuizRetryMode, recordQuizAnswersBatchDirect } from '../api';
 
 interface StudentQuizViewProps {
   quizState: QuizActiveState;
@@ -52,8 +52,21 @@ export default function StudentQuizView({
   const studentKey = getQuizStudentKey(username || studentName || 'طالب', sheetNumber);
   const studentProgress = quizState.participants?.[studentKey];
 
-  // Base questions from state
-  const baseQuestions = (quizState.questions && quizState.questions.length > 0) ? quizState.questions : [];
+  // Cache questions so they are never lost if quizState momentarily updates
+  const [cachedQuestions, setCachedQuestions] = useState<QuizQuestionItem[]>(() => {
+    return (quizState.questions && quizState.questions.length > 0) ? quizState.questions : [];
+  });
+
+  useEffect(() => {
+    if (quizState.questions && quizState.questions.length > 0) {
+      setCachedQuestions(quizState.questions);
+    }
+  }, [quizState.questions]);
+
+  // Base questions from state with fallback to cached
+  const baseQuestions = (quizState.questions && quizState.questions.length > 0) 
+    ? quizState.questions 
+    : cachedQuestions;
 
   // Ordered questions queue (shuffled if admin enabled shuffle)
   const [questionQueue, setQuestionQueue] = useState<QuizQuestionItem[]>(() => {
@@ -101,6 +114,15 @@ export default function StudentQuizView({
     return 0;
   });
 
+  // Local state tracking answers and provisional scores immediately (never zero!)
+  const [localAnswers, setLocalAnswers] = useState<Record<number, QuizStudentAnswerDetail>>(() => {
+    return studentProgress?.answers ? { ...studentProgress.answers } : {};
+  });
+  const [localScore, setLocalScore] = useState<number>(() => studentProgress?.totalScore || 0);
+  const [localCorrectCount, setLocalCorrectCount] = useState<number>(() => studentProgress?.correctCount || 0);
+  const [localWrongCount, setLocalWrongCount] = useState<number>(() => studentProgress?.wrongCount || 0);
+  const hasAutoSyncedToSheetRef = useRef<boolean>(false);
+
   // Keep sessionStorage in sync with localStep
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -117,8 +139,17 @@ export default function StudentQuizView({
       if (answeredCount > localStep && totalQuestions > 0) {
         setLocalStep(Math.min(answeredCount, totalQuestions));
       }
+      if (studentProgress.totalScore && studentProgress.totalScore > localScore) {
+        setLocalScore(studentProgress.totalScore);
+      }
+      if (studentProgress.correctCount && studentProgress.correctCount > localCorrectCount) {
+        setLocalCorrectCount(studentProgress.correctCount);
+      }
+      if (studentProgress.wrongCount && studentProgress.wrongCount > localWrongCount) {
+        setLocalWrongCount(studentProgress.wrongCount);
+      }
     }
-  }, [studentProgress?.answers, totalQuestions]);
+  }, [studentProgress?.answers, studentProgress?.totalScore, totalQuestions]);
 
   // Current active question index in the queue
   const currentStep = localStep;
@@ -163,12 +194,56 @@ export default function StudentQuizView({
   const isFinished = (totalQuestions > 0 && currentStep >= totalQuestions) || 
     (quizState.quizStatus === 'ended');
 
-  // When student finishes all questions in queue, notify server
+  // Effective score & counts calculation (prefers server when higher, guarantees local counts never zero!)
+  const effectiveCorrect = studentProgress?.correctCount !== undefined && studentProgress.correctCount > 0
+    ? Math.max(studentProgress.correctCount, localCorrectCount)
+    : localCorrectCount;
+  const effectiveWrong = studentProgress?.wrongCount !== undefined && studentProgress.wrongCount > 0
+    ? Math.max(studentProgress.wrongCount, localWrongCount)
+    : localWrongCount;
+  const effectiveScore = studentProgress?.totalScore !== undefined && studentProgress.totalScore > 0
+    ? Math.max(studentProgress.totalScore, localScore)
+    : localScore;
+
+  // When student finishes all questions, mark finished in Firebase AND auto-save directly to Google Sheets (Answers-Qui)
   useEffect(() => {
-    if (isFinished && !isRetryRound && !studentProgress?.isFinished) {
-      markStudentQuizFinished(studentKey).catch(() => {});
+    if (isFinished && !isRetryRound) {
+      if (!studentProgress?.isFinished) {
+        markStudentQuizFinished(studentKey).catch(() => {});
+      }
+
+      if (!hasAutoSyncedToSheetRef.current && totalQuestions > 0) {
+        hasAutoSyncedToSheetRef.current = true;
+
+        const answersMap: Record<number, string> = {};
+        const sourceAnswers = (studentProgress?.answers && Object.keys(studentProgress.answers).length > 0)
+          ? studentProgress.answers
+          : localAnswers;
+
+        Object.values(sourceAnswers).forEach(a => {
+          answersMap[a.questionIndex] = a.isCorrect ? 'صح' : (a.answer || 'خطأ');
+        });
+
+        const singleRecord: QuizAnswerRecord = {
+          timestamp: new Date().toLocaleString('ar-SA'),
+          sheetNumber: sheetNumber || '1',
+          username: username || studentName || 'طالب',
+          studentName: studentName || username || 'طالب',
+          quizTitle: quizState.quizTitle || 'مسابقة تحدي كويز',
+          score: effectiveScore,
+          rank: studentProgress?.rank || 1,
+          totalTime: studentProgress?.totalTimeTaken || 0,
+          answers: answersMap,
+        };
+
+        recordQuizAnswersBatchDirect([singleRecord]).then(res => {
+          console.log('Quiz student record automatically saved to Answers-Qui:', res);
+        }).catch(err => {
+          console.warn('Auto-save to Answers-Qui notice:', err);
+        });
+      }
     }
-  }, [isFinished, isRetryRound, studentKey, studentProgress?.isFinished]);
+  }, [isFinished, isRetryRound, studentKey, totalQuestions, effectiveScore]);
 
   // Advance step helper (clears inputs, increments question index smoothly and saves to sessionStorage)
   const advanceToNext = () => {
@@ -225,6 +300,27 @@ export default function StudentQuizView({
       points = isRetryRound ? 500 : (base + speed + streakBonus);
     }
 
+    // Immediately update local student state so results are NEVER zero
+    const answerDetail: QuizStudentAnswerDetail = {
+      questionIndex: currentQ.index ?? currentStep,
+      questionText: currentQ.question,
+      answer: optionText,
+      isCorrect,
+      timeTaken,
+      scoreEarned: points,
+      isRetry: isRetryRound,
+    };
+    setLocalAnswers(prev => ({
+      ...prev,
+      [currentQ.index ?? currentStep]: answerDetail,
+    }));
+    setLocalScore(prev => prev + points);
+    if (isCorrect) {
+      setLocalCorrectCount(prev => prev + 1);
+    } else {
+      setLocalWrongCount(prev => prev + 1);
+    }
+
     if (quizState.showInstantFeedback) {
       setFeedback({ isCorrect, pointsEarned: points });
     }
@@ -275,6 +371,27 @@ export default function StudentQuizView({
       const base = 1000;
       const speed = Math.max(0, Math.round((30 - Math.min(timeTaken, 30)) * 16.6));
       points = isRetryRound ? 500 : (base + speed);
+    }
+
+    // Immediately update local student state
+    const answerDetail: QuizStudentAnswerDetail = {
+      questionIndex: currentQ.index ?? currentStep,
+      questionText: currentQ.question,
+      answer: textInput.trim(),
+      isCorrect,
+      timeTaken,
+      scoreEarned: points,
+      isRetry: isRetryRound,
+    };
+    setLocalAnswers(prev => ({
+      ...prev,
+      [currentQ.index ?? currentStep]: answerDetail,
+    }));
+    setLocalScore(prev => prev + points);
+    if (isCorrect) {
+      setLocalCorrectCount(prev => prev + 1);
+    } else {
+      setLocalWrongCount(prev => prev + 1);
     }
 
     if (quizState.showInstantFeedback) {
@@ -347,7 +464,7 @@ export default function StudentQuizView({
           {/* Points */}
           <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 font-mono font-black text-sm">
             <Zap className="w-4 h-4 text-amber-400 fill-amber-400" />
-            <span>{(studentProgress?.totalScore || 0).toLocaleString()}</span>
+            <span>{effectiveScore.toLocaleString()}</span>
           </div>
 
           {/* Rank if available */}
@@ -439,19 +556,19 @@ export default function StudentQuizView({
               <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl">
                 <div className="text-[11px] text-emerald-400 font-bold mb-1">الإجابات الصحيحة</div>
                 <div className="text-2xl font-black text-emerald-300 font-mono">
-                  {studentProgress?.correctCount || 0}
+                  {effectiveCorrect}
                 </div>
               </div>
               <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 rounded-2xl">
                 <div className="text-[11px] text-rose-400 font-bold mb-1">الإجابات الخاطئة</div>
                 <div className="text-2xl font-black text-rose-300 font-mono">
-                  {studentProgress?.wrongCount || 0}
+                  {effectiveWrong}
                 </div>
               </div>
               <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl">
                 <div className="text-[11px] text-amber-400 font-bold mb-1">إجمالي النقاط</div>
                 <div className="text-2xl font-black text-amber-300 font-mono">
-                  {(studentProgress?.totalScore || 0).toLocaleString()}
+                  {effectiveScore.toLocaleString()}
                 </div>
               </div>
             </div>

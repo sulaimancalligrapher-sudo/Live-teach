@@ -18,7 +18,7 @@ import {
   resetLiveQuiz, updateLiveQuizSettings, formatDriveImageUrl,
   openLiveQuizLobby, launchLiveQuizQuestions,
   subscribeToLiveSession, fetchQuizQuestionsDirectDetailed,
-  isApiConfigured, getWebAppUrl
+  isApiConfigured, getWebAppUrl, stopAllActiveBroadcasts
 } from '../api';
 import { getFullAppsScriptCode } from './SettingsPanel';
 
@@ -244,15 +244,60 @@ export default function QuizManagerPanel({
     }
   };
 
-  // End Quiz and show podium
+  // End Quiz, show podium, and automatically batch-save all student results to Google Sheets (Answers-Qui)
   const handleEndQuiz = async () => {
-    if (!confirm('هل تريد إنهاء المسابقة الآن وإعلان منصة التتويج للفائزين؟')) return;
+    if (!confirm('هل تريد إنهاء المسابقة الآن وإعلان منصة التتويج للفائزين وحفظ النتائج في الشيت؟')) return;
     try {
       await endLiveQuiz();
-      setSaveSuccessMsg('تم إنهاء المسابقة وإعلان منصة التتويج! 🏆');
-      setTimeout(() => setSaveSuccessMsg(null), 4000);
+      setSaveSuccessMsg('تم إنهاء المسابقة وإعلان منصة التتويج! 🏆 جاري توثيق النتائج في الشيت...');
+
+      // Auto-save all participants to Answers-Qui
+      if (currentQuizState?.participants) {
+        const participantsList = Object.values(currentQuizState.participants);
+        if (participantsList.length > 0) {
+          const recordsToSave: QuizAnswerRecord[] = participantsList.map((p, idx) => {
+            const answersMap: Record<number, string> = {};
+            Object.values(p.answers || {}).forEach((a) => {
+              answersMap[a.questionIndex] = a.isCorrect ? 'صح' : (a.answer || 'خطأ');
+            });
+            return {
+              timestamp: new Date().toLocaleString('ar-SA'),
+              sheetNumber: p.sheetNumber || String(idx + 1),
+              username: p.username || p.studentName || 'طالب',
+              studentName: p.studentName || p.username,
+              quizTitle: currentQuizState.quizTitle || 'مسابقة التحدي',
+              score: p.totalScore || 0,
+              rank: p.rank || (idx + 1),
+              totalTime: p.totalTimeTaken || 0,
+              answers: answersMap,
+            };
+          });
+
+          recordQuizAnswersBatchDirect(recordsToSave).then((res) => {
+            if (res.success) {
+              setSaveSuccessMsg(`تم إنهاء المسابقة وتتويج الفائزين وحفظ ${recordsToSave.length} نتيجة في ورقة Answers-Qui بنجاح! 🏆📊`);
+              loadAnswers();
+            }
+          }).catch(err => {
+            console.warn('Auto batch save to Answers-Qui notice:', err);
+          });
+        }
+      }
+      setTimeout(() => setSaveSuccessMsg(null), 5000);
     } catch (err: any) {
       alert('تعذر إنهاء المسابقة: ' + err.message);
+    }
+  };
+
+  // Full stop & reset of all active broadcasts
+  const handleStopBroadcast = async () => {
+    if (!confirm('هل تريد إيقاف وتصفير البث المباشر النشط بالكامل الآن؟')) return;
+    try {
+      await stopAllActiveBroadcasts();
+      setSaveSuccessMsg('تم إيقاف وتصفير البث المباشر بنجاح! ⏹️');
+      setTimeout(() => setSaveSuccessMsg(null), 3000);
+    } catch (err: any) {
+      alert('تعذر إيقاف البث: ' + err.message);
     }
   };
 
@@ -666,6 +711,15 @@ export default function QuizManagerPanel({
               >
                 <ArrowDownToLine className="w-4 h-4 text-amber-400" />
                 <span>{syncingSheet ? 'جاري الترحيل...' : 'ترحيل النتائج لشيت Answers-Qui'}</span>
+              </button>
+
+              <button
+                onClick={handleStopBroadcast}
+                className="py-4 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 hover:text-rose-100 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer col-span-1 sm:col-span-2"
+                title="إيقاف البث النشط بالكامل وإعادته لحالة الخمول لمنع ظهور البث التلقائي"
+              >
+                <Square className="w-4 h-4 text-rose-400 fill-rose-400/20" />
+                <span>إيقاف وتصفير البث المباشر النشط ⏹️ (لمنع البث التلقائي)</span>
               </button>
             </div>
           </div>

@@ -22,7 +22,7 @@ export function getWebAppUrl(): string {
   }
 
   // 3. Default fallback hardcoded URL
-  const fallbackUrl: string = 'https://script.google.com/macros/s/AKfycbyBL4Qjs9PgKVHuO9lLv-IriRtblaqw_Hrlie4-BProdWidMUyEdKu61GQalCsBfXYL/exec';
+  const fallbackUrl: string = 'https://script.google.com/macros/s/AKfycbxqvsIGybSXRrL7nG-kMSfdlw3nlrDVKJEgf5kZ4FXQPPNyePbZ8Y3kM6rWOuTDfy9EUg/exec';
   if (fallbackUrl && fallbackUrl.trim().length > 0) {
     return fallbackUrl.trim();
   }
@@ -2269,6 +2269,7 @@ export {
   markStudentQuizFinished,
   setStudentQuizRetryMode,
   clearConnectedStudents,
+  stopAllActiveBroadcasts,
 } from './lib/firebaseLiveService';
 
 export {

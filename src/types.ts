@@ -405,7 +405,7 @@ export interface QuizStudentProgress {
   totalQuestions: number;
   streak: number;
   isFinished: boolean;
-  finishTime?: number;
+  finishTime?: number | null;
   rank?: number;
   totalTimeTaken: number; // seconds
   wrongQuestionIndices?: number[];

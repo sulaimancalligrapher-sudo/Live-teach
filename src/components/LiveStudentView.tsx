@@ -73,7 +73,12 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
   const [currentQuestionKey, setCurrentQuestionKey] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(30);
   const [joinError, setJoinError] = useState<string | null>(null);
-  const [hasAcceptedQuizChallenge, setHasAcceptedQuizChallenge] = useState<boolean>(false);
+  const [hasAcceptedQuizChallenge, setHasAcceptedQuizChallenge] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return sessionStorage.getItem('hasAcceptedQuizChallenge') === 'true';
+    }
+    return false;
+  });
   const joinTimeRef = useRef<number>(0);
 
   // Auto-join only if valid credentials AND pin are present in URL
@@ -103,6 +108,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
           sessionStorage.removeItem('liveStudentUsername');
           sessionStorage.removeItem('liveStudentSheet');
           sessionStorage.removeItem('liveStudentPin');
+          sessionStorage.removeItem('hasAcceptedQuizChallenge');
           localStorage.removeItem('liveStudentPin');
           return;
         }
@@ -117,16 +123,10 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
           return;
         }
 
-        // Check if student is still enrolled in connected students (with grace period for initial join)
-        const currentCleanUser = username.trim().toLowerCase();
-        const isStillEnrolled = (state.connectedStudents || []).some(
-          s => String(s.username || '').trim().toLowerCase() === currentCleanUser && s.pinVerified
-        );
-        if (!isStillEnrolled && state.status !== 'idle' && state.isProgramActive && (Date.now() - joinTimeRef.current > 8000)) {
-          setIsJoined(false);
-          setIsPinVerified(false);
-          setJoinError('يرجى إعادة تسجيل الدخول برمز الحضور الصحيح.');
-          return;
+        // Clear challenge session flag if quiz is no longer active
+        if (!state.quizState?.isActive) {
+          try { sessionStorage.removeItem('hasAcceptedQuizChallenge'); } catch {}
+          setHasAcceptedQuizChallenge(false);
         }
 
         setSessionState(state);
@@ -867,15 +867,19 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
   // 1.5. Live Challenge Quiz Mode (Quiz Arena - Questions-Qui & Answers-Qui)
   const studentQuizKey = getQuizStudentKey(username, sheetNumber);
   const isEnrolledInQuiz = Boolean(sessionState?.quizState?.participants?.[studentQuizKey]);
+  const isQuizInProgress = Boolean(sessionState?.quizState?.isActive && sessionState?.quizState?.quizStatus === 'in_progress');
 
-  if (sessionState?.quizState?.isActive && (hasAcceptedQuizChallenge || isEnrolledInQuiz)) {
+  if (sessionState?.quizState?.isActive && (hasAcceptedQuizChallenge || isEnrolledInQuiz || isQuizInProgress)) {
     return (
       <StudentQuizView
         key={studentQuizKey}
         quizState={sessionState.quizState}
         username={username}
         sheetNumber={sheetNumber}
-        onExit={() => setHasAcceptedQuizChallenge(false)}
+        onExit={() => {
+          setHasAcceptedQuizChallenge(false);
+          try { sessionStorage.removeItem('hasAcceptedQuizChallenge'); } catch {}
+        }}
       />
     );
   }
@@ -998,12 +1002,15 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
                     <button
                       onClick={async () => {
                         try {
+                          sessionStorage.setItem('hasAcceptedQuizChallenge', 'true');
+                        } catch {}
+                        setHasAcceptedQuizChallenge(true);
+                        try {
                           await joinQuizLobby(studentQuizKey, {
                             username: username.trim(),
                             sheetNumber: sheetNumber.trim(),
                           });
                         } catch {}
-                        setHasAcceptedQuizChallenge(true);
                       }}
                       className="w-full py-3 bg-slate-950 hover:bg-slate-900 text-amber-300 font-black text-xs sm:text-sm rounded-2xl shadow-xl flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-95 hover:scale-[1.01]"
                     >

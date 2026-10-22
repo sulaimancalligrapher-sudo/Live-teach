@@ -4,7 +4,7 @@ import {
   X, Tv, Mic, Trophy, Monitor, Settings, RefreshCw, 
   ExternalLink, Copy, CheckCircle2, ShieldCheck, 
   Sparkles, KeyRound, Globe, Users, ArrowUpRight, 
-  FileSpreadsheet, Play, QrCode, Sliders, Palette
+  FileSpreadsheet, Play, QrCode, Sliders, Palette, Square
 } from 'lucide-react';
 import { LiveLessonRow, HeaderConfig } from '../types';
 import LiveClassManager from './LiveClassManager';
@@ -18,7 +18,8 @@ import {
   getWebAppUrl,
   fetchHeaderConfig,
   setupLiveDirectSheetsApi,
-  setupQuizDirectSheetsApi
+  setupQuizDirectSheetsApi,
+  stopAllActiveBroadcasts
 } from '../api';
 
 interface AdminPanelProps {
@@ -109,6 +110,16 @@ export default function AdminPanel({
     }
   };
 
+  const handleStopAllBroadcasts = async () => {
+    if (!confirm('هل تريد إيقاف وتصفير كافة البثوث المباشرة وإعادتها لحالة الخمول؟')) return;
+    try {
+      await stopAllActiveBroadcasts();
+      setNotice({ text: 'تم إيقاف وتصفير البث المباشر بنجاح! ⏹️ النظام الآن في حالة الخمول ولا يوجد بث تلقائي.', type: 'success' });
+    } catch (e: any) {
+      setNotice({ text: 'تعذر إيقاف البث: ' + e.message, type: 'error' });
+    }
+  };
+
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
   const studentUrl = `${baseUrl}/?page=live-student`;
   const directDisplayUrl = `${baseUrl}/?page=live-direct-display`;
@@ -154,6 +165,16 @@ export default function AdminPanel({
                 <RefreshCw className={`w-3.5 h-3.5 ${isUpdatingPin ? 'animate-spin' : ''}`} />
               </button>
             </div>
+
+            {/* Stop Broadcast Button */}
+            <button
+              onClick={handleStopAllBroadcasts}
+              title="إيقاف وتصفير البث النشط بالكامل وإعادته لحالة الخمول لمنع البث التلقائي"
+              className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Square className="w-3.5 h-3.5 fill-rose-300/30" />
+              <span>إيقاف البث النشط ⏹️</span>
+            </button>
 
             <button
               onClick={onClose}

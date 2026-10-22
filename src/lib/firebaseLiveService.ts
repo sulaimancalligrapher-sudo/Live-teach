@@ -4,7 +4,8 @@ import {
   setDoc, 
   updateDoc, 
   onSnapshot, 
-  serverTimestamp 
+  serverTimestamp,
+  runTransaction
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { 
@@ -291,96 +292,164 @@ export async function updateLivePin(customPin?: string): Promise<{ success: bool
   }
 }
 
-// Student joins session
+// Student joins session (Atomic transaction to prevent concurrent student overwriting)
 export async function joinLiveSession(
   username: string, 
   sheetNumber: string, 
   pin?: string
 ): Promise<{ success: boolean; state?: LiveSessionState; pinVerified?: boolean; error?: string }> {
   try {
-    const currentState = await getLiveSessionState();
-    if (!currentState) {
-      return { success: false, error: 'تعذر الاتصال بقاعدة بيانات الحصة المباشرة.' };
-    }
+    let resultState: LiveSessionState | null = null;
+    let isPinValid = true;
+    let failureError: string | null = null;
 
-    const isActive = Boolean(currentState.isProgramActive) || 
-      (currentState.status !== 'program_ended' && currentState.status !== 'idle' && Boolean(currentState.lessonTitle));
-
-    if (!isActive) {
-      return { 
-        success: false, 
-        error: 'الحصة المباشرة مغلقة حالياً من قِبل المعلم. يرجى الانتظار حتى يبدأ المعلم الحصة.' 
-      };
-    }
-
-    // Verify PIN if set
-    const expectedPin = currentState.sessionPin?.trim();
-    const enteredPin = pin?.trim();
-    if (expectedPin && expectedPin.length > 0) {
-      if (!enteredPin || enteredPin !== expectedPin) {
-        return { 
-          success: false, 
-          pinVerified: false, 
-          error: 'رمز الدخول غير صحيح! يرجى إدخال الرمز المعروض على شاشة الفصل.' 
-        };
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(LIVE_DOC_REF);
+      if (!snap.exists()) {
+        failureError = 'تعذر الاتصال بقاعدة بيانات الحصة المباشرة.';
+        return;
       }
+
+      const currentData = snap.data() as any;
+      const isActive = Boolean(currentData.isProgramActive) || 
+        (currentData.status !== 'program_ended' && currentData.status !== 'idle' && Boolean(currentData.lessonTitle));
+
+      if (!isActive) {
+        failureError = 'الحصة المباشرة مغلقة حالياً من قِبل المعلم. يرجى الانتظار حتى يبدأ المعلم الحصة.';
+        return;
+      }
+
+      // Verify PIN if set
+      const expectedPin = String(currentData.sessionPin || '').trim();
+      const enteredPin = (pin || '').trim();
+      if (expectedPin && expectedPin.length > 0) {
+        if (!enteredPin || enteredPin !== expectedPin) {
+          isPinValid = false;
+          failureError = 'رمز الدخول غير صحيح! يرجى إدخال الرمز المعروض على شاشة الفصل.';
+          return;
+        }
+      }
+
+      const cleanUser = String(username || '').trim();
+      const cleanSheet = String(sheetNumber || '').trim();
+      const normUser = cleanUser.toLowerCase();
+
+      const existingStudents: LiveConnectedStudent[] = Array.isArray(currentData.connectedStudents) 
+        ? currentData.connectedStudents 
+        : [];
+
+      const oldStudent = existingStudents.find(
+        (s) => String(s.username || '').trim().toLowerCase() === normUser || 
+               (cleanSheet && String(s.sheetNumber || '').trim() === cleanSheet)
+      );
+
+      const effectiveSheetNumber = cleanSheet || (oldStudent ? String(oldStudent.sheetNumber || '').trim() : '');
+
+      const filtered = existingStudents.filter((s) => {
+        const sUser = String(s.username || '').trim().toLowerCase();
+        const sSheet = String(s.sheetNumber || '').trim();
+        if (sUser === normUser) return false;
+        if (effectiveSheetNumber && sSheet && effectiveSheetNumber === sSheet) return false;
+        return true;
+      });
+
+      const newStudent: LiveConnectedStudent = {
+        username: cleanUser,
+        sheetNumber: effectiveSheetNumber,
+        joinedAt: oldStudent ? oldStudent.joinedAt : Date.now(),
+        lastPing: Date.now(),
+        pinVerified: true,
+      };
+
+      const updatedStudents = [...filtered, newStudent];
+
+      transaction.update(LIVE_DOC_REF, {
+        connectedStudents: updatedStudents,
+        updatedAt: serverTimestamp(),
+      });
+
+      resultState = {
+        sessionId: currentData.sessionId || 'live-main',
+        sessionPin: currentData.sessionPin || '1234',
+        isProgramActive: Boolean(currentData.isProgramActive),
+        showLessonsListInRoom: Boolean(currentData.showLessonsListInRoom),
+        showPinInRoom: Boolean(currentData.showPinInRoom),
+        showQrInRoom: Boolean(currentData.showQrInRoom),
+        showFinishLessonInRoom: Boolean(currentData.showFinishLessonInRoom),
+        showRevealInRoom: Boolean(currentData.showRevealInRoom),
+        showResumeInRoom: Boolean(currentData.showResumeInRoom),
+        showSkipInRoom: Boolean(currentData.showSkipInRoom),
+        showPlayPauseInRoom: Boolean(currentData.showPlayPauseInRoom),
+        videoPlaying: Boolean(currentData.videoPlaying),
+        showOptionCountsInRoom: Boolean(currentData.showOptionCountsInRoom),
+        showStudentTextAnswersInRoom: Boolean(currentData.showStudentTextAnswersInRoom),
+        showChatInRoom: Boolean(currentData.showChatInRoom),
+        showConnectedCountInRoom: Boolean(currentData.showConnectedCountInRoom),
+        showPdfInRoom: Boolean(currentData.showPdfInRoom),
+        pdfUrl: currentData.pdfUrl || '',
+        pdfTitle: currentData.pdfTitle || '',
+        pdfPage: typeof currentData.pdfPage === 'number' ? currentData.pdfPage : 1,
+        pdfTotalPages: typeof currentData.pdfTotalPages === 'number' ? currentData.pdfTotalPages : undefined,
+        pdfLaser: currentData.pdfLaser || null,
+        pdfFitMode: currentData.pdfFitMode === 'width' ? 'width' : 'contain',
+        pdfZoom: typeof currentData.pdfZoom === 'number' ? currentData.pdfZoom : 1.0,
+        pdfAnnotations: currentData.pdfAnnotations || {},
+        messages: Array.isArray(currentData.messages) ? currentData.messages : [],
+        lessonTitle: currentData.lessonTitle || '',
+        videoUrl: currentData.videoUrl || '',
+        status: currentData.status || 'idle',
+        currentQuestionIndex: currentData.currentQuestionIndex !== undefined ? currentData.currentQuestionIndex : null,
+        currentQuestion: currentData.currentQuestion || null,
+        questionTriggeredAt: currentData.questionTriggeredAt || null,
+        timeLimit: currentData.timeLimit || 30,
+        showResult: currentData.showResult || 'نعم',
+        connectedStudents: updatedStudents,
+        answersForCurrentQuestion: currentData.answersForCurrentQuestion || {},
+        allSessionAnswers: currentData.allSessionAnswers || {},
+        quizState: currentData.quizState || null,
+      };
+    });
+
+    if (failureError) {
+      return { success: false, pinVerified: isPinValid, error: failureError };
     }
 
-    const cleanUser = String(username || '').trim();
-    const cleanSheet = String(sheetNumber || '').trim();
-    const normUser = cleanUser.toLowerCase();
+    if (resultState) {
+      cachedState = resultState;
+      return { success: true, state: resultState, pinVerified: true };
+    }
 
-    // Check if student already exists in connectedStudents (by username case-insensitively OR by sheetNumber)
-    const oldStudent = (currentState.connectedStudents || []).find(
-      (s) => String(s.username || '').trim().toLowerCase() === normUser || 
-             (cleanSheet && String(s.sheetNumber || '').trim() === cleanSheet)
-    );
-
-    // If student re-entered without sheetNumber this time, preserve previously saved sheetNumber!
-    const effectiveSheetNumber = cleanSheet || (oldStudent ? String(oldStudent.sheetNumber || '').trim() : '');
-
-    // Deduplicate: filter out any student with same username (case-insensitive) OR same sheet number
-    const existing = (currentState.connectedStudents || []).filter((s) => {
-      const sUser = String(s.username || '').trim().toLowerCase();
-      const sSheet = String(s.sheetNumber || '').trim();
-      if (sUser === normUser) return false;
-      if (effectiveSheetNumber && sSheet && effectiveSheetNumber === sSheet) return false;
-      return true;
-    });
-
-    const newStudent: LiveConnectedStudent = {
-      username: cleanUser,
-      sheetNumber: effectiveSheetNumber,
-      joinedAt: oldStudent ? oldStudent.joinedAt : Date.now(),
-      lastPing: Date.now(),
-      pinVerified: true,
-    };
-    const updatedStudents = [...existing, newStudent];
-
-    await updateDoc(LIVE_DOC_REF, {
-      connectedStudents: updatedStudents,
-      updatedAt: serverTimestamp(),
-    });
-
-    cachedState = { ...currentState, connectedStudents: updatedStudents };
-    return { success: true, state: cachedState, pinVerified: true };
+    return { success: false, error: 'حدث خطأ أثناء الانضمام' };
   } catch (error: any) {
     console.error('Failed to join live session:', error);
     return { success: false, error: error?.message || 'حدث خطأ أثناء الانضمام' };
   }
 }
 
-// Student ping
+// Student heartbeat ping (atomic transaction to never overwrite peers)
 export async function pingLiveSession(username: string, sheetNumber?: string): Promise<void> {
   try {
-    const state = cachedState;
     const cleanUser = String(username || '').trim().toLowerCase();
-    const students = [...(state.connectedStudents || [])];
-    const idx = students.findIndex((s) => String(s.username || '').trim().toLowerCase() === cleanUser);
-    if (idx !== -1) {
-      students[idx] = { ...students[idx], lastPing: Date.now() };
-      await updateDoc(LIVE_DOC_REF, { connectedStudents: students });
-    }
+    if (!cleanUser) return;
+
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(LIVE_DOC_REF);
+      if (!snap.exists()) return;
+      const data = snap.data() as any;
+      const students: LiveConnectedStudent[] = Array.isArray(data.connectedStudents) 
+        ? [...data.connectedStudents] 
+        : [];
+
+      const idx = students.findIndex((s) => String(s.username || '').trim().toLowerCase() === cleanUser);
+      if (idx !== -1) {
+        students[idx] = { 
+          ...students[idx], 
+          lastPing: Date.now(),
+          sheetNumber: sheetNumber ? String(sheetNumber).trim() : students[idx].sheetNumber 
+        };
+        transaction.update(LIVE_DOC_REF, { connectedStudents: students });
+      }
+    });
   } catch {}
 }
 
@@ -1339,46 +1408,54 @@ export async function joinQuizLobby(
   }
 ): Promise<{ success: boolean }> {
   try {
-    const snap = await getDoc(LIVE_DOC_REF);
-    if (!snap.exists()) return { success: false };
-    const data = snap.data() as any;
-    const currentQuiz = data.quizState as QuizActiveState;
-    if (!currentQuiz || !currentQuiz.isActive) return { success: false };
+    let updatedQuiz: QuizActiveState | null = null;
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(LIVE_DOC_REF);
+      if (!snap.exists()) return;
+      const data = snap.data() as any;
+      const currentQuiz = data.quizState as QuizActiveState;
+      if (!currentQuiz || !currentQuiz.isActive) return;
 
-    const participants = { ...(currentQuiz.participants || {}) };
-    const totalQ = currentQuiz.questions?.length || 1;
+      const participants = { ...(currentQuiz.participants || {}) };
+      const totalQ = (Array.isArray(currentQuiz.questions) && currentQuiz.questions.length > 0)
+        ? currentQuiz.questions.length 
+        : 1;
 
-    if (!participants[studentKey]) {
-      participants[studentKey] = {
-        studentKey,
-        username: payload.username,
-        studentName: payload.studentName || payload.username,
-        sheetNumber: payload.sheetNumber,
-        currentQuestionIndex: 0,
-        answers: {},
-        totalScore: 0,
-        correctCount: 0,
-        wrongCount: 0,
-        totalQuestions: totalQ,
-        streak: 0,
-        isFinished: false,
-        totalTimeTaken: 0,
-        wrongQuestionIndices: [],
-      };
-    }
+      if (!participants[studentKey]) {
+        participants[studentKey] = {
+          studentKey,
+          username: payload.username.trim(),
+          studentName: (payload.studentName || payload.username || studentKey).trim(),
+          sheetNumber: (payload.sheetNumber || '').trim(),
+          currentQuestionIndex: 0,
+          answers: {},
+          totalScore: 0,
+          correctCount: 0,
+          wrongCount: 0,
+          totalQuestions: totalQ,
+          streak: 0,
+          isFinished: false,
+          totalTimeTaken: 0,
+          wrongQuestionIndices: [],
+        };
+      } else {
+        // Ensure student totalQuestions matches current questions count
+        participants[studentKey].totalQuestions = totalQ;
+      }
 
-    const updatedQuiz: QuizActiveState = {
-      ...currentQuiz,
-      participants,
-    };
-
-    await updateDoc(LIVE_DOC_REF, {
-      quizState: updatedQuiz,
-      updatedAt: serverTimestamp(),
+      currentQuiz.participants = participants;
+      transaction.update(LIVE_DOC_REF, {
+        quizState: currentQuiz,
+        updatedAt: serverTimestamp(),
+      });
+      updatedQuiz = currentQuiz;
     });
 
-    cachedState = { ...cachedState, quizState: updatedQuiz };
-    return { success: true };
+    if (updatedQuiz) {
+      cachedState = { ...cachedState, quizState: updatedQuiz };
+      return { success: true };
+    }
+    return { success: false };
   } catch (err: any) {
     console.error('Failed to join quiz lobby:', err);
     return { success: false };
@@ -1457,133 +1534,140 @@ export async function submitStudentQuizAnswer(
     isRetry?: boolean;
     totalQuizQuestions: number;
   }
-): Promise<{ success: boolean }> {
+): Promise<{ success: boolean; student?: QuizStudentProgress }> {
   try {
-    const snap = await getDoc(LIVE_DOC_REF);
-    if (!snap.exists()) return { success: false };
-    const data = snap.data() as any;
-    const currentQuiz: QuizActiveState = data.quizState;
-    if (!currentQuiz || !currentQuiz.isActive) return { success: false };
+    let savedStudent: QuizStudentProgress | null = null;
+    let updatedQuizState: QuizActiveState | null = null;
 
-    const participants = { ...(currentQuiz.participants || {}) };
-    let student = participants[studentKey];
-    // Calculate true total questions from quizState or payload
-    const actualQuizQuestions = Array.isArray(currentQuiz.questions) ? currentQuiz.questions.length : 0;
-    const payloadQuestions = typeof payload.totalQuizQuestions === 'number' && payload.totalQuizQuestions > 0 ? payload.totalQuizQuestions : 0;
-    const studentRecordedTotal = typeof student?.totalQuestions === 'number' && student.totalQuestions > 0 ? student.totalQuestions : 0;
-    const trueTotalQuestions = Math.max(actualQuizQuestions, payloadQuestions, studentRecordedTotal, 1);
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(LIVE_DOC_REF);
+      if (!snap.exists()) return;
+      const data = snap.data() as any;
+      const currentQuiz: QuizActiveState = data.quizState;
+      if (!currentQuiz || !currentQuiz.isActive) return;
 
-    if (!student) {
-      student = {
-        studentKey,
-        username: payload.username,
-        studentName: payload.studentName || payload.username,
-        sheetNumber: payload.sheetNumber,
-        currentQuestionIndex: 0,
-        answers: {},
-        totalScore: 0,
-        correctCount: 0,
-        wrongCount: 0,
-        totalQuestions: trueTotalQuestions,
-        streak: 0,
-        isFinished: false,
-        totalTimeTaken: 0,
-        wrongQuestionIndices: [],
+      const participants = { ...(currentQuiz.participants || {}) };
+      let student = participants[studentKey];
+      
+      const actualQuizQuestions = Array.isArray(currentQuiz.questions) ? currentQuiz.questions.length : 0;
+      const payloadQuestions = typeof payload.totalQuizQuestions === 'number' && payload.totalQuizQuestions > 0 ? payload.totalQuizQuestions : 0;
+      const studentRecordedTotal = typeof student?.totalQuestions === 'number' && student.totalQuestions > 0 ? student.totalQuestions : 0;
+      const trueTotalQuestions = Math.max(actualQuizQuestions, payloadQuestions, studentRecordedTotal, 1);
+
+      if (!student) {
+        student = {
+          studentKey,
+          username: payload.username.trim(),
+          studentName: (payload.studentName || payload.username || studentKey).trim(),
+          sheetNumber: (payload.sheetNumber || '').trim(),
+          currentQuestionIndex: 0,
+          answers: {},
+          totalScore: 0,
+          correctCount: 0,
+          wrongCount: 0,
+          totalQuestions: trueTotalQuestions,
+          streak: 0,
+          isFinished: false,
+          totalTimeTaken: 0,
+          wrongQuestionIndices: [],
+        };
+      } else {
+        student.totalQuestions = trueTotalQuestions;
+      }
+
+      // Points calculation
+      let points = 0;
+      let newStreak = student.streak || 0;
+
+      if (payload.isCorrect) {
+        newStreak += 1;
+        const basePoints = 1000;
+        const speedBonus = Math.max(0, Math.round((30 - Math.min(payload.timeTaken, 30)) * 16.6));
+        const streakBonus = Math.min((newStreak - 1) * 100, 500);
+        points = payload.isRetry ? 500 : (basePoints + speedBonus + streakBonus);
+      } else {
+        newStreak = 0;
+        points = 0;
+      }
+
+      const answerDetail: QuizStudentAnswerDetail = {
+        questionIndex: payload.questionIndex,
+        questionText: payload.questionText || '',
+        answer: payload.answer || '',
+        isCorrect: Boolean(payload.isCorrect),
+        timeTaken: Number(payload.timeTaken) || 0,
+        scoreEarned: points,
+        isRetry: Boolean(payload.isRetry),
       };
-    } else {
-      student.totalQuestions = trueTotalQuestions;
-    }
 
-    // Points calculation (Quizizz / Kahoot style)
-    let points = 0;
-    let newStreak = student.streak || 0;
+      const updatedAnswers = { ...(student.answers || {}) };
+      updatedAnswers[payload.questionIndex] = answerDetail;
 
-    if (payload.isCorrect) {
-      newStreak += 1;
-      const basePoints = 1000;
-      // Speed bonus: up to 500 bonus points for fast responses (decay within 30s)
-      const speedBonus = Math.max(0, Math.round((30 - Math.min(payload.timeTaken, 30)) * 16.6));
-      // Streak bonus: 100 points for streak 2, 200 for streak 3, up to 500
-      const streakBonus = Math.min((newStreak - 1) * 100, 500);
-      points = payload.isRetry ? 500 : (basePoints + speedBonus + streakBonus);
-    } else {
-      newStreak = 0;
-      points = 0;
-    }
-
-    const answerDetail: QuizStudentAnswerDetail = {
-      questionIndex: payload.questionIndex,
-      questionText: payload.questionText,
-      answer: payload.answer,
-      isCorrect: payload.isCorrect,
-      timeTaken: payload.timeTaken,
-      scoreEarned: points,
-      isRetry: payload.isRetry,
-    };
-
-    const updatedAnswers = { ...(student.answers || {}) };
-    updatedAnswers[payload.questionIndex] = answerDetail;
-
-    let updatedWrong = [...(student.wrongQuestionIndices || [])];
-    if (!payload.isCorrect) {
-      if (!updatedWrong.includes(payload.questionIndex)) {
-        updatedWrong.push(payload.questionIndex);
+      let updatedWrong = [...(student.wrongQuestionIndices || [])];
+      if (!payload.isCorrect) {
+        if (!updatedWrong.includes(payload.questionIndex)) {
+          updatedWrong.push(payload.questionIndex);
+        }
+      } else if (payload.isRetry) {
+        updatedWrong = updatedWrong.filter(idx => idx !== payload.questionIndex);
       }
-    } else if (payload.isRetry) {
-      // Solved correctly on retry!
-      updatedWrong = updatedWrong.filter(idx => idx !== payload.questionIndex);
+
+      const newCorrectCount = Object.values(updatedAnswers).filter((a: any) => a.isCorrect).length;
+      const newWrongCount = updatedWrong.length;
+      const newTotalScore = Math.max(0, (student.totalScore || 0) + points);
+      const newTotalTime = (student.totalTimeTaken || 0) + (Number(payload.timeTaken) || 0);
+      const nextQIndex = payload.isRetry ? student.currentQuestionIndex : (student.currentQuestionIndex + 1);
+      
+      const totalAnswered = Object.keys(updatedAnswers).length;
+      const isNowFinished = !payload.isRetry && 
+        (totalAnswered >= trueTotalQuestions) && 
+        (nextQIndex >= trueTotalQuestions);
+
+      student = {
+        ...student,
+        currentQuestionIndex: nextQIndex,
+        answers: updatedAnswers,
+        totalScore: newTotalScore,
+        streak: newStreak,
+        correctCount: newCorrectCount,
+        wrongCount: newWrongCount,
+        totalTimeTaken: newTotalTime,
+        wrongQuestionIndices: updatedWrong,
+        isFinished: isNowFinished,
+        finishTime: isNowFinished ? (student.finishTime || Date.now()) : null,
+      };
+
+      participants[studentKey] = student;
+
+      // Recalculate leaderboard ranks
+      const allParticipants = Object.values(participants);
+      allParticipants.sort((a, b) => {
+        if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+        return (a.totalTimeTaken || 99999) - (b.totalTimeTaken || 99999);
+      });
+
+      allParticipants.forEach((p, idx) => {
+        if (participants[p.studentKey]) {
+          participants[p.studentKey].rank = idx + 1;
+        }
+      });
+
+      currentQuiz.participants = participants;
+
+      transaction.update(LIVE_DOC_REF, {
+        quizState: currentQuiz,
+        updatedAt: serverTimestamp(),
+      });
+
+      savedStudent = student;
+      updatedQuizState = currentQuiz;
+    });
+
+    if (savedStudent && updatedQuizState) {
+      cachedState = { ...cachedState, quizState: updatedQuizState };
+      return { success: true, student: savedStudent };
     }
-
-    const newCorrectCount = Object.values(updatedAnswers).filter((a: any) => a.isCorrect).length;
-    const newWrongCount = updatedWrong.length;
-    const newTotalScore = Math.max(0, (student.totalScore || 0) + points);
-    const newTotalTime = (student.totalTimeTaken || 0) + payload.timeTaken;
-    const nextQIndex = payload.isRetry ? student.currentQuestionIndex : (student.currentQuestionIndex + 1);
-    
-    // Only mark finished if all questions have truly been answered and student reached the end
-    const totalAnswered = Object.keys(updatedAnswers).length;
-    const isNowFinished = !payload.isRetry && 
-      (totalAnswered >= trueTotalQuestions) && 
-      (nextQIndex >= trueTotalQuestions);
-
-    student = {
-      ...student,
-      currentQuestionIndex: nextQIndex,
-      answers: updatedAnswers,
-      totalScore: newTotalScore,
-      streak: newStreak,
-      correctCount: newCorrectCount,
-      wrongCount: newWrongCount,
-      totalTimeTaken: newTotalTime,
-      wrongQuestionIndices: updatedWrong,
-      isFinished: isNowFinished,
-      finishTime: (isNowFinished && !student.finishTime) ? Date.now() : (isNowFinished ? student.finishTime : undefined),
-    };
-
-    participants[studentKey] = student;
-
-    // Recalculate live leaderboard ranks
-    const allParticipants = Object.values(participants);
-    allParticipants.sort((a, b) => {
-      if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
-      return (a.totalTimeTaken || 99999) - (b.totalTimeTaken || 99999);
-    });
-
-    allParticipants.forEach((p, idx) => {
-      if (participants[p.studentKey]) {
-        participants[p.studentKey].rank = idx + 1;
-      }
-    });
-
-    currentQuiz.participants = participants;
-
-    await updateDoc(LIVE_DOC_REF, {
-      quizState: currentQuiz,
-      updatedAt: serverTimestamp(),
-    });
-
-    cachedState = { ...cachedState, quizState: currentQuiz };
-    return { success: true };
+    return { success: false };
   } catch (err: any) {
     console.error('Failed to submit student quiz answer:', err);
     return { success: false };
@@ -1592,17 +1676,22 @@ export async function submitStudentQuizAnswer(
 
 export async function markStudentQuizFinished(studentKey: string): Promise<{ success: boolean }> {
   try {
-    if (!cachedState.quizState) return { success: false };
-    const currentQuiz = { ...cachedState.quizState };
-    if (currentQuiz.participants && currentQuiz.participants[studentKey]) {
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(LIVE_DOC_REF);
+      if (!snap.exists()) return;
+      const data = snap.data() as any;
+      const currentQuiz = data.quizState as QuizActiveState;
+      if (!currentQuiz || !currentQuiz.participants || !currentQuiz.participants[studentKey]) return;
+
       currentQuiz.participants[studentKey].isFinished = true;
-      currentQuiz.participants[studentKey].finishTime = Date.now();
-      await updateDoc(LIVE_DOC_REF, {
+      currentQuiz.participants[studentKey].finishTime = currentQuiz.participants[studentKey].finishTime || Date.now();
+
+      transaction.update(LIVE_DOC_REF, {
         quizState: currentQuiz,
         updatedAt: serverTimestamp(),
       });
       cachedState = { ...cachedState, quizState: currentQuiz };
-    }
+    });
     return { success: true };
   } catch (err: any) {
     console.error('Failed to mark quiz finished:', err);
@@ -1612,16 +1701,21 @@ export async function markStudentQuizFinished(studentKey: string): Promise<{ suc
 
 export async function setStudentQuizRetryMode(studentKey: string, inRetry: boolean): Promise<{ success: boolean }> {
   try {
-    if (!cachedState.quizState) return { success: false };
-    const currentQuiz = { ...cachedState.quizState };
-    if (currentQuiz.participants && currentQuiz.participants[studentKey]) {
-      currentQuiz.participants[studentKey].isInRetryRound = inRetry;
-      await updateDoc(LIVE_DOC_REF, {
+    await runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(LIVE_DOC_REF);
+      if (!snap.exists()) return;
+      const data = snap.data() as any;
+      const currentQuiz = data.quizState as QuizActiveState;
+      if (!currentQuiz || !currentQuiz.participants || !currentQuiz.participants[studentKey]) return;
+
+      currentQuiz.participants[studentKey].isInRetryRound = Boolean(inRetry);
+
+      transaction.update(LIVE_DOC_REF, {
         quizState: currentQuiz,
         updatedAt: serverTimestamp(),
       });
       cachedState = { ...cachedState, quizState: currentQuiz };
-    }
+    });
     return { success: true };
   } catch (err: any) {
     console.error('Failed to toggle retry mode:', err);
@@ -1629,6 +1723,29 @@ export async function setStudentQuizRetryMode(studentKey: string, inRetry: boole
   }
 }
 
-
-
-
+export async function stopAllActiveBroadcasts(): Promise<{ success: boolean }> {
+  try {
+    await updateDoc(LIVE_DOC_REF, {
+      isProgramActive: false,
+      status: 'idle',
+      currentQuestion: null,
+      currentQuestionIndex: null,
+      videoPlaying: false,
+      quizState: null,
+      updatedAt: serverTimestamp(),
+    });
+    cachedState = {
+      ...cachedState,
+      isProgramActive: false,
+      status: 'idle',
+      currentQuestion: null,
+      currentQuestionIndex: null,
+      videoPlaying: false,
+      quizState: null,
+    };
+    return { success: true };
+  } catch (err: any) {
+    console.error('Failed to stop all active broadcasts:', err);
+    return { success: false };
+  }
+}

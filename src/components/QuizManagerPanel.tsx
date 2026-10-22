@@ -656,75 +656,75 @@ export default function QuizManagerPanel({
             </div>
 
             {/* Quick Action Buttons (4-Step Workflow) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 pt-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
               {currentQuizState?.isActive && currentQuizState.quizStatus === 'waiting' ? (
                 <>
                   <button
                     onClick={handleLaunchQuestionsNow}
-                    className="w-full py-4 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer animate-pulse"
+                    className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer animate-pulse"
                   >
-                    <Play className="w-5 h-5 fill-slate-950" />
-                    <span>2. ابدأ التحدي الآن لجميع الطلاب ({Object.keys(currentQuizState.participants || {}).length} قبلوا التحدي) 🚀</span>
+                    <Play className="w-4 h-4 fill-slate-950" />
+                    <span>ابدأ ({Object.keys(currentQuizState.participants || {}).length})</span>
                   </button>
                   <button
                     onClick={handleEndQuiz}
-                    className="w-full py-4 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    className="w-full py-3.5 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
                   >
                     <Square className="w-4 h-4" />
-                    <span>إلغاء القاعة</span>
+                    <span>إلغاء</span>
                   </button>
                 </>
               ) : !isQuizActive ? (
                 <>
                   <button
                     onClick={handleOpenLobby}
-                    className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-indigo-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-indigo-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
                   >
-                    <Users className="w-5 h-5 text-indigo-200" />
-                    <span>1. استعداد (دعوة الطلاب للشاشة والرسم البياني) 👥</span>
+                    <Users className="w-4 h-4 text-indigo-200" />
+                    <span>استعداد</span>
                   </button>
                   <button
                     onClick={handleStartQuiz}
-                    className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-slate-950 font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-slate-950 font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
                   >
-                    <Play className="w-5 h-5 fill-slate-950" />
-                    <span>ابدأ التحدي فوراً ⚡</span>
+                    <Play className="w-4 h-4 fill-slate-950" />
+                    <span>ابدأ</span>
                   </button>
                 </>
               ) : (
                 <button
                   onClick={handleEndQuiz}
-                  className="w-full py-4 bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white font-black rounded-2xl text-sm shadow-xl shadow-rose-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer col-span-1 sm:col-span-2"
+                  className="w-full py-3.5 bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-rose-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer col-span-2"
                 >
-                  <Square className="w-5 h-5 fill-white" />
-                  <span>4. إنهاء التحدي إجبارياً وتتويج الفائزين 🏆</span>
+                  <Square className="w-4 h-4 fill-white" />
+                  <span>إنهاء المسابقة 🏆</span>
                 </button>
               )}
 
               <button
                 onClick={handleResetQuiz}
-                className="py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer border border-slate-700"
+                className="py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer border border-slate-700"
               >
                 <RotateCcw className="w-4 h-4" />
-                <span>إعادة ضبط المسابقة</span>
+                <span>إعادة ضبط</span>
               </button>
 
               <button
                 onClick={handleExportBatchToSheet}
                 disabled={syncingSheet}
-                className="py-4 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                className="py-3.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
               >
                 <ArrowDownToLine className="w-4 h-4 text-amber-400" />
-                <span>{syncingSheet ? 'جاري الترحيل...' : 'ترحيل النتائج لشيت Answers-Qui'}</span>
+                <span>{syncingSheet ? 'جاري التسجيل...' : 'تسجيل النتائج'}</span>
               </button>
 
               <button
                 onClick={handleStopBroadcast}
-                className="py-4 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 hover:text-rose-100 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer col-span-1 sm:col-span-2"
+                className="py-3 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 hover:text-rose-100 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer col-span-2 sm:col-span-4"
                 title="إيقاف البث النشط بالكامل وإعادته لحالة الخمول لمنع ظهور البث التلقائي"
               >
-                <Square className="w-4 h-4 text-rose-400 fill-rose-400/20" />
-                <span>إيقاف وتصفير البث المباشر النشط ⏹️ (لمنع البث التلقائي)</span>
+                <Square className="w-3.5 h-3.5 text-rose-400 fill-rose-400/20" />
+                <span>إيقاف البث النشط ⏹️</span>
               </button>
             </div>
           </div>
@@ -744,7 +744,7 @@ export default function QuizManagerPanel({
                 </div>
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
-                تظهر للطلاب الآن نافذة "المعلم يستعد لإطلاق مسابقة التحدي النهائي!". كل طالب يضغط على "أنا مستعد" يُسجل فوراً في القاعة وترتفع نسبة الجاهزية على شاشة العرض. عندما يكتمل العدد اضغط الزر "2. ابدأ التحدي الآن لجميع الطلاب".
+                تظهر للطلاب الآن نافذة "المعلم يستعد لإطلاق مسابقة التحدي النهائي!". كل طالب يضغط على "أنا مستعد" يُسجل فوراً في القاعة وترتفع نسبة الجاهزية على شاشة العرض. عندما يكتمل العدد اضغط الزر "ابدأ".
               </p>
               {/* Ready Students Mini Grid */}
               <div className="flex flex-wrap gap-2 pt-1 max-h-40 overflow-y-auto">

@@ -4,7 +4,8 @@ import {
   X, Tv, Mic, Trophy, Monitor, Settings, RefreshCw, 
   ExternalLink, Copy, CheckCircle2, ShieldCheck, 
   Sparkles, KeyRound, Globe, Users, ArrowUpRight, 
-  FileSpreadsheet, Play, QrCode, Sliders, Palette, Square
+  FileSpreadsheet, Play, QrCode, Sliders, Palette, Square,
+  Video, Radio
 } from 'lucide-react';
 import { LiveLessonRow, HeaderConfig } from '../types';
 import LiveClassManager from './LiveClassManager';
@@ -208,69 +209,69 @@ export default function AdminPanel({
 
         {/* Tabs Bar */}
         <div className="flex items-center gap-1 sm:gap-2 px-4 sm:px-6 pt-3 border-b border-slate-800 bg-slate-950/60 overflow-x-auto custom-scrollbar">
-          {/* Tab 1: Live Class */}
+          {/* Tab 1: Live Video */}
           <button
             onClick={() => setActiveTab('live')}
-            className={`px-4 sm:px-5 py-3 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 sm:px-4 py-2.5 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'live'
                 ? 'bg-slate-900 text-amber-400 border-amber-500 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/40'
             }`}
           >
-            <Tv className="w-4 h-4 text-amber-400" />
-            <span>الحصص التفاعلية المباشرة 🎯 (Questions-T)</span>
+            <Video className="w-4 h-4 text-amber-400" />
+            <span>فيديو التفاعلي المباشر</span>
           </button>
 
           {/* Tab 2: Live Direct */}
           <button
             onClick={() => setActiveTab('live-direct')}
-            className={`px-4 sm:px-5 py-3 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 sm:px-4 py-2.5 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'live-direct'
                 ? 'bg-slate-900 text-amber-400 border-amber-500 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/40'
             }`}
           >
-            <Mic className="w-4 h-4 text-amber-400 animate-pulse" />
-            <span>شرح مباشر 🎙️ (Questions-Live)</span>
+            <Radio className="w-4 h-4 text-amber-400 animate-pulse" />
+            <span>شرح مباشر</span>
           </button>
 
           {/* Tab 3: Quiz Challenge */}
           <button
             onClick={() => setActiveTab('quiz-challenge')}
-            className={`px-4 sm:px-5 py-3 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 sm:px-4 py-2.5 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'quiz-challenge'
                 ? 'bg-slate-900 text-amber-400 border-amber-500 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/40'
             }`}
           >
             <Trophy className="w-4 h-4 text-amber-400" />
-            <span>تحدي كويز 🏆 (Questions-Qui)</span>
+            <span>تحدي كويز</span>
           </button>
 
           {/* Tab 4: Broadcast & Displays */}
           <button
             onClick={() => setActiveTab('broadcast')}
-            className={`px-4 sm:px-5 py-3 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-3.5 sm:px-4 py-2.5 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'broadcast'
                 ? 'bg-slate-900 text-amber-400 border-amber-500 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/40'
             }`}
           >
             <Monitor className="w-4 h-4 text-amber-400" />
-            <span>شاشات العرض والمسرح 🖥️</span>
+            <span>العرض</span>
           </button>
 
-          {/* Tab 5: Sheets & Design Settings */}
+          {/* Tab 5: Sheets & Design Settings (Icon only) */}
           <button
             onClick={() => setActiveTab('sheets-design')}
-            className={`px-4 sm:px-5 py-3 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            title="الربط بالشيت وتصميم الصفحة والإعدادات"
+            className={`p-2.5 px-3.5 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center justify-center border-b-2 transition-all cursor-pointer ${
               activeTab === 'sheets-design'
                 ? 'bg-slate-900 text-amber-400 border-amber-500 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/40'
             }`}
           >
             <Settings className="w-4 h-4 text-amber-400" />
-            <span>الربط بالشيت وتصميم الصفحة ⚙️🎨</span>
           </button>
         </div>
 

@@ -9,8 +9,8 @@ import {
 
 // Helper to get Web App URL from localStorage or environment variables
 export function getWebAppUrl(): string {
-  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbxid9fvmJZZmZ3XU1bJmji1g-xpRQqzHmqIIQ-aRNtnhe2nDuHMA8ylulnpHC-gFgVNDw/exec';
-  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbxid9fvmJZZmZ3XU1bJmji1g-xpRQqzHmqIIQ-aRNtnhe2nDuHMA8ylulnpHC-gFgVNDw/exec';
+  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbwakS_2H_RJGQSy6tUhWQ17S8gpoidY1fFc_Id234ubTFKuzA0k6_qa-DaeCGdbvYpwWg/exec';
+  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbwakS_2H_RJGQSy6tUhWQ17S8gpoidY1fFc_Id234ubTFKuzA0k6_qa-DaeCGdbvYpwWg/exec';
 
   // 1. Check localStorage first (allows individual overrides / testing)
   const localUrl = localStorage.getItem('webAppUrl');
@@ -2385,6 +2385,75 @@ export function savePdfLessons(list: LivePdfItem[]): void {
     localStorage.setItem(PDF_LESSONS_STORAGE_KEY, JSON.stringify(list));
   } catch (e) {
     console.error('Failed to save PDF lessons catalog to localStorage', e);
+  }
+}
+
+// Fetch PDF Lessons Catalog directly from Google Sheet (PDF-Lessons)
+export async function fetchPdfLessonsFromSheet(): Promise<{ success: boolean; data: LivePdfItem[]; message?: string }> {
+  try {
+    let res = await fetchGas({ action: 'getPdfLessons' }, 'GET');
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      try {
+        res = await fetchGas({ action: 'getPdfLessons' }, 'POST', { action: 'getPdfLessons' });
+      } catch (e2) {}
+    }
+    if (res && res.success && Array.isArray(res.data)) {
+      const sheetItems: LivePdfItem[] = res.data.map((item: any, i: number) => ({
+        id: item.id || `sheet-pdf-${i + 1}`,
+        rowIndex: item.rowIndex || i + 2,
+        title: item.title || `ملف ${i + 1}`,
+        url: item.url || '',
+        description: item.description || '',
+        page: item.page || 1,
+        storageType: 'url',
+        addedAt: item.addedAt || Date.now(),
+      }));
+
+      // Combine with local offline/custom items
+      const currentLocal = getSavedPdfLessons();
+      const localOnly = currentLocal.filter(l => l.storageType === 'file' || l.id?.startsWith('local_'));
+      const combined = [...sheetItems, ...localOnly];
+      savePdfLessons(combined);
+      return { success: true, data: combined };
+    }
+    return { success: false, data: getSavedPdfLessons(), message: res?.message || 'تعذر القراءة من الشيت' };
+  } catch (err: any) {
+    console.warn('Could not fetch PDF lessons from sheet:', err);
+    return { success: false, data: getSavedPdfLessons(), message: err?.message };
+  }
+}
+
+// Save or Update a PDF Lesson directly in Google Sheet (PDF-Lessons)
+export async function savePdfLessonToSheet(lesson: {
+  title: string;
+  url: string;
+  description?: string;
+  page?: number;
+  rowIndex?: number;
+}): Promise<{ success: boolean; message?: string }> {
+  try {
+    const res = await fetchGas({ action: 'savePdfLesson' }, 'POST', {
+      action: 'savePdfLesson',
+      lesson
+    });
+    return res || { success: true, message: 'تم حفظ ملف الـ PDF في ورقة PDF-Lessons بنجاح' };
+  } catch (err: any) {
+    console.error('Error saving PDF lesson to sheet:', err);
+    return { success: false, message: err?.message || 'تعذر الاتصال بـ Google Sheets' };
+  }
+}
+
+// Initialize / Auto-create PDF-Lessons sheet in Google Spreadsheet via API
+export async function setupPdfLessonsSheetApi(): Promise<{ success: boolean; message?: string }> {
+  try {
+    let res = await fetchGas({ action: 'setupPdfLessonsSheet' }, 'GET');
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      res = await fetchGas({ action: 'setupPdfLessonsSheet' }, 'POST', { action: 'setupPdfLessonsSheet' });
+    }
+    return res || { success: true, message: 'تم إنشاء وتهيئة ورقة (PDF-Lessons) في الشيت بنجاح! 📄' };
+  } catch (err: any) {
+    console.error('Error setting up PDF-Lessons sheet:', err);
+    return { success: false, message: err?.message || 'تعذر الاتصال بخادم Google Apps Script' };
   }
 }
 

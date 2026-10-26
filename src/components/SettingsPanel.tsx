@@ -287,6 +287,13 @@ function RUN_SETUP_QUIZ_DIRECT_SHEETS() {
   return res;
 }
 
+// 5. إنشاء وتهيئة ورقة ملفات PDF وعروض الشرح (PDF-Lessons) بنقرة واحدة
+function RUN_SETUP_PDF_SHEETS() {
+  var res = setupPdfLessonsSheet();
+  Logger.log('نتيجة تهيئة ورقة PDF-Lessons: ' + JSON.stringify(res));
+  return res;
+}
+
 function doGet(e) {
   var action = (e && e.parameter) ? e.parameter.action : '';
   var response;
@@ -334,6 +341,10 @@ function doGet(e) {
       response = getQuizAnswersDirect();
     } else if (action === 'setupQuizDirectSheets' || action === 'setupQuizSheets') {
       response = setupQuizDirectSheets();
+    } else if (action === 'getPdfLessons' || action === 'getPdfLessonsFromSheet' || action === 'getLivePdfLessons') {
+      response = getPdfLessons();
+    } else if (action === 'setupPdfLessonsSheet' || action === 'setupPdfSheet') {
+      response = setupPdfLessonsSheet();
     } else if (action === 'getAdminQuestions') {
       response = getAdminQuestions();
     } else if (action === 'getAdminAnswers') {
@@ -494,6 +505,12 @@ function doPost(e) {
       response = batchRecordQuizAnswersDirect(payload.records || []);
     } else if (action === 'setupQuizDirectSheets' || action === 'setupQuizSheets') {
       response = setupQuizDirectSheets();
+    } else if (action === 'getPdfLessons' || action === 'getPdfLessonsFromSheet' || action === 'getLivePdfLessons') {
+      response = getPdfLessons();
+    } else if (action === 'savePdfLesson' || action === 'savePdfLessonToSheet' || action === 'saveLivePdfLesson') {
+      response = savePdfLesson(payload.lesson || payload);
+    } else if (action === 'setupPdfLessonsSheet' || action === 'setupPdfSheet') {
+      response = setupPdfLessonsSheet();
     } else if (action === 'getAllSettingsStudents') {
       response = getAllSettingsStudents();
     } else if (action === 'readDriveFile' || action === 'getPdfFile' || action === 'getDriveFile') {
@@ -4030,6 +4047,130 @@ function batchRecordQuizAnswersDirect(records) {
     }
     
     return { success: true, count: records.length };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+// ==========================================
+// --- دوال عروض ودروس ملفات الـ PDF (PDF-Lessons) ---
+// ==========================================
+
+function getOrCreatePdfLessonsSheet() {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName('PDF-Lessons') || ss.getSheetByName('PDF_Lessons') || ss.getSheetByName('PDFLessons');
+  if (!sheet) {
+    sheet = ss.insertSheet('PDF-Lessons');
+    // هيكل ورقة PDF-Lessons المخصصة:
+    // A: عنوان الدرس / المحاضرة
+    // B: رابط ملف PDF أو Google Drive
+    // C: الوصف / ملاحظات
+    // D: رقم الصفحة للبدء
+    var headers = ['عنوان الدرس / المحاضرة', 'رابط ملف PDF أو Google Drive', 'الوصف / ملاحظات', 'رقم الصفحة للبدء'];
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#d1fae5');
+    sheet.setFrozenRows(1);
+    
+    // إضافة مثال توضيحي أولي لمساعدة المعلم
+    sheet.appendRow([
+      'ملف الشرح النموذجي (مثال Google Drive)',
+      'https://drive.google.com/file/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs/view?usp=sharing',
+      'ملف بي دي اف تفاعلي تجريبي متزامن للشرح والمحاضرات',
+      1
+    ]);
+  }
+  return sheet;
+}
+
+function setupPdfLessonsSheet() {
+  try {
+    var sheet = getOrCreatePdfLessonsSheet();
+    var headers = ['عنوان الدرس / المحاضرة', 'رابط ملف PDF أو Google Drive', 'الوصف / ملاحظات', 'رقم الصفحة للبدء'];
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#d1fae5');
+    sheet.setFrozenRows(1);
+    return {
+      success: true,
+      message: 'تم إنشاء وتهيئة ورقة (PDF-Lessons) لملفات وعروض الـ PDF في الشيت بنجاح! 📄'
+    };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+function getPdfLessons() {
+  try {
+    var ss = getSpreadsheet();
+    var sheet = ss.getSheetByName('PDF-Lessons') || ss.getSheetByName('PDF_Lessons') || ss.getSheetByName('PDFLessons');
+    if (!sheet) {
+      sheet = getOrCreatePdfLessonsSheet();
+    }
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return { success: true, data: [] };
+    
+    var lastCol = Math.max(4, sheet.getLastColumn());
+    var rows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    var list = [];
+    
+    for (var r = 0; r < rows.length; r++) {
+      var row = rows[r];
+      var title = String(row[0] || '').trim();
+      var url = String(row[1] || '').trim();
+      var description = String(row[2] || '').trim();
+      var page = parseInt(row[3], 10) || 1;
+      
+      if (!title && !url) continue;
+      
+      list.push({
+        id: 'sheet-pdf-' + (r + 1),
+        rowIndex: r + 2,
+        title: title || ('ملف شرح ' + (r + 1)),
+        url: url,
+        description: description,
+        page: page,
+        addedAt: Date.now()
+      });
+    }
+    return { success: true, data: list };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+function savePdfLesson(lesson) {
+  try {
+    if (!lesson || (!lesson.title && !lesson.url)) {
+      return { success: false, message: 'عنوان أو رابط ملف الـ PDF مطلوب' };
+    }
+    var sheet = getOrCreatePdfLessonsSheet();
+    var title = String(lesson.title || '').trim();
+    var url = String(lesson.url || '').trim();
+    var description = String(lesson.description || '').trim();
+    var page = parseInt(lesson.page, 10) || 1;
+    
+    var targetRow = 0;
+    if (lesson.rowIndex && lesson.rowIndex > 1) {
+      targetRow = lesson.rowIndex;
+    } else {
+      var lastRow = sheet.getLastRow();
+      if (lastRow > 1) {
+        var titles = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+        for (var t = 0; t < titles.length; t++) {
+          if (String(titles[t][0]).trim() === title) {
+            targetRow = t + 2;
+            break;
+          }
+        }
+      }
+    }
+    
+    var rowValues = [title, url, description, page];
+    if (targetRow > 1) {
+      sheet.getRange(targetRow, 1, 1, rowValues.length).setValues([rowValues]);
+    } else {
+      sheet.appendRow(rowValues);
+    }
+    return { success: true, message: 'تم حفظ ملف الـ PDF في ورقة PDF-Lessons بالشيت بنجاح 📄' };
   } catch (err) {
     return { success: false, message: err.message };
   }

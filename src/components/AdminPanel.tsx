@@ -21,6 +21,7 @@ import {
   fetchLiveQuestionsT,
   setupLiveDirectSheetsApi,
   setupQuizDirectSheetsApi,
+  setupPdfLessonsSheetApi,
   stopAllActiveBroadcasts
 } from '../api';
 
@@ -49,6 +50,7 @@ export default function AdminPanel({
   const [headerConfig, setHeaderConfig] = useState<HeaderConfig | null>(null);
   const [settingUpLiveSheets, setSettingUpLiveSheets] = useState(false);
   const [settingUpQuizSheets, setSettingUpQuizSheets] = useState(false);
+  const [settingUpPdfSheets, setSettingUpPdfSheets] = useState(false);
 
   const [allLiveLessons, setAllLiveLessons] = useState<LiveLessonRow[]>([]);
 
@@ -117,6 +119,22 @@ export default function AdminPanel({
       setNotice({ text: e.message || 'حدث خطأ أثناء التهيئة', type: 'error' });
     } finally {
       setSettingUpQuizSheets(false);
+    }
+  };
+
+  const handleSetupPdfSheets = async () => {
+    setSettingUpPdfSheets(true);
+    try {
+      const res = await setupPdfLessonsSheetApi();
+      if (res.success) {
+        setNotice({ text: res.message || 'تمت تهيئة ورقة PDF-Lessons بنجاح! 📄', type: 'success' });
+      } else {
+        setNotice({ text: res.message || 'فشلت التهيئة، تأكد من ربط الشيت', type: 'error' });
+      }
+    } catch (e: any) {
+      setNotice({ text: e.message || 'حدث خطأ أثناء التهيئة', type: 'error' });
+    } finally {
+      setSettingUpPdfSheets(false);
     }
   };
 
@@ -519,7 +537,7 @@ export default function AdminPanel({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   {/* Live Classroom Sheet Info */}
                   <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-700">
                     <div className="flex items-center justify-between mb-2">
@@ -576,6 +594,26 @@ export default function AdminPanel({
                     >
                       <Sparkles className={`w-3.5 h-3.5 ${settingUpQuizSheets ? 'animate-spin' : ''}`} />
                       {settingUpQuizSheets ? 'جارٍ التهيئة...' : 'إنشاء وتهيئة أوراق التحدي'}
+                    </button>
+                  </div>
+
+                  {/* PDF Lessons Sheet Info */}
+                  <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-700">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-bold text-amber-400 text-sm">مكتبة عروض PDF</span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono">PDF-Lessons</span>
+                    </div>
+                    <p className="text-xs text-slate-400 mb-3">
+                      متصل بورقة: <br />
+                      • <b>PDF-Lessons</b>: لروابط ملفات PDF و Google Drive ورقم صفحة البدء
+                    </p>
+                    <button
+                      onClick={handleSetupPdfSheets}
+                      disabled={settingUpPdfSheets}
+                      className="w-full py-2 rounded-xl bg-emerald-600/30 hover:bg-emerald-600 text-emerald-300 hover:text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Sparkles className={`w-3.5 h-3.5 ${settingUpPdfSheets ? 'animate-spin' : ''}`} />
+                      {settingUpPdfSheets ? 'جارٍ التهيئة...' : 'إنشاء وتهيئة ورقة PDF بالشيت'}
                     </button>
                   </div>
                 </div>

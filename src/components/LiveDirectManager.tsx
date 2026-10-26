@@ -86,6 +86,9 @@ import {
   endLiveProgram,
   getSavedPdfLessons,
   savePdfLessons,
+  fetchPdfLessonsFromSheet,
+  savePdfLessonToSheet,
+  setupPdfLessonsSheetApi,
   formatPdfEmbedUrl,
   updateLivePdfState,
   toggleShowPdfInRoom,
@@ -172,6 +175,8 @@ export default function LiveDirectManager({
   const [pdfFormUrl, setPdfFormUrl] = useState('');
   const [pdfFormDescription, setPdfFormDescription] = useState('');
   const [activePdfPreviewPage, setActivePdfPreviewPage] = useState(1);
+  const [isSyncingPdfSheet, setIsSyncingPdfSheet] = useState(false);
+  const [isSettingUpPdfSheet, setIsSettingUpPdfSheet] = useState(false);
 
   // File Upload State & Laser throttle ref
   const [isUploadingPdf, setIsUploadingPdf] = useState(false);
@@ -448,6 +453,20 @@ export default function LiveDirectManager({
       setPdfLessons(updatedList);
       savePdfLessons(updatedList);
       setIsPdfModalOpen(false);
+
+      // Persist to Google Sheet (PDF-Lessons) if it has a URL
+      const itemToSync = editingPdfItem 
+        ? updatedList.find(p => p.id === editingPdfItem.id)
+        : updatedList[0];
+      if (itemToSync && itemToSync.url && !itemToSync.url.startsWith('local://')) {
+        savePdfLessonToSheet({
+          title: itemToSync.title,
+          url: itemToSync.url,
+          description: itemToSync.description || '',
+          page: 1,
+          rowIndex: itemToSync.rowIndex,
+        }).catch(e => console.warn('Sync to PDF-Lessons sheet note:', e));
+      }
     } catch (err: any) {
       console.error('Error saving PDF:', err);
       showNotice('حدث خطأ أثناء حفظ ملف الـ PDF', 'error');
@@ -503,10 +522,47 @@ export default function LiveDirectManager({
     }
   };
 
+  // Load PDF Lessons from PDF-Lessons sheet
+  const loadPdfLessons = async (showToast: boolean = false) => {
+    setIsSyncingPdfSheet(true);
+    try {
+      const res = await fetchPdfLessonsFromSheet();
+      if (res.success && res.data) {
+        setPdfLessons(res.data);
+        if (showToast) showNotice('تمت مزامنة عروض الـ PDF من ورقة PDF-Lessons بنجاح! 📄');
+      } else if (showToast) {
+        showNotice(res.message || 'تعذر القراءة من الشيت، تم استخدام الملفات المحفوظة محلياً', 'info');
+      }
+    } catch (err) {
+      if (showToast) showNotice('تعذر الاتصال بالشيت لمزامنة ملفات الـ PDF', 'error');
+    } finally {
+      setIsSyncingPdfSheet(false);
+    }
+  };
+
+  // Setup PDF-Lessons sheet
+  const handleSetupPdfSheet = async () => {
+    setIsSettingUpPdfSheet(true);
+    try {
+      const res = await setupPdfLessonsSheetApi();
+      if (res.success) {
+        showNotice(res.message || 'تمت تهيئة ورقة PDF-Lessons بنجاح! 📄');
+        await loadPdfLessons();
+      } else {
+        showNotice(res.message || 'فشلت التهيئة، تأكد من ربط الشيت', 'error');
+      }
+    } catch (err: any) {
+      showNotice(err.message || 'حدث خطأ أثناء التهيئة', 'error');
+    } finally {
+      setIsSettingUpPdfSheet(false);
+    }
+  };
+
   // Initial load
   useEffect(() => {
     loadLessons();
     loadAnswers();
+    loadPdfLessons();
   }, []);
 
   // Listen to Firebase Live Session updates
@@ -2280,6 +2336,28 @@ export default function LiveDirectManager({
                   <span>{sessionState?.showPdfToStudents ? 'مفعل لدى الطلاب 📱' : 'إظهار لدى الطلاب 📱'}</span>
                 </button>
               )}
+
+              <button
+                type="button"
+                onClick={() => loadPdfLessons(true)}
+                disabled={isSyncingPdfSheet}
+                className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer border border-slate-700 shadow-sm"
+                title="مزامنة ملفات PDF من ورقة PDF-Lessons في Google Sheets"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingPdfSheet ? 'animate-spin' : ''}`} />
+                <span>{isSyncingPdfSheet ? 'جارٍ المزامنة...' : 'مزامنة مع الشيت 🔄'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSetupPdfSheet}
+                disabled={isSettingUpPdfSheet}
+                className="px-3.5 py-2.5 bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer border border-emerald-500/40 shadow-sm"
+                title="إنشاء وتهيئة ورقة PDF-Lessons في Google Sheets تلقائياً"
+              >
+                <FileSpreadsheet className={`w-3.5 h-3.5 ${isSettingUpPdfSheet ? 'animate-spin' : ''}`} />
+                <span>{isSettingUpPdfSheet ? 'جارٍ الإنشاء...' : 'تهيئة ورقة PDF بالشيت 📄'}</span>
+              </button>
             </div>
           </div>
 

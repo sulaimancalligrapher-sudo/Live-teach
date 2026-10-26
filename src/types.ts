@@ -309,8 +309,10 @@ export interface LivePdfDrawingStroke {
 
 export interface LivePdfItem {
   id: string;
+  rowIndex?: number;
   title: string;
   url?: string;
+  page?: number;
   storageType?: 'file' | 'url'; // 'file' if stored in local IndexedDB, 'url' if web or direct link
   fileData?: string; // Base64 or object URL cache
   fileSize?: number;

@@ -321,6 +321,7 @@ export default function LiveDirectManager({
 
       const res = await updateLivePdfState({
         showPdfInRoom: true,
+        showPdfToStudents: true,
         pdfUrl: finalPdfUrl,
         pdfTitle: lesson.title,
         pdfPage: 1,
@@ -328,7 +329,7 @@ export default function LiveDirectManager({
       if (res.success && res.state) {
         setSessionState(res.state);
         setActivePdfPreviewPage(1);
-        showNotice(`تم تفعيل وعرض ملف "${lesson.title}" بشاشة البروجكتر 🚀`);
+        showNotice(`تم تفعيل وعرض ملف "${lesson.title}" على البروجكتر وهواتف الطلاب فورياً 🚀`);
       }
     } catch (e) {
       showNotice('تعذر تحديث ملف الـ PDF في الجلسة المباشرة', 'error');

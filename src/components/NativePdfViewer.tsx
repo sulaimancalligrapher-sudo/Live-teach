@@ -259,15 +259,23 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
           const driveId = driveMatch ? driveMatch[1] : null;
 
           if (driveId) {
-            // Attempt 1: Fetch via proxy
+            // Attempt 1: Fetch via proxy with a 2.5s timeout
             let loadedViaProxy = false;
             try {
-              loadingTask = pdfjsLib.getDocument({
-                ...baseOptions,
-                url: `/api/proxy-drive?id=${driveId}`,
-                withCredentials: false,
-              });
-              const doc = await loadingTask.promise;
+              const fetchPromise = (async () => {
+                const task = pdfjsLib.getDocument({
+                  ...baseOptions,
+                  url: `/api/proxy-drive?id=${driveId}`,
+                  withCredentials: false,
+                });
+                return await task.promise;
+              })();
+
+              const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Proxy timeout')), 2500)
+              );
+
+              const doc = (await Promise.race([fetchPromise, timeoutPromise])) as any;
               if (isCancelled) return;
               setPdfDoc(doc);
               setTotalPages(doc.numPages);
@@ -276,14 +284,19 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
               loadedViaProxy = true;
               return;
             } catch (proxyErr) {
-              console.warn('Proxy-drive direct stream unavailable, falling back to Apps Script DriveApp...', proxyErr);
+              console.warn('Proxy-drive direct stream unavailable, checking Apps Script DriveApp...', proxyErr);
             }
 
             if (!loadedViaProxy) {
-              // Attempt 2: Direct read from Google Drive via Google Apps Script (Bypasses all Google Drive download limits)
+              // Attempt 2: Direct read from Google Drive via Google Apps Script (with 3s timeout)
               try {
-                const gasRes = await fetchDriveFileBase64(driveId);
-                if (gasRes.success && gasRes.base64) {
+                const gasPromise = fetchDriveFileBase64(driveId);
+                const gasTimeout = new Promise((_, reject) =>
+                  setTimeout(() => reject(new Error('GAS timeout')), 3000)
+                );
+                const gasRes: any = await Promise.race([gasPromise, gasTimeout]);
+
+                if (gasRes && gasRes.success && gasRes.base64) {
                   const rawData = atob(gasRes.base64);
                   const uint8Array = new Uint8Array(rawData.length);
                   for (let i = 0; i < rawData.length; i++) {
@@ -294,16 +307,14 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
                     data: uint8Array,
                   });
                 } else {
-                  throw new Error(gasRes.message || 'Drive fetch failed');
+                  throw new Error(gasRes?.message || 'Drive fetch failed');
                 }
               } catch (gasErr) {
-                // If student read-only view, automatically switch to embedded iframe preview
-                if (readOnly) {
-                  setUseIframeFallback(true);
-                  setLoading(false);
-                  return;
-                }
-                throw new Error('تعذر تحميل ملف الـ PDF من Google Drive. يمكنك تفعيل المعاينة المباشرة أو التأكد من إتاحة الملف للعرض للجميع.');
+                // If Google Drive download/stream is CORS-blocked or restricted, instantly fallback to Google's official preview iframe
+                // The live pen and laser overlay will stay seamlessly active on top of it
+                setUseIframeFallback(true);
+                setLoading(false);
+                return;
               }
             }
           } else {
@@ -327,9 +338,9 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
         setLoading(false);
       } catch (err: any) {
         if (isCancelled) return;
-        console.error('Error loading native PDF:', err);
-        // Automatic resilient iframe fallback for student devices on web/Drive links
-        if (readOnly && (pdfUrl.includes('google.com') || pdfUrl.startsWith('http') || pdfUrl.startsWith('/api/pdf/'))) {
+        console.warn('Error loading native PDF via canvas, switching to resilient preview:', err);
+        // Resilient iframe preview for any web/Google Drive links (works for both teacher and students)
+        if (pdfUrl.includes('google.com') || pdfUrl.startsWith('http') || pdfUrl.startsWith('/api/pdf/')) {
           setUseIframeFallback(true);
           setLoading(false);
           return;
@@ -527,9 +538,40 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
     }
   }, [pdfDoc, currentPage, totalPages, zoomScale, fitMode, readOnly]);
 
+  // Synchronize overlay drawing canvas dimensions with container when in iframe mode
+  const syncOverlayDimensions = useCallback(() => {
+    if (!drawingCanvasRef.current || !containerRef.current) return;
+    if (!useIframeFallback && pdfDoc) return; // in canvas mode, renderPage handles sizing
+
+    const dCanvas = drawingCanvasRef.current;
+    const cEl = containerRef.current;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = cEl.getBoundingClientRect();
+    const w = Math.floor(cEl.clientWidth || rect.width || 800);
+    const h = Math.floor(cEl.clientHeight || rect.height || 600);
+
+    if (w > 0 && h > 0) {
+      if (dCanvas.width !== Math.floor(w * dpr) || dCanvas.height !== Math.floor(h * dpr)) {
+        dCanvas.width = Math.floor(w * dpr);
+        dCanvas.height = Math.floor(h * dpr);
+        dCanvas.style.width = `${w}px`;
+        dCanvas.style.height = `${h}px`;
+        if (redrawAnnotationsRef.current) {
+          redrawAnnotationsRef.current();
+        }
+      }
+    }
+  }, [useIframeFallback, pdfDoc]);
+
+  // Synchronize dimensions when in iframe mode
+  useEffect(() => {
+    syncOverlayDimensions();
+  }, [syncOverlayDimensions, useIframeFallback, currentPage]);
+
   // Trigger page render on page/zoom/scale changes or debounced window resize
   useEffect(() => {
     renderPage();
+    syncOverlayDimensions();
 
     let debounceTimer: any = null;
     let lastW = containerRef.current?.clientWidth || 0;
@@ -539,6 +581,7 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         renderPage();
+        syncOverlayDimensions();
       }, 150);
     };
 
@@ -558,6 +601,7 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
             if (debounceTimer) clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
               renderPage();
+              syncOverlayDimensions();
             }, 150);
           }
         }
@@ -570,7 +614,7 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
       if (debounceTimer) clearTimeout(debounceTimer);
       if (observer) observer.disconnect();
     };
-  }, [renderPage]);
+  }, [renderPage, syncOverlayDimensions]);
 
   // Redraw ONLY annotations overlay when annotations or page change (never wipes PDF canvas!)
   useEffect(() => {
@@ -870,6 +914,20 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
             <span>تظليل فسفوري 🖍️</span>
           </button>
 
+          {/* Browse Mode (Click through to iframe) */}
+          <button
+            type="button"
+            onClick={() => setActiveTool(activeTool === 'none' ? 'pen' : 'none')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+              activeTool === 'none'
+                ? 'bg-sky-600 text-white shadow-lg shadow-sky-600/30 ring-2 ring-sky-300 font-black'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+            }`}
+            title="وضع التصفح الحر داخل المستند أو النقر على أزرار المعاينة"
+          >
+            <span>{activeTool === 'none' ? 'وضع التصفح نشط 👆' : 'تصفح المستند 👆'}</span>
+          </button>
+
           {/* Color Switcher */}
           {(activeTool === 'pen' || activeTool === 'highlighter') && (
             <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-950/70 rounded-xl border border-slate-700">
@@ -897,6 +955,24 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
           >
             <Trash2 className="w-3.5 h-3.5 text-rose-400" />
             <span>مسح الرسومات</span>
+          </button>
+
+          {/* Direct Iframe / Canvas mode toggle */}
+          <button
+            type="button"
+            onClick={() => {
+              setUseIframeFallback(prev => !prev);
+              setErrorMsg(null);
+            }}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+              useIframeFallback
+                ? 'bg-indigo-600 border-indigo-400 text-white shadow-md'
+                : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+            }`}
+            title="تبديل وضع العرض بين عارض الكانفاس والمعاينة المباشرة"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>{useIframeFallback ? 'معاينة مباشرة 🖥️' : 'كانفاس ⚡'}</span>
           </button>
 
           <div className="h-4 w-px bg-slate-700 mx-0.5"></div>
@@ -952,162 +1028,161 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
         </div>
       )}
 
-      {/* Main Canvas Presentation Viewport */}
+      {/* Main Presentation Viewport */}
       <div
         className={`relative flex-1 w-full h-full flex items-center justify-center overflow-auto ${
           readOnly ? 'p-0 m-0' : 'p-2'
         }`}
       >
-        {useIframeFallback ? (
-          <div className="w-full h-full min-h-[350px] flex flex-col bg-slate-950">
+        {loading && (
+          <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-slate-950/80 backdrop-blur-sm">
+            <Loader2 className="w-10 h-10 text-emerald-400 animate-spin" />
+            <div className="text-sm font-semibold text-slate-300">جاري تجهيز وعرض صفحة الـ PDF بدقة فائقة...</div>
+          </div>
+        )}
+
+        {errorMsg && !useIframeFallback && (
+          <div className="z-30 flex flex-col items-center justify-center p-6 bg-rose-950/40 border border-rose-800 rounded-2xl max-w-md text-center">
+            <AlertCircle className="w-12 h-12 text-rose-400 mb-2" />
+            <div className="text-base font-bold text-rose-200 mb-1">تعذر فتح ملف الـ PDF عبر الكانفاس</div>
+            <div className="text-xs text-rose-300 mb-3">{errorMsg}</div>
+            
+            <div className="flex items-center gap-2 mb-3 flex-wrap justify-center">
+              <button
+                type="button"
+                onClick={() => setRetryTrigger(prev => prev + 1)}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>إعادة المحاولة الآن 🔄</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setUseIframeFallback(true);
+                  setErrorMsg(null);
+                }}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>معاينة مباشرة (Iframe) 🖥️</span>
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-400 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
+              💡 نصيحة: يمكنك رفع ملف الـ PDF مباشرة من جهازك عبر زر &quot;رفع ملف PDF&quot;، ليعمل بأقصى سرعة وبدون قيود.
+            </div>
+          </div>
+        )}
+
+        {/* Unified Presentation Stage (Document Layer + Realtime Drawing & Laser Overlays) */}
+        <div
+          className={`relative shadow-2xl overflow-hidden leading-none ${
+            useIframeFallback
+              ? 'w-full h-full min-h-[350px] bg-slate-950 flex flex-col'
+              : 'bg-white'
+          } ${
+            readOnly ? 'rounded-none border-0' : 'rounded-lg border border-slate-800'
+          }`}
+          style={!useIframeFallback ? {
+            fontFamily: "'Noto Naskh Arabic', 'Cairo', 'Amiri', 'Tajawal', sans-serif",
+            fontFeatureSettings: "'liga' 1, 'kern' 1",
+            direction: 'rtl',
+          } : undefined}
+        >
+          {/* Layer 0: Document Display (Iframe or High-Res Canvas) */}
+          {useIframeFallback ? (
             <iframe
+              key={`pdf-embed-${pdfUrl}`}
               src={formatPdfEmbedUrl(pdfUrl, currentPage)}
-              className="w-full h-full min-h-[350px] border-0"
+              className="w-full h-full min-h-[350px] flex-1 border-0 block"
               title="ملف الشرح المباشر"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope"
             />
-          </div>
-        ) : (
-          <>
-            {loading && (
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-slate-950/80 backdrop-blur-sm">
-                <Loader2 className="w-10 h-10 text-emerald-400 animate-spin" />
-                <div className="text-sm font-semibold text-slate-300">جاري تجهيز وعرض صفحة الـ PDF بدقة فائقة...</div>
-              </div>
-            )}
-
-            {errorMsg && (
-              <div className="flex flex-col items-center justify-center p-6 bg-rose-950/40 border border-rose-800 rounded-2xl max-w-md text-center">
-                <AlertCircle className="w-12 h-12 text-rose-400 mb-2" />
-                <div className="text-base font-bold text-rose-200 mb-1">تعذر فتح ملف الـ PDF</div>
-                <div className="text-xs text-rose-300 mb-3">{errorMsg}</div>
-                
-                <div className="flex items-center gap-2 mb-3 flex-wrap justify-center">
-                  <button
-                    type="button"
-                    onClick={() => setRetryTrigger(prev => prev + 1)}
-                    className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                    <span>إعادة المحاولة الآن 🔄</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setUseIframeFallback(true);
-                      setErrorMsg(null);
-                    }}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    <span>معاينة مباشرة 🖥️</span>
-                  </button>
-                </div>
-
-                <div className="text-xs text-slate-400 bg-slate-900/80 p-2.5 rounded-xl border border-slate-800">
-                  💡 نصيحة: يمكنك رفع ملف الـ PDF مباشرة من جهازك عبر زر &quot;رفع ملف PDF&quot;، ليعمل بأقصى سرعة وبدون قيود.
-                </div>
-              </div>
-            )}
-
-            {/* PDF Render Canvas & Overlay Wrapper */}
-            <div
-              className={`relative shadow-2xl overflow-hidden bg-white leading-none ${
-                readOnly ? 'rounded-none border-0' : 'rounded-lg border border-slate-800'
-              }`}
+          ) : (
+            <canvas
+              ref={canvasRef}
+              className="block pointer-events-none mx-auto max-w-none"
               style={{
                 fontFamily: "'Noto Naskh Arabic', 'Cairo', 'Amiri', 'Tajawal', sans-serif",
                 fontFeatureSettings: "'liga' 1, 'kern' 1",
                 direction: 'rtl',
               }}
+            />
+          )}
+
+          {/* Layer 1: Realtime Drawing / Interaction Overlay Canvas */}
+          <canvas
+            ref={drawingCanvasRef}
+            onMouseDown={handlePointerDown}
+            onMouseMove={handlePointerMove}
+            onMouseUp={handlePointerUp}
+            onMouseLeave={handlePointerLeave}
+            onTouchStart={handlePointerDown}
+            onTouchMove={handlePointerMove}
+            onTouchEnd={handlePointerUp}
+            onTouchCancel={handlePointerUp}
+            className={`absolute inset-0 z-10 touch-none ${
+              readOnly || activeTool === 'none'
+                ? 'pointer-events-none'
+                : activeTool === 'laser' || activeTool === 'pen' || activeTool === 'highlighter'
+                ? 'cursor-crosshair pointer-events-auto'
+                : 'cursor-default pointer-events-auto'
+            }`}
+          />
+
+          {/* Layer 2: Realtime Writing Pen / Laser Dynamic Indicator */}
+          {Boolean(currentPointer?.active) && (
+            <div
+              className="absolute z-20 pointer-events-none -translate-x-1/2 -translate-y-1/2 transition-all duration-75 ease-out"
+              style={{
+                left: `${(currentPointer?.x ?? 0.5) * 100}%`,
+                top: `${(currentPointer?.y ?? 0.5) * 100}%`,
+                willChange: 'transform, left, top',
+              }}
             >
-              {/* Base PDF Render Canvas */}
-              <canvas
-                ref={canvasRef}
-                className="block pointer-events-none mx-auto max-w-none"
-                style={{
-                  fontFamily: "'Noto Naskh Arabic', 'Cairo', 'Amiri', 'Tajawal', sans-serif",
-                  fontFeatureSettings: "'liga' 1, 'kern' 1",
-                  direction: 'rtl',
-                }}
-              />
-
-              {/* Realtime Drawing / Interaction Overlay Canvas */}
-              <canvas
-                ref={drawingCanvasRef}
-                onMouseDown={handlePointerDown}
-                onMouseMove={handlePointerMove}
-                onMouseUp={handlePointerUp}
-                onMouseLeave={handlePointerLeave}
-                onTouchStart={handlePointerDown}
-                onTouchMove={handlePointerMove}
-                onTouchEnd={handlePointerUp}
-                onTouchCancel={handlePointerUp}
-                className={`absolute inset-0 z-10 touch-none ${
-                  readOnly
-                    ? 'pointer-events-none'
-                    : activeTool === 'laser'
-                    ? 'cursor-crosshair'
-                    : activeTool === 'pen' || activeTool === 'highlighter'
-                    ? 'cursor-crosshair'
-                    : 'cursor-default'
-                }`}
-              />
-
-              {/* Realtime Writing Pen / Laser Dynamic Indicator (Pure visual dot, NO floating text badges) */}
-              {Boolean(currentPointer?.active) && (
-                <div
-                  className="absolute z-20 pointer-events-none -translate-x-1/2 -translate-y-1/2 transition-all duration-75 ease-out"
-                  style={{
-                    left: `${(currentPointer?.x ?? 0.5) * 100}%`,
-                    top: `${(currentPointer?.y ?? 0.5) * 100}%`,
-                    willChange: 'transform, left, top',
-                  }}
-                >
-                  {currentPointer?.tool === 'pen' || currentPointer?.tool === 'highlighter' ? (
-                    currentPointer?.isDrawing ? (
-                      /* LIVE WRITING / DRAWING: Pure ink nib indicator */
-                      <div className="relative flex items-center justify-center">
-                        <div
-                          className="w-4 h-4 rounded-full border-2 border-white shadow-lg flex items-center justify-center animate-pulse"
-                          style={{ backgroundColor: currentPointer?.color || penColor }}
-                        >
-                          <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                        </div>
-
-                        <span
-                          className="absolute w-8 h-8 rounded-full border-2 border-white/80 animate-ping"
-                          style={{ borderColor: currentPointer?.color || penColor }}
-                        />
-                      </div>
-                    ) : (
-                      /* LIVE LASER POINTER BEAM (Merged into Pen): Glowing pulsing laser dot with halo (pure laser dot, no text) */
-                      <div className="relative flex items-center justify-center">
-                        <span
-                          className="absolute w-8 h-8 rounded-full animate-ping opacity-75"
-                          style={{ backgroundColor: currentPointer?.color || '#ef4444' }}
-                        />
-                        <div
-                          className="w-4 h-4 rounded-full border-2 border-white shadow-[0_0_15px_#ff0055] flex items-center justify-center"
-                          style={{ backgroundColor: currentPointer?.color || '#ef4444' }}
-                        >
-                          <div className="w-1.5 h-1.5 rounded-full bg-white shadow-sm" />
-                        </div>
-                      </div>
-                    )
-                  ) : (
-                    /* RED PULSING LASER BEAM (Fallback) */
-                    <div className="relative flex items-center justify-center">
-                      <span className="absolute w-8 h-8 rounded-full bg-rose-500/40 animate-ping"></span>
-                      <span className="w-4 h-4 rounded-full bg-rose-600 border-2 border-white shadow-[0_0_15px_#ff0055]"></span>
+              {currentPointer?.tool === 'pen' || currentPointer?.tool === 'highlighter' ? (
+                currentPointer?.isDrawing ? (
+                  /* LIVE WRITING / DRAWING: Pure ink nib indicator */
+                  <div className="relative flex items-center justify-center">
+                    <div
+                      className="w-4 h-4 rounded-full border-2 border-white shadow-lg flex items-center justify-center animate-pulse"
+                      style={{ backgroundColor: currentPointer?.color || penColor }}
+                    >
+                      <div className="w-1.5 h-1.5 rounded-full bg-white" />
                     </div>
-                  )}
+
+                    <span
+                      className="absolute w-8 h-8 rounded-full border-2 border-white/80 animate-ping"
+                      style={{ borderColor: currentPointer?.color || penColor }}
+                    />
+                  </div>
+                ) : (
+                  /* LIVE LASER POINTER BEAM (Merged into Pen): Glowing pulsing laser dot with halo (pure laser dot, no text) */
+                  <div className="relative flex items-center justify-center">
+                    <span
+                      className="absolute w-8 h-8 rounded-full animate-ping opacity-75"
+                      style={{ backgroundColor: currentPointer?.color || '#ef4444' }}
+                    />
+                    <div
+                      className="w-4 h-4 rounded-full border-2 border-white shadow-[0_0_15px_#ff0055] flex items-center justify-center"
+                      style={{ backgroundColor: currentPointer?.color || '#ef4444' }}
+                    >
+                      <div className="w-1.5 h-1.5 rounded-full bg-white shadow-sm" />
+                    </div>
+                  </div>
+                )
+              ) : (
+                /* RED PULSING LASER BEAM (Fallback) */
+                <div className="relative flex items-center justify-center">
+                  <span className="absolute w-8 h-8 rounded-full bg-rose-500/40 animate-ping" />
+                  <span className="w-4 h-4 rounded-full bg-rose-600 border-2 border-white shadow-[0_0_15px_#ff0055]" />
                 </div>
               )}
             </div>
-          </>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Floating Bottom Navigation Controls (Page Navigator) - Shown in Teacher Control or standalone mode */}

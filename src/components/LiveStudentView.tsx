@@ -1196,7 +1196,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
                 شاهد الشاشة الكبيرة لمتابعة شرح الأستاذ ومواصلة الدرس 👨‍🏫
               </p>
             </motion.div>
-          ) : (sessionState && sessionState.showPdfToStudents && sessionState.pdfUrl) ? (
+          ) : (sessionState && (sessionState.showPdfToStudents || sessionState.showPdfInRoom) && sessionState.pdfUrl) ? (
             /* CASE C-PDF: Live Synchronized PDF Viewer on Student Screen */
             <motion.div
               key="student-pdf"

@@ -10,16 +10,12 @@ import {
 // Helper to get Web App URL from localStorage or environment variables
 export function getWebAppUrl(): string {
   const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbwakS_2H_RJGQSy6tUhWQ17S8gpoidY1fFc_Id234ubTFKuzA0k6_qa-DaeCGdbvYpwWg/exec';
-  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbyBL4Qjs9PgKVHuO9lLv-IriRtblaqw_Hrlie4-BProdWidMUyEdKu61GQalCsBfXYL/exec';
+  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbwakS_2H_RJGQSy6tUhWQ17S8gpoidY1fFc_Id234ubTFKuzA0k6_qa-DaeCGdbvYpwWg/exec';
 
   // 1. Check localStorage first (allows individual overrides / testing)
   const localUrl = localStorage.getItem('webAppUrl');
   if (localUrl && localUrl.trim().length > 0) {
-    if (
-      localUrl.trim() === OLD_STALE_APP_URL ||
-      localUrl.includes('AKfycbyBL4Qjs9PgKVHuO9lLv-IriRtblaqw_Hrlie4-BProdWidMUyEdKu61GQalCsBfXYL') ||
-      localUrl.includes('AKfycbxqvsIGybSXRrL7nG-kMSfdlw3nlrDVKJEgf5kZ4FXQPPNyePbZ8Y3kM6rWOuTDfy9EUg')
-    ) {
+    if (localUrl.trim() === OLD_STALE_APP_URL || localUrl.includes('AKfycbyBL4Qjs9PgKVHuO9lLv-IriRtblaqw_Hrlie4-BProdWidMUyEdKu61GQalCsBfXYL')) {
       localStorage.setItem('webAppUrl', NEW_DEFAULT_URL);
       return NEW_DEFAULT_URL;
     }

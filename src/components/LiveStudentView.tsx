@@ -105,6 +105,8 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
           setIsJoined(false);
           setIsPinVerified(false);
           setSubmittedAnswer(null);
+          setScanSuccessMsg(null);
+          setScannerError(null);
           setJoinError('تم إنهاء الحصة المباشرة بنجاح 🎓 شكراً لتفاعلكم!');
           sessionStorage.removeItem('liveStudentUsername');
           sessionStorage.removeItem('liveStudentSheet');
@@ -118,6 +120,8 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
         if (state.sessionPin && studentPin.trim() && state.sessionPin.trim() !== studentPin.trim()) {
           setIsJoined(false);
           setIsPinVerified(false);
+          setScanSuccessMsg(null);
+          setScannerError(null);
           setJoinError('قام المعلم بتحديث رمز الحضور في الفصل. يرجى إدخال الرمز الجديد المعروض على الشاشة.');
           sessionStorage.removeItem('liveStudentPin');
           localStorage.removeItem('liveStudentPin');
@@ -370,6 +374,11 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
 
     setScanSuccessMsg(`✅ تم مسح الكود بنجاح: ${msgs.join(' • ')}`);
     setJoinError(null);
+
+    // Auto-dismiss after 6s to avoid stuck message on session end or rescanning
+    setTimeout(() => {
+      setScanSuccessMsg(null);
+    }, 6000);
 
     // Audio beep confirmation
     try {
@@ -698,9 +707,19 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
 
           {/* رسالة نجاح مسح الكود */}
           {scanSuccessMsg && (
-            <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 rounded-2xl text-xs font-bold flex items-center gap-2 mb-4 animate-in fade-in">
-              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-              <span className="leading-relaxed">{scanSuccessMsg}</span>
+            <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 rounded-2xl text-xs font-bold flex items-center justify-between gap-2 mb-4 animate-in fade-in">
+              <div className="flex items-center gap-2 min-w-0">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span className="leading-relaxed truncate">{scanSuccessMsg}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setScanSuccessMsg(null)}
+                className="p-1 hover:bg-emerald-500/20 rounded-lg text-emerald-400 hover:text-emerald-200 transition-colors shrink-0 cursor-pointer"
+                title="إغلاق التنبيه"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
           )}
 
@@ -899,6 +918,8 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
                 setIsJoined(false);
                 setIsPinVerified(false);
                 setSubmittedAnswer(null);
+                setScanSuccessMsg(null);
+                setScannerError(null);
               }}
               title="تسجيل خروج أو تغيير اسم الطالب"
               className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold"

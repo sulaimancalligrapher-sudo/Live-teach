@@ -18,6 +18,7 @@ import {
   generatePinCode,
   getWebAppUrl,
   fetchHeaderConfig,
+  fetchLiveQuestionsT,
   setupLiveDirectSheetsApi,
   setupQuizDirectSheetsApi,
   stopAllActiveBroadcasts
@@ -49,6 +50,8 @@ export default function AdminPanel({
   const [settingUpLiveSheets, setSettingUpLiveSheets] = useState(false);
   const [settingUpQuizSheets, setSettingUpQuizSheets] = useState(false);
 
+  const [allLiveLessons, setAllLiveLessons] = useState<LiveLessonRow[]>([]);
+
   useEffect(() => {
     getLiveSessionState().then(st => {
       if (st && st.sessionPin) setCurrentPin(st.sessionPin);
@@ -56,6 +59,10 @@ export default function AdminPanel({
 
     fetchHeaderConfig().then(cfg => {
       if (cfg) setHeaderConfig(cfg);
+    }).catch(() => {});
+
+    fetchLiveQuestionsT().then(data => {
+      if (data && data.length > 0) setAllLiveLessons(data);
     }).catch(() => {});
   }, []);
 
@@ -381,13 +388,15 @@ export default function AdminPanel({
                     </div>
                     <div className="space-y-2 pt-2 border-t border-slate-800">
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           if (onStartTeacherTheater) {
-                            onStartTeacherTheater({
-                              title: 'درس تجريبي تفاعلي',
-                              videoUrl: '',
-                              questions: []
-                            });
+                            const st = await getLiveSessionState().catch(() => null);
+                            const currentTitle = st?.lessonTitle;
+                            const activeOrFirst = allLiveLessons.find(l => l.title === currentTitle)
+                              || allLiveLessons.find(l => l.videoUrl)
+                              || allLiveLessons[0]
+                              || { title: 'درس تفاعلي مباشر', videoUrl: '', questions: [] };
+                            onStartTeacherTheater(activeOrFirst);
                           }
                         }}
                         className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer"

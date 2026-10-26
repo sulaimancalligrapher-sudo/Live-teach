@@ -13,7 +13,7 @@ import {
 import { 
   initLiveSession, triggerLiveQuestion, revealLiveAnswer, resumeLiveVideo, 
   finishLiveSession, resetLiveSession, getLiveSessionState, recordLiveAnswersBatchT,
-  updateLivePin, leaveLiveSession,
+  updateLivePin, leaveLiveSession, fetchLiveQuestionsT,
   formatSecondsToTime, parseTimeToSeconds, formatDriveImageUrl,
   subscribeToLiveSession, toggleShowQrInRoom, toggleLiveVideoPlay,
   replyToStudentMessage, deleteStudentMessage, clearAllStudentMessages, toggleShowChatInRoom,
@@ -63,9 +63,23 @@ export default function LiveTeacherRoom({
   allLessons,
   onBack,
 }: LiveTeacherRoomProps) {
+  const [lessonsList, setLessonsList] = useState<LiveLessonRow[]>(allLessons && allLessons.length > 0 ? allLessons : []);
   const [selectedLesson, setSelectedLesson] = useState<LiveLessonRow | null>(
-    initialLesson || null
+    initialLesson || (allLessons && allLessons.length > 0 ? allLessons[0] : null)
   );
+
+  // Auto-fetch lessons if none provided via props (e.g. direct display URL)
+  useEffect(() => {
+    if (allLessons && allLessons.length > 0) {
+      setLessonsList(allLessons);
+    } else {
+      fetchLiveQuestionsT().then((data) => {
+        if (data && data.length > 0) {
+          setLessonsList(data);
+        }
+      }).catch(() => {});
+    }
+  }, [allLessons]);
 
   const [sessionState, setSessionState] = useState<LiveSessionState | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -175,11 +189,11 @@ export default function LiveTeacherRoom({
     };
   }, []);
 
-  // Synchronize selected lesson when switched from Admin panel
+  // Synchronize selected lesson when switched from Admin panel or when lessonsList loads
   useEffect(() => {
-    if (sessionState?.lessonTitle && allLessons.length > 0) {
+    if (sessionState?.lessonTitle && lessonsList.length > 0) {
       if (!selectedLesson || selectedLesson.title !== sessionState.lessonTitle) {
-        const match = allLessons.find(l => l.title === sessionState.lessonTitle);
+        const match = lessonsList.find(l => l.title === sessionState.lessonTitle);
         if (match) {
           setSelectedLesson(match);
           setIsPlaying(false);
@@ -191,8 +205,10 @@ export default function LiveTeacherRoom({
           }
         }
       }
+    } else if (!selectedLesson && lessonsList.length > 0) {
+      setSelectedLesson(lessonsList[0]);
     }
-  }, [sessionState?.lessonTitle, allLessons]);
+  }, [sessionState?.lessonTitle, lessonsList]);
 
   // Time tracking and smart auto-pause for questions
   const handleTimeUpdate = () => {
@@ -645,7 +661,8 @@ export default function LiveTeacherRoom({
     });
   }
 
-  const playableUrl = selectedLesson?.videoUrl ? getPlayableMediaUrl(selectedLesson.videoUrl) : '';
+  const effectiveVideoUrl = selectedLesson?.videoUrl || sessionState?.videoUrl || '';
+  const playableUrl = effectiveVideoUrl ? getPlayableMediaUrl(effectiveVideoUrl) : '';
 
   return (
     <div 
@@ -675,13 +692,13 @@ export default function LiveTeacherRoom({
             </span>
 
             {/* Lessons List Selector (Controlled via Admin - Hidden by default) */}
-            {sessionState?.showLessonsListInRoom && allLessons.length > 0 ? (
+            {sessionState?.showLessonsListInRoom && lessonsList.length > 0 ? (
               <div className="flex items-center gap-2 animate-in fade-in duration-200">
                 <select
                   value={selectedLesson?.title || ''}
                   onChange={(e) => {
                     if (e.target.value) {
-                      const found = allLessons.find(l => l.title === e.target.value);
+                      const found = lessonsList.find(l => l.title === e.target.value);
                       if (found) handleRequestSwitchLesson(found);
                     }
                   }}
@@ -689,7 +706,7 @@ export default function LiveTeacherRoom({
                   title="عرض قائمة الدروس وتبديل الدرس المعروض"
                 >
                   <option value="">-- اختر الدرس للبدء --</option>
-                  {allLessons.map((l, i) => (
+                  {lessonsList.map((l, i) => (
                     <option key={i} value={l.title}>{l.title}</option>
                   ))}
                 </select>
@@ -1151,6 +1168,16 @@ export default function LiveTeacherRoom({
                 }}
                 className="w-16 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
               />
+            </div>
+          </div>
+
+          {/* Right side: Connected Students indicator in theater screen */}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold text-slate-300 shadow-sm">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <Users className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">الطلاب المتصلون:</span>
+              <span className="text-emerald-400 font-mono font-black">{connectedStudents.length}</span>
             </div>
           </div>
         </div>

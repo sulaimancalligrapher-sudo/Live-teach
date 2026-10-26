@@ -334,6 +334,14 @@ export default function LiveClassManager({
     setIsTogglingVideoPlay(true);
     try {
       const nextState = !sessionState?.videoPlaying;
+      if (!sessionState?.videoUrl && activeLesson?.videoUrl) {
+        await initLiveSession({
+          lessonTitle: activeLesson.title,
+          videoUrl: activeLesson.videoUrl,
+          timeLimit: activeLesson.settingTimeLimit || 30,
+          showResult: activeLesson.settingShowResult || 'نعم',
+        });
+      }
       const res = await toggleLiveVideoPlay(nextState);
       if (res.success && res.state) setSessionState(res.state);
     } catch (e) {
@@ -400,16 +408,23 @@ export default function LiveClassManager({
     }
   };
 
-  // Determine currently active lesson from explicitly selected lesson or active session
+  // Keep selectedLessonTitle in sync with active sessionState.lessonTitle
+  useEffect(() => {
+    if (sessionState?.lessonTitle && !selectedLessonTitle) {
+      setSelectedLessonTitle(sessionState.lessonTitle);
+    }
+  }, [sessionState?.lessonTitle]);
+
+  // Determine currently active lesson from explicitly selected lesson, active session, or first available lesson
   const activeLesson = useMemo(() => {
-    const titleToUse = selectedLessonTitle;
+    const titleToUse = selectedLessonTitle || sessionState?.lessonTitle || (lessons.length > 0 ? lessons[0].title : '');
     if (titleToUse) {
       const trimmed = titleToUse.trim().toLowerCase();
       const match = lessons.find(l => l.title.trim().toLowerCase() === trimmed);
       if (match) return match;
     }
-    return null;
-  }, [selectedLessonTitle, lessons]);
+    return lessons[0] || null;
+  }, [selectedLessonTitle, sessionState?.lessonTitle, lessons]);
 
   // Trigger question directly from Admin panel (transferred from display screen)
   const handleTriggerQuestionFromAdmin = async (q: LiveQuestionItem, idx: number) => {
@@ -1457,7 +1472,7 @@ export default function LiveClassManager({
                       <ListVideo className="w-4 h-4 text-amber-400" />
                     </div>
                     <select
-                      value={selectedLessonTitle}
+                      value={selectedLessonTitle || sessionState?.lessonTitle || ''}
                       onChange={(e) => {
                         const val = e.target.value;
                         setSelectedLessonTitle(val);
@@ -1719,7 +1734,7 @@ export default function LiveClassManager({
                       onClick={handleToggleVideoPlayFromAdmin}
                       disabled={
                         isTogglingVideoPlay || 
-                        !sessionState?.videoUrl || 
+                        (!sessionState?.videoUrl && !activeLesson?.videoUrl) || 
                         sessionState?.status === 'question_active' || 
                         sessionState?.status === 'revealed'
                       }

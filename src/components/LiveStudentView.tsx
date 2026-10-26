@@ -686,30 +686,6 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
             </p>
           </div>
 
-          {/* Compact Accidental Exit Recovery Bar (Slim & Clean) */}
-          {username.trim().length > 0 && studentPin.trim().length > 0 && (
-            <motion.div 
-              initial={{ opacity: 0, y: -5 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-indigo-950/70 border border-indigo-500/40 rounded-2xl p-2.5 mb-4 text-right flex items-center justify-between gap-2"
-            >
-              <div className="flex items-center gap-2 min-w-0 flex-1">
-                <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-                <span className="text-xs text-slate-200 font-bold truncate">
-                  مرحباً {username}، هل ترغب بالاستئناف؟
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleJoin(username, sheetNumber, studentPin)}
-                className="py-1.5 px-3 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white rounded-xl text-xs font-black shadow-md transition-all cursor-pointer flex items-center gap-1 shrink-0 active:scale-95"
-              >
-                <span>استئناف الحصة 🚀</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            </motion.div>
-          )}
-
           {/* زر مسح رمز QR بالكاميرا */}
           <button
             type="button"
@@ -799,17 +775,6 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
               <span>دخول الحصة المباشرة 🚀</span>
             </button>
           </form>
-
-          {onBackToMain && (
-            <button
-              type="button"
-              onClick={onBackToMain}
-              className="w-full mt-4 text-xs text-slate-400 hover:text-slate-200 font-bold transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer"
-            >
-              <ArrowRight className="w-4 h-4" />
-              <span>العودة للصفحة الرئيسية</span>
-            </button>
-          )}
         </motion.div>
 
         {/* QR Scanner Camera Modal */}
@@ -941,17 +906,6 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
               <LogOut className="w-4 h-4 text-rose-400" />
               <span className="hidden sm:inline">تبديل الطالب</span>
             </button>
-            {onBackToMain && (
-              <button
-                onClick={async () => {
-                  await leaveLiveSession(username, sheetNumber);
-                  onBackToMain();
-                }}
-                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer"
-              >
-                الرئيسية
-              </button>
-            )}
           </div>
         </div>
       </header>
@@ -1026,8 +980,8 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
         </AnimatePresence>
 
         <AnimatePresence mode="wait">
-          {/* CASE A: Active Question Mode */}
-          {isQuestionActive ? (
+          {/* CASE A: Active Question Mode (Shows when question is active and either student hasn't submitted yet or PDF is not showing) */}
+          {(isQuestionActive && (!submittedAnswer || !(sessionState && sessionState.showPdfToStudents && sessionState.pdfUrl))) ? (
             <motion.div
               key={`q-${sessionState.currentQuestionIndex}`}
               initial={{ opacity: 0, y: 15, scale: 0.98 }}
@@ -1229,6 +1183,26 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
               animate={{ opacity: 1, scale: 1 }}
               className="w-full bg-slate-900 border border-emerald-500/30 rounded-3xl overflow-hidden shadow-2xl flex flex-col"
             >
+              {/* Status Banner when student has submitted answer while PDF is shown */}
+              {isQuestionActive && submittedAnswer && (
+                <div className="bg-emerald-950/90 border-b border-emerald-500/30 px-4 py-2 text-center text-xs font-bold text-emerald-300 flex items-center justify-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>تم استلام إجابتك: «{submittedAnswer}» • انتظر النتيجة على الشاشة 🌟</span>
+                </div>
+              )}
+              {isRevealed && submittedAnswer && (
+                <div className={`px-4 py-2 text-center text-xs font-bold flex items-center justify-center gap-2 border-b ${
+                  isCorrectAnswer === true
+                    ? 'bg-emerald-950/90 border-emerald-500/30 text-emerald-300'
+                    : isCorrectAnswer === false
+                    ? 'bg-rose-950/90 border-rose-500/30 text-rose-300'
+                    : 'bg-indigo-950/90 border-indigo-500/30 text-indigo-300'
+                }`}>
+                  <span>{isCorrectAnswer === true ? '🎉 إجابتك صحيحة!' : isCorrectAnswer === false ? '❌ حظاً أوفر في السؤال القادم' : '📝 إجابتك مسجلة'}</span>
+                  <span className="opacity-80 font-mono">(إجابتك: {submittedAnswer} • النموذجية: {evalResult?.correctLabel || currentQ?.correctAnswer})</span>
+                </div>
+              )}
+
               {/* PDF Header Pill */}
               <div className="bg-slate-950 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between gap-2 text-xs">
                 <div className="flex items-center gap-2 truncate">
@@ -1246,7 +1220,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
               </div>
 
               {/* PDF Canvas View */}
-              <div className="w-full h-[62vh] min-h-[380px] bg-slate-950/80 relative">
+              <div className="w-full h-[65vh] min-h-[380px] bg-slate-950/80 relative">
                 <NativePdfViewer
                   pdfUrl={sessionState?.pdfUrl || ''}
                   page={sessionState?.pdfPage || 1}
@@ -1261,7 +1235,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
 
               {/* PDF Footer helper */}
               <div className="px-4 py-2 bg-slate-950/90 border-t border-slate-800/80 text-center text-[11px] text-slate-400">
-                <span>يتم تقليب الصفحات والشرح تلقائياً بالتزامن مع شاشة الأستاذ 👨‍🏫</span>
+                <span>يتم تقليب الصفحات ومؤشر الليزر والشرح تلقائياً بالتزامن مع شاشة الأستاذ 👨‍🏫</span>
               </div>
             </motion.div>
           ) : (

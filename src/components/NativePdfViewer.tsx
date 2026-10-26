@@ -814,34 +814,20 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
       {/* Top Teacher Control Bar (Annotations, Laser, Colors, Zoom, Fit Mode) */}
       {isTeacherControl && !readOnly && (
         <div className="absolute top-2 z-30 flex flex-wrap items-center justify-center gap-2 px-3 py-1.5 bg-slate-900/95 backdrop-blur-md rounded-2xl border border-slate-700/80 shadow-2xl max-w-full">
-          {/* Laser Tool */}
-          <button
-            type="button"
-            onClick={() => setActiveTool('laser')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
-              activeTool === 'laser'
-                ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/30 ring-2 ring-rose-400'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-            title="مؤشر الليزر الأحمر"
-          >
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-400 animate-pulse"></span>
-            <span>مؤشر الليزر 🔴</span>
-          </button>
-
-          {/* Pen Tool */}
+          {/* Unified Pen & Laser Tool (قلم للكتابة والتأشير بالليزر في نفس الوقت) */}
           <button
             type="button"
             onClick={() => setActiveTool('pen')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer ${
               activeTool === 'pen'
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30 ring-2 ring-indigo-400'
+                ? 'bg-gradient-to-r from-indigo-600 via-rose-600 to-indigo-600 text-white shadow-lg shadow-indigo-600/30 ring-2 ring-indigo-400 font-black'
                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
-            title="القلم للرسم والكتابة الحية"
+            title="القلم والليزر المدمج (حرك الفأرة للتأشير بالليزر، واضغط للرسم والكتابة)"
           >
-            <Palette className="w-3.5 h-3.5" />
-            <span>القلم ✏️</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-400 animate-pulse shrink-0" />
+            <Palette className="w-3.5 h-3.5 shrink-0" />
+            <span>القلم والليزر ✏️🔴</span>
           </button>
 
           {/* Highlighter Tool */}
@@ -1030,34 +1016,47 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
               }}
             >
               {currentPointer?.tool === 'pen' || currentPointer?.tool === 'highlighter' ? (
-                /* LIVE WRITING PEN INDICATOR: Shows pen icon tilted down and animated nib */
-                <div className="relative flex items-center justify-center">
-                  {/* Ink contact dot / nib */}
-                  <div
-                    className="w-4 h-4 rounded-full border-2 border-white shadow-lg flex items-center justify-center animate-pulse"
-                    style={{ backgroundColor: currentPointer?.color || penColor }}
-                  >
-                    <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                  </div>
+                currentPointer?.isDrawing ? (
+                  /* LIVE WRITING / DRAWING: Ink contact nib with pen trail */
+                  <div className="relative flex items-center justify-center">
+                    <div
+                      className="w-4 h-4 rounded-full border-2 border-white shadow-lg flex items-center justify-center animate-pulse"
+                      style={{ backgroundColor: currentPointer?.color || penColor }}
+                    >
+                      <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                    </div>
 
-                  {/* Pulsing ink ripple when pen is actively writing / drawing */}
-                  {Boolean(currentPointer?.isDrawing) && (
                     <span
                       className="absolute w-8 h-8 rounded-full border-2 border-white/80 animate-ping"
                       style={{ borderColor: currentPointer?.color || penColor }}
                     />
-                  )}
 
-                  {/* Distinct tilted pen cursor icon floating right above the nib */}
-                  <div className="absolute -top-7 -right-6 pointer-events-none transform -rotate-12 transition-transform duration-100 flex items-center gap-1 bg-slate-900/90 text-white px-1.5 py-0.5 rounded-md border border-slate-700/80 shadow-md text-[10px] font-bold">
-                    <span>✏️</span>
-                    <span className="text-[9px] font-mono opacity-80">
-                      {currentPointer?.isDrawing ? 'يكتب...' : 'قلم'}
-                    </span>
+                    <div className="absolute -top-7 -right-6 pointer-events-none transform -rotate-12 transition-transform duration-100 flex items-center gap-1 bg-slate-900/90 text-white px-1.5 py-0.5 rounded-md border border-slate-700/80 shadow-md text-[10px] font-bold">
+                      <span>✏️</span>
+                      <span className="text-[9px] font-mono opacity-80">يكتب...</span>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  /* LIVE LASER POINTER BEAM (Merged into Pen): Brilliant pulsing laser dot with halo */
+                  <div className="relative flex items-center justify-center">
+                    <span
+                      className="absolute w-8 h-8 rounded-full animate-ping opacity-75"
+                      style={{ backgroundColor: currentPointer?.color || '#ef4444' }}
+                    />
+                    <div
+                      className="w-4 h-4 rounded-full border-2 border-white shadow-[0_0_15px_#ff0055] flex items-center justify-center"
+                      style={{ backgroundColor: currentPointer?.color || '#ef4444' }}
+                    >
+                      <div className="w-1.5 h-1.5 rounded-full bg-white shadow-sm" />
+                    </div>
+                    <div className="absolute -top-7 -right-6 pointer-events-none transform -rotate-12 transition-transform duration-100 flex items-center gap-1 bg-slate-900/90 text-white px-1.5 py-0.5 rounded-md border border-slate-700/80 shadow-md text-[10px] font-bold">
+                      <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                      <span className="text-[9px] font-mono opacity-90">ليزر 🔴</span>
+                    </div>
+                  </div>
+                )
               ) : (
-                /* RED PULSING LASER BEAM */
+                /* RED PULSING LASER BEAM (Fallback) */
                 <div className="relative flex items-center justify-center">
                   <span className="absolute w-8 h-8 rounded-full bg-rose-500/40 animate-ping"></span>
                   <span className="w-4 h-4 rounded-full bg-rose-600 border-2 border-white shadow-[0_0_15px_#ff0055]"></span>

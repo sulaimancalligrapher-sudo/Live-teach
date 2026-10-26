@@ -271,6 +271,18 @@ export default function LiveDirectManager({
   const handleTogglePdfToStudents = async (show: boolean) => {
     setIsUpdatingPdfToStudents(true);
     try {
+      if (show && sessionState?.pdfUrl) {
+        const fileId = sessionState.pdfUrl.replace(/^local:\/\//, '');
+        try {
+          const record = await getPdfFromIndexedDB(fileId);
+          if (record && record.data) {
+            await uploadPdfToServer(fileId, sessionState.pdfTitle || 'pdf', record.data);
+          }
+        } catch (syncErr) {
+          console.warn('PDF server sync check:', syncErr);
+        }
+      }
+
       const res = await toggleShowPdfToStudents(show);
       if (res.success && res.state) {
         setSessionState(res.state);

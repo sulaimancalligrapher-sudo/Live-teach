@@ -560,29 +560,35 @@ async function startServer() {
   // Upload or sync PDF file to server
   app.post("/api/pdf/upload", (req, res) => {
     try {
-      const { id, name, base64 } = req.body || {};
+      // Support id from query or JSON body
+      const id = (req.query.id as string) || (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body) ? req.body.id : null);
+      const name = (req.query.name as string) || (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body) ? req.body.name : '');
+      const base64 = req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body) ? req.body.base64 : null;
+
       if (!id) {
         return res.status(400).json({ error: "Missing id parameter" });
       }
 
-      const safeId = String(id).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const safeId = String(id).replace(/^local:\/\//, '').replace(/[^a-zA-Z0-9_-]/g, '_');
       const targetPath = path.join(PDF_UPLOADS_DIR, `${safeId}.pdf`);
 
-      if (base64) {
+      if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+        fs.writeFileSync(targetPath, req.body);
+      } else if (base64) {
         const cleanBase64 = String(base64).replace(/^data:application\/pdf;base64,/, '');
         const buffer = Buffer.from(cleanBase64, 'base64');
         fs.writeFileSync(targetPath, buffer);
-      } else if (Buffer.isBuffer(req.body)) {
-        fs.writeFileSync(targetPath, req.body);
       } else {
         return res.status(400).json({ error: "No PDF data provided" });
       }
 
-      console.log(`[PDF Server] Saved PDF ${safeId} (${name || 'unnamed'}) size: ${fs.statSync(targetPath).size} bytes`);
+      const fileSize = fs.existsSync(targetPath) ? fs.statSync(targetPath).size : 0;
+      console.log(`[PDF Server] Successfully saved PDF ${safeId} (${name || 'unnamed'}) size: ${fileSize} bytes`);
       res.json({
         success: true,
         id: safeId,
         url: `/api/pdf/${safeId}`,
+        size: fileSize,
       });
     } catch (err: any) {
       console.error("Failed to save PDF on server:", err);
@@ -594,7 +600,7 @@ async function startServer() {
   app.get("/api/pdf/:id", (req, res) => {
     try {
       const { id } = req.params;
-      const safeId = String(id).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const safeId = String(id).replace(/^local:\/\//, '').replace(/[^a-zA-Z0-9_-]/g, '_');
       let targetPath = path.join(PDF_UPLOADS_DIR, `${safeId}.pdf`);
       if (!fs.existsSync(targetPath)) {
         targetPath = path.join(PDF_UPLOADS_DIR, safeId);
@@ -607,12 +613,20 @@ async function startServer() {
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Access-Control-Allow-Origin", "*");
       res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Range, Content-Type, Accept");
       res.setHeader("Cache-Control", "public, max-age=86400");
       res.sendFile(targetPath);
     } catch (err: any) {
       console.error("Error reading PDF file:", err);
       res.status(500).send("Error reading PDF file");
     }
+  });
+
+  app.options("/api/pdf/:id", (_req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Range, Content-Type, Accept");
+    res.status(204).end();
   });
 
 

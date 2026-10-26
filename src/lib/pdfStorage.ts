@@ -37,32 +37,50 @@ export interface StoredPdfRecord {
 }
 
 /**
- * Helper to upload PDF ArrayBuffer to backend server storage
+ * Helper to upload PDF ArrayBuffer to backend server storage with direct binary streaming
  */
 export async function uploadPdfToServer(id: string, name: string, buffer: ArrayBuffer): Promise<boolean> {
   try {
     const safeId = id.replace(/^local:\/\//, '').replace(/[^a-zA-Z0-9_-]/g, '_');
     
-    // Convert ArrayBuffer to Base64 in chunks to avoid stack overflow with large files
-    let binary = '';
-    const bytes = new Uint8Array(buffer);
-    const len = bytes.byteLength;
-    const chunkSize = 0x8000;
-    for (let i = 0; i < len; i += chunkSize) {
-      binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, Math.min(i + chunkSize, len))));
+    // Method 1: Send pure binary ArrayBuffer (Fastest, zero memory duplication, no call stack limits)
+    try {
+      const res = await fetch(`/api/pdf/upload?id=${encodeURIComponent(safeId)}&name=${encodeURIComponent(name || safeId)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/pdf',
+        },
+        body: buffer,
+      });
+      if (res.ok) {
+        return true;
+      }
+    } catch (directErr) {
+      console.warn('Direct binary PDF upload attempt failed, trying base64 fallback:', directErr);
     }
-    const base64 = btoa(binary);
 
-    const res = await fetch('/api/pdf/upload', {
+    // Method 2: Safe base64 conversion via FileReader without call stack overflow
+    const blob = new Blob([buffer], { type: 'application/pdf' });
+    const base64Data = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        resolve(result ? result.split(',')[1] : '');
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    const fallbackRes = await fetch('/api/pdf/upload', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         id: safeId,
-        name,
-        base64,
+        name: name || safeId,
+        base64: base64Data,
       }),
     });
-    return res.ok;
+    return fallbackRes.ok;
   } catch (err) {
     console.warn('Failed to upload PDF to server:', err);
     return false;
@@ -104,8 +122,12 @@ export async function savePdfToIndexedDB(id: string, name: string, fileOrBuffer:
     req.onerror = () => reject(req.error);
   });
 
-  // 2. Concurrently sync with backend server so all remote screens/projectors/students can access it
-  uploadPdfToServer(id, name, buffer).catch((e) => console.warn('Background server sync skipped:', e));
+  // 2. Sync synchronously to server so all students and remote screens can download it immediately
+  try {
+    await uploadPdfToServer(id, name, buffer);
+  } catch (syncErr) {
+    console.warn('Server sync upload error:', syncErr);
+  }
 }
 
 /**

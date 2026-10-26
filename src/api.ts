@@ -2303,6 +2303,12 @@ export function formatPdfEmbedUrl(rawUrl: string, page?: number): string {
   if (!rawUrl || !rawUrl.trim()) return '';
   let trimmed = rawUrl.trim();
 
+  // 0. Local or server stored PDF
+  if (trimmed.startsWith('local://')) {
+    const safeId = trimmed.replace(/^local:\/\//, '').replace(/[^a-zA-Z0-9_-]/g, '_');
+    return `/api/pdf/${safeId}${page && page > 1 ? `#page=${page}` : ''}`;
+  }
+
   // 1. Google Docs (مستندات جوجل) -> تحويل تلقائي إلى preview
   const docsMatch = trimmed.match(/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/);
   if (docsMatch && docsMatch[1]) {

@@ -413,6 +413,22 @@ async function startServer() {
     }
 
     try {
+      const safeDriveId = String(driveId).replace(/[^a-zA-Z0-9_-]/g, '_');
+      const PDF_UPLOADS_DIR = path.join(process.cwd(), 'public', 'pdf_uploads');
+      if (!fs.existsSync(PDF_UPLOADS_DIR)) {
+        fs.mkdirSync(PDF_UPLOADS_DIR, { recursive: true });
+      }
+      const cachedFilePath = path.join(PDF_UPLOADS_DIR, `${safeDriveId}.pdf`);
+
+      if (fs.existsSync(cachedFilePath)) {
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+        res.setHeader("Access-Control-Allow-Headers", "Range, Content-Type, Accept");
+        res.setHeader("Accept-Ranges", "bytes");
+        return res.sendFile(cachedFilePath);
+      }
+
       const headers: any = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       };
@@ -517,7 +533,15 @@ async function startServer() {
 
           res.status(confirmResponse.status);
           if (confirmResponse.body) {
-            Readable.fromWeb(confirmResponse.body as any).pipe(res);
+            const arrayBuf = await confirmResponse.arrayBuffer();
+            const buf = Buffer.from(arrayBuf);
+            try {
+              fs.writeFileSync(cachedFilePath, buf);
+            } catch {}
+            res.setHeader("Content-Type", sContentType || "application/pdf");
+            res.setHeader("Access-Control-Allow-Origin", "*");
+            res.setHeader("Accept-Ranges", "bytes");
+            res.send(buf);
           } else {
             res.end();
           }
@@ -535,10 +559,18 @@ async function startServer() {
       if (fContentLength) res.setHeader('content-length', fContentLength);
       if (fContentRange) res.setHeader('content-range', fContentRange);
       if (fAcceptRanges) res.setHeader('accept-ranges', fAcceptRanges);
+      res.setHeader('Access-Control-Allow-Origin', '*');
 
       res.status(response.status);
       if (response.body) {
-        Readable.fromWeb(response.body as any).pipe(res);
+        const arrayBuf = await response.arrayBuffer();
+        const buf = Buffer.from(arrayBuf);
+        try {
+          fs.writeFileSync(cachedFilePath, buf);
+        } catch {}
+        res.setHeader("Content-Type", fContentType || "application/pdf");
+        res.setHeader("Accept-Ranges", "bytes");
+        res.send(buf);
       } else {
         res.end();
       }

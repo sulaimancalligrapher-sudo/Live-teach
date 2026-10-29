@@ -1196,7 +1196,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
                 شاهد الشاشة الكبيرة لمتابعة شرح الأستاذ ومواصلة الدرس 👨‍🏫
               </p>
             </motion.div>
-          ) : (sessionState && sessionState.showPdfToStudents && sessionState.pdfUrl) ? (
+          ) : (sessionState && (sessionState.showPdfToStudents || sessionState.showPdfInRoom) && sessionState.pdfUrl) ? (
             /* CASE C-PDF: Live Synchronized PDF Viewer on Student Screen */
             <motion.div
               key="student-pdf"
@@ -1240,8 +1240,8 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
                 </div>
               </div>
 
-              {/* PDF Canvas View */}
-              <div className="w-full h-[65vh] min-h-[380px] bg-slate-950/80 relative">
+              {/* PDF Canvas View - Strictly synchronized under teacher control (no student scrolling) */}
+              <div className="w-full h-[65vh] min-h-[380px] bg-slate-950/80 relative overflow-hidden select-none touch-none pointer-events-none">
                 <NativePdfViewer
                   pdfUrl={sessionState?.pdfUrl || ''}
                   page={sessionState?.pdfPage || 1}
@@ -1249,7 +1249,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
                   readOnly={true}
                   realtimeLaser={sessionState?.pdfLaser || null}
                   realtimeAnnotations={sessionState?.pdfAnnotations || {}}
-                  fitMode={sessionState?.pdfFitMode || 'width'}
+                  fitMode={sessionState?.pdfFitMode || 'contain'}
                   zoom={sessionState?.pdfZoom || 1.0}
                 />
               </div>

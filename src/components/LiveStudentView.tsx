@@ -1240,8 +1240,8 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
                 </div>
               </div>
 
-              {/* PDF Canvas View - Strictly synchronized under teacher control (no student scrolling) */}
-              <div className="w-full h-[65vh] min-h-[380px] bg-slate-950/80 relative overflow-hidden select-none touch-none pointer-events-none">
+              {/* PDF Canvas View */}
+              <div className="w-full h-[65vh] min-h-[380px] bg-slate-950/80 relative">
                 <NativePdfViewer
                   pdfUrl={sessionState?.pdfUrl || ''}
                   page={sessionState?.pdfPage || 1}
@@ -1249,7 +1249,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
                   readOnly={true}
                   realtimeLaser={sessionState?.pdfLaser || null}
                   realtimeAnnotations={sessionState?.pdfAnnotations || {}}
-                  fitMode={sessionState?.pdfFitMode || 'contain'}
+                  fitMode={sessionState?.pdfFitMode || 'width'}
                   zoom={sessionState?.pdfZoom || 1.0}
                 />
               </div>

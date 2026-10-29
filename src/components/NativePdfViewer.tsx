@@ -259,89 +259,62 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
           const driveId = driveMatch ? driveMatch[1] : null;
 
           if (driveId) {
-            // Step 1: Check if already stored in IndexedDB for instant 0ms load
-            let foundInCache = false;
+            // Attempt 1: Fetch via proxy with a 2.5s timeout
+            let loadedViaProxy = false;
             try {
-              const record = await getPdfFromIndexedDB(driveId);
-              if (record && record.data) {
-                loadingTask = pdfjsLib.getDocument({
+              const fetchPromise = (async () => {
+                const task = pdfjsLib.getDocument({
                   ...baseOptions,
-                  data: new Uint8Array(record.data),
+                  url: `/api/proxy-drive?id=${driveId}`,
+                  withCredentials: false,
                 });
-                foundInCache = true;
-              }
-            } catch (idbErr) {
-              console.warn('IndexedDB check note:', idbErr);
+                return await task.promise;
+              })();
+
+              const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Proxy timeout')), 2500)
+              );
+
+              const doc = (await Promise.race([fetchPromise, timeoutPromise])) as any;
+              if (isCancelled) return;
+              setPdfDoc(doc);
+              setTotalPages(doc.numPages);
+              if (onTotalPagesLoaded) onTotalPagesLoaded(doc.numPages);
+              setLoading(false);
+              loadedViaProxy = true;
+              return;
+            } catch (proxyErr) {
+              console.warn('Proxy-drive direct stream unavailable, checking Apps Script DriveApp...', proxyErr);
             }
 
-            if (!foundInCache) {
-              // Step 2: Fetch via server endpoint /api/proxy-drive (with server disk cache)
-              let loadedViaProxy = false;
+            if (!loadedViaProxy) {
+              // Attempt 2: Direct read from Google Drive via Google Apps Script (with 3s timeout)
               try {
-                const fetchPromise = (async () => {
-                  const task = pdfjsLib.getDocument({
-                    ...baseOptions,
-                    url: `/api/proxy-drive?id=${driveId}`,
-                    withCredentials: false,
-                  });
-                  return await task.promise;
-                })();
-
-                const timeoutPromise = new Promise((_, reject) =>
-                  setTimeout(() => reject(new Error('Proxy timeout')), 15000)
+                const gasPromise = fetchDriveFileBase64(driveId);
+                const gasTimeout = new Promise((_, reject) =>
+                  setTimeout(() => reject(new Error('GAS timeout')), 3000)
                 );
+                const gasRes: any = await Promise.race([gasPromise, gasTimeout]);
 
-                const doc = (await Promise.race([fetchPromise, timeoutPromise])) as any;
-                if (isCancelled) return;
-                setPdfDoc(doc);
-                setTotalPages(doc.numPages);
-                if (onTotalPagesLoaded) onTotalPagesLoaded(doc.numPages);
-                setLoading(false);
-                setUseIframeFallback(false);
-                loadedViaProxy = true;
-                return;
-              } catch (proxyErr) {
-                console.warn('Proxy-drive stream bypassed, trying Apps Script DriveApp...', proxyErr);
-              }
-
-              if (!loadedViaProxy) {
-                // Step 3: Direct read from Google Drive via Google Apps Script (with 25s timeout)
-                try {
-                  const gasPromise = fetchDriveFileBase64(driveId);
-                  const gasTimeout = new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error('GAS timeout')), 25000)
-                  );
-                  const gasRes: any = await Promise.race([gasPromise, gasTimeout]);
-
-                  if (gasRes && gasRes.success && gasRes.base64) {
-                    const rawData = atob(gasRes.base64);
-                    const uint8Array = new Uint8Array(rawData.length);
-                    for (let i = 0; i < rawData.length; i++) {
-                      uint8Array[i] = rawData.charCodeAt(i);
-                    }
-
-                    // Save to IndexedDB and server cache for future zero-delay access
-                    try {
-                      await savePdfToIndexedDB(driveId, gasRes.name || driveId, uint8Array.buffer as ArrayBuffer);
-                    } catch {}
-                    try {
-                      await fetch('/api/pdf/upload', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: driveId, name: gasRes.name || driveId, base64: gasRes.base64 }),
-                      });
-                    } catch {}
-
-                    loadingTask = pdfjsLib.getDocument({
-                      ...baseOptions,
-                      data: uint8Array,
-                    });
-                  } else {
-                    throw new Error(gasRes?.message || 'تعذر جلب ملف الـ PDF من Google Drive');
+                if (gasRes && gasRes.success && gasRes.base64) {
+                  const rawData = atob(gasRes.base64);
+                  const uint8Array = new Uint8Array(rawData.length);
+                  for (let i = 0; i < rawData.length; i++) {
+                    uint8Array[i] = rawData.charCodeAt(i);
                   }
-                } catch (gasErr: any) {
-                  throw gasErr;
+                  loadingTask = pdfjsLib.getDocument({
+                    ...baseOptions,
+                    data: uint8Array,
+                  });
+                } else {
+                  throw new Error(gasRes?.message || 'Drive fetch failed');
                 }
+              } catch (gasErr) {
+                // If Google Drive download/stream is CORS-blocked or restricted, instantly fallback to Google's official preview iframe
+                // The live pen and laser overlay will stay seamlessly active on top of it
+                setUseIframeFallback(true);
+                setLoading(false);
+                return;
               }
             }
           } else {
@@ -357,7 +330,6 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
         if (isCancelled) return;
 
         setPdfDoc(doc);
-        setUseIframeFallback(false);
         const count = doc.numPages;
         setTotalPages(count);
         if (onTotalPagesLoaded) {
@@ -366,8 +338,14 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
         setLoading(false);
       } catch (err: any) {
         if (isCancelled) return;
-        console.warn('Error loading native PDF via canvas:', err);
-        setErrorMsg(err.message || 'تعذر تحميل ملف الـ PDF. يرجى التأكد من صلاحية الرابط أو إمكانية وصول "أي شخص لديه الرابط" في Google Drive.');
+        console.warn('Error loading native PDF via canvas, switching to resilient preview:', err);
+        // Resilient iframe preview for any web/Google Drive links (works for both teacher and students)
+        if (pdfUrl.includes('google.com') || pdfUrl.startsWith('http') || pdfUrl.startsWith('/api/pdf/')) {
+          setUseIframeFallback(true);
+          setLoading(false);
+          return;
+        }
+        setErrorMsg(err.message || 'تعذر تحميل ملف الـ PDF. يرجى التأكد من صلاحية الرابط أو رفع الملف مباشرة من جهازك.');
         setLoading(false);
       }
     }
@@ -1052,8 +1030,8 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
 
       {/* Main Presentation Viewport */}
       <div
-        className={`relative flex-1 w-full h-full flex items-center justify-center ${
-          readOnly ? 'p-0 m-0 overflow-hidden select-none touch-none' : 'p-2 overflow-hidden'
+        className={`relative flex-1 w-full h-full flex items-center justify-center overflow-auto ${
+          readOnly ? 'p-0 m-0' : 'p-2'
         }`}
       >
         {loading && (

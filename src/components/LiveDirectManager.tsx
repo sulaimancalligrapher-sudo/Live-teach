@@ -104,6 +104,7 @@ import {
 import LiveChatModal from './LiveChatModal';
 import { NativePdfViewer } from './NativePdfViewer';
 import QuizManagerPanel from './QuizManagerPanel';
+import { showAppConfirm } from './AppDialog';
 
 interface LiveDirectManagerProps {
   onOpenDisplayScreen?: () => void;
@@ -477,7 +478,8 @@ export default function LiveDirectManager({
 
   // Delete PDF item
   const handleDeletePdfItem = async (id: string) => {
-    if (!window.confirm('هل أنت متأكد من حذف هذا الملف من قائمة أدوات التعليم؟')) return;
+    const ok = await showAppConfirm('هل أنت متأكد من حذف هذا الملف من قائمة أدوات التعليم؟', 'حذف ملف التعليم', 'danger', 'نعم، حذف');
+    if (!ok) return;
     const target = pdfLessons.find(p => p.id === id);
     if (target?.storageType === 'file') {
       await deletePdfFromIndexedDB(id);
@@ -678,7 +680,8 @@ export default function LiveDirectManager({
 
   // Reset / Clear connected students list
   const handleClearConnectedStudents = async () => {
-    if (!window.confirm('هل تريد تصفير وتنظيف قائمة الطلاب المتصلين بالقاعة؟')) return;
+    const ok = await showAppConfirm('هل تريد تصفير وتنظيف قائمة الطلاب المتصلين بالقاعة؟', 'تصفير الحضور', 'warning', 'نعم، تصفير');
+    if (!ok) return;
     try {
       await clearConnectedStudents();
       showNotice('تم تصفير وتنظيف قائمة الطلاب المتصلين بنجاح 🔄');
@@ -728,7 +731,8 @@ export default function LiveDirectManager({
 
   // Remove a student from live session
   const handleRemoveStudent = async (username: string, sheetNumber?: string) => {
-    if (!confirm(`هل أنت متأكد من حذف الطالب "${username}" من الحصة المباشرة؟`)) return;
+    const ok = await showAppConfirm(`هل أنت متأكد من حذف الطالب "${username}" من الحصة المباشرة؟`, 'حذف طالب من الحصة', 'danger', 'نعم، حذف');
+    if (!ok) return;
     try {
       await leaveLiveSession(username, sheetNumber);
       showNotice(`تم إخراج الطالب ${username} من الحصة بنجاح`, 'info');

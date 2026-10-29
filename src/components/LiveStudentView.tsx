@@ -82,6 +82,22 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
   });
   const joinTimeRef = useRef<number>(0);
 
+  // Student local PDF viewing preferences (default 'contain' so horizontal slides fit completely without clipping)
+  const [studentPdfFitMode, setStudentPdfFitMode] = useState<'contain' | 'width'>('contain');
+  const [studentPdfZoom, setStudentPdfZoom] = useState<number>(1.0);
+
+  useEffect(() => {
+    if (sessionState?.pdfFitMode) {
+      setStudentPdfFitMode(sessionState.pdfFitMode);
+    }
+  }, [sessionState?.pdfFitMode]);
+
+  useEffect(() => {
+    if (typeof sessionState?.pdfZoom === 'number') {
+      setStudentPdfZoom(sessionState.pdfZoom);
+    }
+  }, [sessionState?.pdfZoom]);
+
   // Auto-join only if valid credentials AND pin are present in URL
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
@@ -881,11 +897,16 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
     : null;
   const isCorrectAnswer = evalResult?.isCorrect ?? null;
 
+  // Responsive layout: Expand container on tablets and desktops when PDF is showing
+  const isShowingPdf = Boolean(
+    sessionState && sessionState.showPdfToStudents && sessionState.pdfUrl && !isQuestionActive && !isRevealed
+  );
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-indigo-500/30">
       {/* Top Header Bar */}
       <header className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 sticky top-0 z-20">
-        <div className="max-w-xl mx-auto flex items-center justify-between">
+        <div className={`mx-auto flex items-center justify-between transition-all duration-300 ${isShowingPdf ? 'max-w-6xl' : 'max-w-xl'}`}>
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-sm">
               <Tv className="w-4.5 h-4.5" />
@@ -932,7 +953,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
       </header>
 
       {/* Main Dynamic Interactive Body */}
-      <main className="flex-1 max-w-xl w-full mx-auto p-4 flex flex-col justify-center relative">
+      <main className={`flex-1 w-full mx-auto p-2 sm:p-4 flex flex-col justify-center relative transition-all duration-300 ${isShowingPdf ? 'max-w-6xl' : 'max-w-xl'}`}>
         {/* Success toast after sending question or reaction */}
         <AnimatePresence>
           {messageSuccessBanner && (
@@ -1001,8 +1022,8 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
         </AnimatePresence>
 
         <AnimatePresence mode="wait">
-          {/* CASE A: Active Question Mode (Shows when question is active and either student hasn't submitted yet or PDF is not showing) */}
-          {(isQuestionActive && (!submittedAnswer || !(sessionState && sessionState.showPdfToStudents && sessionState.pdfUrl))) ? (
+          {/* CASE A: Active Question Mode (Permanently stays visible while question is active, regardless of PDF state or student submission) */}
+          {isQuestionActive ? (
             <motion.div
               key={`q-${sessionState.currentQuestionIndex}`}
               initial={{ opacity: 0, y: 15, scale: 0.98 }}
@@ -1225,15 +1246,42 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
               )}
 
               {/* PDF Header Pill */}
-              <div className="bg-slate-950 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between gap-2 text-xs">
-                <div className="flex items-center gap-2 truncate">
+              <div className="bg-slate-950 px-3 sm:px-4 py-2 sm:py-2.5 border-b border-slate-800 flex items-center justify-between gap-2 text-xs">
+                <div className="flex items-center gap-2 truncate min-w-0">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                  <span className="text-emerald-400 font-bold shrink-0">شرح مباشر متزامن 📖:</span>
+                  <span className="text-emerald-400 font-bold shrink-0">شرح مباشر 📖:</span>
                   <span className="text-slate-200 font-bold truncate">
                     {sessionState?.pdfTitle || 'ملف الشرح المباشر'}
                   </span>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Mode Toggle: Contain vs Width */}
+                  <button
+                    type="button"
+                    onClick={() => setStudentPdfFitMode(prev => prev === 'contain' ? 'width' : 'contain')}
+                    className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-[10px] border border-slate-700 cursor-pointer transition-all"
+                    title="تبديل وضع العرض (ملاءمة الشاشة / ملء العرض)"
+                  >
+                    {studentPdfFitMode === 'contain' ? '🔍 ملء العرض' : '📐 احتواء كامل'}
+                  </button>
+                  {/* Zoom Controls */}
+                  <button
+                    type="button"
+                    onClick={() => setStudentPdfZoom(z => Math.max(0.5, Math.round((z - 0.2) * 10) / 10))}
+                    className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer"
+                    title="تصغير"
+                  >
+                    <ZoomOut className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="text-[10px] font-mono font-bold text-slate-400 hidden sm:inline">{Math.round(studentPdfZoom * 100)}%</span>
+                  <button
+                    type="button"
+                    onClick={() => setStudentPdfZoom(z => Math.min(3.0, Math.round((z + 0.2) * 10) / 10))}
+                    className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer"
+                    title="تكبير"
+                  >
+                    <ZoomIn className="w-3.5 h-3.5" />
+                  </button>
                   <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-mono text-[11px] font-bold border border-emerald-500/30">
                     ص {sessionState?.pdfPage || 1}
                   </span>
@@ -1241,7 +1289,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
               </div>
 
               {/* PDF Canvas View */}
-              <div className="w-full h-[65vh] min-h-[380px] bg-slate-950/80 relative">
+              <div className="w-full h-[65vh] sm:h-[72vh] md:h-[78vh] min-h-[350px] bg-slate-950/90 relative flex items-center justify-center overflow-auto">
                 <NativePdfViewer
                   pdfUrl={sessionState?.pdfUrl || ''}
                   page={sessionState?.pdfPage || 1}
@@ -1249,8 +1297,8 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
                   readOnly={true}
                   realtimeLaser={sessionState?.pdfLaser || null}
                   realtimeAnnotations={sessionState?.pdfAnnotations || {}}
-                  fitMode={sessionState?.pdfFitMode || 'width'}
-                  zoom={sessionState?.pdfZoom || 1.0}
+                  fitMode={studentPdfFitMode}
+                  zoom={studentPdfZoom}
                 />
               </div>
 
@@ -1311,7 +1359,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
 
       {/* Student Floating Interactive Action Bar (زر موحد واحد: محادثة مع الأستاذ) */}
       <div className="sticky bottom-0 z-30 p-3 bg-slate-900/95 backdrop-blur-md border-t border-slate-800">
-        <div className="max-w-xl mx-auto flex items-center justify-between gap-3">
+        <div className={`mx-auto flex items-center justify-between gap-3 transition-all duration-300 ${isShowingPdf ? 'max-w-6xl' : 'max-w-xl'}`}>
           <div className="text-xs text-slate-400 font-bold flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span>متصل بالحصة التفاعلية</span>

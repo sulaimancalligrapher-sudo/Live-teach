@@ -24,6 +24,8 @@ import {
   setupPdfLessonsSheetApi,
   stopAllActiveBroadcasts
 } from '../api';
+import { showAppConfirm } from './AppDialog';
+
 
 interface AdminPanelProps {
   onClose: () => void;
@@ -139,7 +141,13 @@ export default function AdminPanel({
   };
 
   const handleStopAllBroadcasts = async () => {
-    if (!confirm('هل تريد إيقاف وتصفير كافة البثوث المباشرة وإعادتها لحالة الخمول؟')) return;
+    const ok = await showAppConfirm(
+      'هل تريد إيقاف وتصفير كافة البثوث المباشرة وإعادتها لحالة الخمول؟',
+      'إيقاف وتصفير البث',
+      'warning',
+      'نعم، إيقاف الآن'
+    );
+    if (!ok) return;
     try {
       await stopAllActiveBroadcasts();
       setNotice({ text: 'تم إيقاف وتصفير البث المباشر بنجاح! ⏹️ النظام الآن في حالة الخمول ولا يوجد بث تلقائي.', type: 'success' });

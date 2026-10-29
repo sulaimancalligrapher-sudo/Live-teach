@@ -28,6 +28,7 @@ import {
   Award,
 } from 'lucide-react';
 import { liveSocket, LiveMessage } from '../lib/liveSocket';
+import { showAppAlert } from './AppDialog';
 import { WordData, Question } from '../types';
 import { fetchLessons, fetchAdminQuestions } from '../api';
 
@@ -953,7 +954,7 @@ export default function TeacherLiveScreen({ onBack }: TeacherLiveScreenProps) {
                   onClick={() => {
                     const text = students.map((s, i) => `${i + 1}. ${s.name} (شيت #${s.sheetNumber}) - نقاط: ${s.score}`).join('\n');
                     navigator.clipboard.writeText(text);
-                    alert('تم نسخ قائمة الحضور إلى الحافظة!');
+                    showAppAlert('تم نسخ قائمة الحضور إلى الحافظة بنجاح! 📋', 'نسخ قائمة الحضور', 'success');
                   }}
                   className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 cursor-pointer transition-all"
                 >

@@ -21,6 +21,7 @@ import {
   isApiConfigured, getWebAppUrl, stopAllActiveBroadcasts
 } from '../api';
 import { getFullAppsScriptCode } from './SettingsPanel';
+import { showAppAlert, showAppConfirm } from './AppDialog';
 
 // Comprehensive default question bank (5 multi-choice questions) to prevent single-question termination
 export const DEFAULT_QUIZ_BANK: QuizLessonRow[] = [
@@ -187,7 +188,7 @@ export default function QuizManagerPanel({
   const handleStartQuiz = async () => {
     const activeQuiz = quizzes[selectedQuizIdx];
     if (!activeQuiz || !activeQuiz.questions || activeQuiz.questions.length === 0) {
-      alert('يرجى اختيار مسابقة تحتوي على أسئلة للبدء!');
+      showAppAlert('يرجى اختيار مسابقة تحتوي على أسئلة للبدء!', 'اختيار المسابقة', 'warning');
       return;
     }
 
@@ -204,7 +205,7 @@ export default function QuizManagerPanel({
       setSaveSuccessMsg('تم إطلاق المسابقة بنجاح! 🚀 الطلاب يمكنهم الحل الآن.');
       setTimeout(() => setSaveSuccessMsg(null), 4000);
     } catch (err: any) {
-      alert('تعذر إطلاق المسابقة: ' + err.message);
+      showAppAlert('تعذر إطلاق المسابقة: ' + err.message, 'خطأ في إطلاق المسابقة', 'danger');
     }
   };
 
@@ -212,7 +213,7 @@ export default function QuizManagerPanel({
   const handleOpenLobby = async () => {
     const activeQuiz = quizzes[selectedQuizIdx];
     if (!activeQuiz || !activeQuiz.questions || activeQuiz.questions.length === 0) {
-      alert('يرجى اختيار مسابقة تحتوي على أسئلة للبدء!');
+      showAppAlert('يرجى اختيار مسابقة تحتوي على أسئلة للبدء!', 'اختيار المسابقة', 'warning');
       return;
     }
 
@@ -229,7 +230,7 @@ export default function QuizManagerPanel({
       setSaveSuccessMsg('تم فتح قاعة الانتظار بنجاح! 👥 شاشة العرض تعرض الآن حضور الطلاب والرسم البياني.');
       setTimeout(() => setSaveSuccessMsg(null), 4000);
     } catch (err: any) {
-      alert('تعذر فتح قاعة الانتظار: ' + err.message);
+      showAppAlert('تعذر فتح قاعة الانتظار: ' + err.message, 'خطأ في فتح قاعة الانتظار', 'danger');
     }
   };
 
@@ -240,13 +241,14 @@ export default function QuizManagerPanel({
       setSaveSuccessMsg('تم إطلاق المسابقة والأسئلة لجميع الطلاب الآن! ⚡');
       setTimeout(() => setSaveSuccessMsg(null), 4000);
     } catch (err: any) {
-      alert('تعذر إطلاق المسابقة: ' + err.message);
+      showAppAlert('تعذر إطلاق المسابقة: ' + err.message, 'خطأ في الإطلاق', 'danger');
     }
   };
 
   // End Quiz, show podium, and automatically batch-save all student results to Google Sheets (Answers-Qui)
   const handleEndQuiz = async () => {
-    if (!confirm('هل تريد إنهاء المسابقة الآن وإعلان منصة التتويج للفائزين وحفظ النتائج في الشيت؟')) return;
+    const ok = await showAppConfirm('هل تريد إنهاء المسابقة الآن وإعلان منصة التتويج للفائزين وحفظ النتائج في الشيت؟', 'إنهاء المسابقة والتتويج', 'warning', 'نعم، إنهاء وتتويج');
+    if (!ok) return;
     try {
       await endLiveQuiz();
       setSaveSuccessMsg('تم إنهاء المسابقة وإعلان منصة التتويج! 🏆 جاري توثيق النتائج في الشيت...');
@@ -288,31 +290,33 @@ export default function QuizManagerPanel({
       }
       setTimeout(() => setSaveSuccessMsg(null), 5000);
     } catch (err: any) {
-      alert('تعذر إنهاء المسابقة: ' + err.message);
+      showAppAlert('تعذر إنهاء المسابقة: ' + err.message, 'خطأ', 'danger');
     }
   };
 
   // Full stop & reset of all active broadcasts
   const handleStopBroadcast = async () => {
-    if (!confirm('هل تريد إيقاف وتصفير البث المباشر النشط بالكامل الآن؟')) return;
+    const ok = await showAppConfirm('هل تريد إيقاف وتصفير البث المباشر النشط بالكامل الآن؟', 'إيقاف البث', 'warning', 'نعم، إيقاف الآن');
+    if (!ok) return;
     try {
       await stopAllActiveBroadcasts();
       setSaveSuccessMsg('تم إيقاف وتصفير البث المباشر بنجاح! ⏹️');
       setTimeout(() => setSaveSuccessMsg(null), 3000);
     } catch (err: any) {
-      alert('تعذر إيقاف البث: ' + err.message);
+      showAppAlert('تعذر إيقاف البث: ' + err.message, 'خطأ في إيقاف البث', 'danger');
     }
   };
 
   // Reset Quiz
   const handleResetQuiz = async () => {
-    if (!confirm('هل أنت متأكد من إعادة ضبط المسابقة وإلغاء الجولة الحالية؟')) return;
+    const ok = await showAppConfirm('هل أنت متأكد من إعادة ضبط المسابقة وإلغاء الجولة الحالية؟', 'إعادة ضبط المسابقة', 'warning', 'نعم، إعادة ضبط');
+    if (!ok) return;
     try {
       await resetLiveQuiz();
       setSaveSuccessMsg('تمت إعادة ضبط المسابقة بنجاح.');
       setTimeout(() => setSaveSuccessMsg(null), 3000);
     } catch (err: any) {
-      alert('تعذر إعادة ضبط المسابقة: ' + err.message);
+      showAppAlert('تعذر إعادة ضبط المسابقة: ' + err.message, 'خطأ', 'danger');
     }
   };
 
@@ -339,13 +343,13 @@ export default function QuizManagerPanel({
   // Export & Batch Save Live Results to Answers-Qui
   const handleExportBatchToSheet = async () => {
     if (!currentQuizState || !currentQuizState.participants) {
-      alert('لا توجد نتائج مسابقة جارية لترحيلها!');
+      showAppAlert('لا توجد نتائج مسابقة جارية لترحيلها!', 'تنبيه', 'warning');
       return;
     }
 
     const participantsList = Object.values(currentQuizState.participants);
     if (participantsList.length === 0) {
-      alert('لم يسجل أي طالب إجابات بعد!');
+      showAppAlert('لم يسجل أي طالب إجابات بعد!', 'تنبيه', 'info');
       return;
     }
 
@@ -381,13 +385,15 @@ export default function QuizManagerPanel({
         if (isUnknown) {
           setIsScriptModalOpen(true);
         }
-        alert(
+        showAppAlert(
           'خطأ أثناء الترحيل للشيت: ' + (res.message || 'فشل الاتصال') + 
-          (isUnknown ? '\n\n💡 ملاحظة هامة: سكريبت الويب في الشيت يحتاج إلى كود ترحيل كويز. تم فتح نافذة الكود؛ انسخه واضغط نشر (إصدار جديد) في الشيت.' : '')
+          (isUnknown ? '\n\n💡 ملاحظة هامة: سكريبت الويب في الشيت يحتاج إلى كود ترحيل كويز. تم فتح نافذة الكود؛ انسخه واضغط نشر (إصدار جديد) في الشيت.' : ''),
+          'خطأ في الترحيل',
+          'danger'
         );
       }
     } catch (err: any) {
-      alert('تعذر ترحيل النتائج: ' + err.message);
+      showAppAlert('تعذر ترحيل النتائج: ' + err.message, 'خطأ', 'danger');
     } finally {
       setSyncingSheet(false);
     }
@@ -396,7 +402,7 @@ export default function QuizManagerPanel({
   // Add / Save Quiz question in questions tab
   const handleSaveQuizToSheet = async () => {
     if (!editingQuiz || !editingQuiz.title.trim()) {
-      alert('يرجى كتابة عنوان للمسابقة!');
+      showAppAlert('يرجى كتابة عنوان للمسابقة!', 'تنبيه', 'warning');
       return;
     }
 
@@ -408,14 +414,15 @@ export default function QuizManagerPanel({
         loadQuizzes();
         setEditingQuiz(null);
       } else {
-        alert('تعذر الحفظ: ' + res.message);
+        showAppAlert('تعذر الحفظ: ' + res.message, 'خطأ في الحفظ', 'danger');
       }
     } catch (err: any) {
-      alert('خطأ أثناء الحفظ: ' + err.message);
+      showAppAlert('خطأ أثناء الحفظ: ' + err.message, 'خطأ', 'danger');
     } finally {
       setLoadingQuizzes(false);
     }
   };
+
 
   // Filtered answers
   const filteredAnswers = sheetAnswers.filter(a => {

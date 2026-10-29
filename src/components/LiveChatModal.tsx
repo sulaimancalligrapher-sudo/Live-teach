@@ -7,6 +7,7 @@ import {
   Users, Megaphone
 } from 'lucide-react';
 import { LiveStudentMessage, LiveConnectedStudent } from '../types';
+import { showAppConfirm } from './AppDialog';
 
 interface LiveChatModalProps {
   isOpen: boolean;
@@ -299,8 +300,9 @@ export default function LiveChatModal({
             {isTeacher && messages.length > 0 && (
               <button
                 type="button"
-                onClick={() => {
-                  if (window.confirm('هل أنت متأكد من مسح جميع رسائل وتفاعلات الطلاب الحالية؟')) {
+                onClick={async () => {
+                  const ok = await showAppConfirm('هل أنت متأكد من مسح جميع رسائل وتفاعلات الطلاب الحالية؟', 'مسح كل الرسائل', 'danger', 'نعم، مسح الكل');
+                  if (ok) {
                     onClearAll();
                   }
                 }}

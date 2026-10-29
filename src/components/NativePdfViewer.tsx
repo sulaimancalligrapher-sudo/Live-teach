@@ -40,6 +40,9 @@ export interface LivePdfLaserData {
   isDrawing?: boolean;
 }
 
+// Global in-memory cache to prevent re-fetching and re-parsing PDFs when toggling views
+const globalPdfDocCache = new Map<string, any>();
+
 interface NativePdfViewerProps {
   pdfUrl: string;
   page?: number;
@@ -194,6 +197,18 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
       setLoading(true);
       setErrorMsg(null);
 
+      // 0. Check in-memory cache first for instant 0ms restoration
+      if (globalPdfDocCache.has(pdfUrl)) {
+        const cachedDoc = globalPdfDocCache.get(pdfUrl);
+        if (!isCancelled) {
+          setPdfDoc(cachedDoc);
+          setTotalPages(cachedDoc.numPages);
+          if (onTotalPagesLoaded) onTotalPagesLoaded(cachedDoc.numPages);
+          setLoading(false);
+          return;
+        }
+      }
+
       try {
         let loadingTask: any;
 
@@ -318,6 +333,7 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
         const doc = await loadingTask.promise;
         if (isCancelled) return;
 
+        globalPdfDocCache.set(pdfUrl, doc);
         setPdfDoc(doc);
         const count = doc.numPages;
         setTotalPages(count);
@@ -416,41 +432,32 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
         } catch {}
       }
 
-      // Calculate reliable width & height of presentation viewport
-      let availableW = 0;
-      let availableH = 0;
+      // Calculate reliable width & height of presentation viewport based on the actual container
+      const cRect = containerRef.current?.getBoundingClientRect();
+      const clientW = containerRef.current?.clientWidth || cRect?.width || 0;
+      const clientH = containerRef.current?.clientHeight || cRect?.height || 0;
 
-      if (readOnly) {
-        // Full screen / theater mode (Projector Display Room)
-        const windowW = window.innerWidth;
-        const windowH = window.innerHeight;
-        const clientW = containerRef.current?.clientWidth || 0;
-        const clientH = containerRef.current?.clientHeight || 0;
-        availableW = Math.max(clientW, windowW);
-        availableH = Math.max(clientH, windowH - 56); // 56px header
-      } else {
-        // Teacher Manager Card mode
-        const cRect = containerRef.current?.getBoundingClientRect();
-        availableW = Math.max(300, containerRef.current?.clientWidth || cRect?.width || 600);
-        availableH = Math.max(350, containerRef.current?.clientHeight || cRect?.height || 500);
-      }
+      // Always scale to the actual container bounding box (never blowout based on window.innerWidth)
+      const availableW = clientW > 40 ? clientW : (window.innerWidth || 600);
+      const availableH = clientH > 40 ? clientH : Math.max(320, (window.innerHeight - 60));
 
       // Base unscaled page viewport
       const unscaledViewport = pageObj.getViewport({ scale: 1.0 });
 
       let finalScale = 1.0;
       if (fitMode === 'width') {
-        const marginH = readOnly ? 0 : 16;
+        const marginH = 8;
         finalScale = ((availableW - marginH) / unscaledViewport.width) * zoomScale;
       } else {
-        const marginH = readOnly ? 0 : 20;
-        const marginV = readOnly ? 0 : 32;
+        // 'contain': fit both width and height within available viewport so horizontal slides NEVER get cut off
+        const marginH = 12;
+        const marginV = 16;
         const scaleX = (availableW - marginH) / unscaledViewport.width;
         const scaleY = (availableH - marginV) / unscaledViewport.height;
         finalScale = Math.min(scaleX, scaleY) * zoomScale;
       }
 
-      finalScale = Math.max(0.4, Math.min(finalScale, 4.0));
+      finalScale = Math.max(0.2, Math.min(finalScale, 4.0));
 
       const viewport = pageObj.getViewport({ scale: finalScale });
 

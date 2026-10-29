@@ -26,6 +26,7 @@ import {
   sendTeacherBroadcastMessage
 } from '../api';
 import LiveChatModal from './LiveChatModal';
+import { showAppAlert } from './AppDialog';
 
 interface LiveClassManagerProps {
   onStartTeacherTheater: (lesson: LiveLessonRow) => void;
@@ -629,7 +630,7 @@ export default function LiveClassManager({
       setTimeout(() => setSaveMessage(null), 4000);
     } catch (e: any) {
       console.error('Failed to finish lesson from admin:', e);
-      alert('حدث خطأ أثناء إنهاء الدرس: ' + (e?.message || 'خطأ غير معروف'));
+      showAppAlert('حدث خطأ أثناء إنهاء الدرس: ' + (e?.message || 'خطأ غير معروف'), 'خطأ في إنهاء الدرس', 'danger');
     } finally {
       setIsFinishingLesson(false);
     }
@@ -909,10 +910,10 @@ export default function LiveClassManager({
         if (answersCount > 0) {
           setBackupData(res.backup);
         } else {
-          alert('النسخة الاحتياطية لا تحتوي على إجابات محفوظة.');
+          showAppAlert('النسخة الاحتياطية لا تحتوي على إجابات محفوظة.', 'تنبيه النسخة الاحتياطية', 'info');
         }
       } else {
-        alert('لا توجد نسخة احتياطية محفوظة حالياً على الخادم.');
+        showAppAlert('لا توجد نسخة احتياطية محفوظة حالياً على الخادم.', 'تنبيه النسخة الاحتياطية', 'warning');
       }
     } catch (err) {
       console.error('Error fetching backup:', err);
@@ -953,14 +954,14 @@ export default function LiveClassManager({
 
       if (records.length > 0) {
         await recordLiveAnswersBatchT(records);
-        alert(`تم استرجاع وحفظ إجابات ${records.length} طالب بنجاح في ورقة Answers-T!`);
+        showAppAlert(`تم استرجاع وحفظ إجابات ${records.length} طالب بنجاح في ورقة Answers-T!`, 'استرجاع النسخة الاحتياطية', 'success');
         loadAnswers();
         setBackupData(null);
       } else {
-        alert('النسخة الاحتياطية لا تحتوي على إجابات قابلة للحفظ.');
+        showAppAlert('النسخة الاحتياطية لا تحتوي على إجابات قابلة للحفظ.', 'تنبيه', 'warning');
       }
     } catch (err: any) {
-      alert('حدث خطأ أثناء حفظ النسخة المسترجعة: ' + err.message);
+      showAppAlert('حدث خطأ أثناء حفظ النسخة المسترجعة: ' + err.message, 'خطأ في الحفظ', 'danger');
     } finally {
       setIsSavingRecovered(false);
     }

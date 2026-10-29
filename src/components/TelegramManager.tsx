@@ -19,6 +19,7 @@ import {
   normalizeLanguage, formatLanguageBadge,
   DEFAULT_TELEGRAM_TEMPLATES
 } from '../api';
+import { showAppConfirm } from './AppDialog';
 
 interface TelegramManagerProps {
   answers: AdminAnswerRow[];
@@ -382,7 +383,8 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
   };
 
   const handleResetTemplates = async () => {
-    if (confirm('هل أنت متأكد من إعادة ضبط قوالب الرسائل إلى النصوص الافتراضية؟')) {
+    const ok = await showAppConfirm('هل أنت متأكد من إعادة ضبط قوالب الرسائل إلى النصوص الافتراضية؟', 'استعادة القوالب الافتراضية', 'warning', 'نعم، استعادة');
+    if (ok) {
       setTemplates(DEFAULT_TELEGRAM_TEMPLATES);
       setSavingTemplates(true);
       try {
@@ -1028,7 +1030,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                     type="text"
                     value={broadcastBtnLabel}
                     onChange={e => setBroadcastBtnLabel(e.target.value)}
-                    placeholder="مثال: 📝 فتح صفحة الدروس"
+                    placeholder="مثال: ������ فتح صفحة الدروس"
                     className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 text-slate-200 rounded-xl text-xs outline-none"
                   />
                 </div>

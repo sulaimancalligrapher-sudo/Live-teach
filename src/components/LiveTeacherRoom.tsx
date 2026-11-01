@@ -17,7 +17,7 @@ import {
   formatSecondsToTime, parseTimeToSeconds, formatDriveImageUrl,
   subscribeToLiveSession, toggleShowQrInRoom, toggleLiveVideoPlay,
   replyToStudentMessage, deleteStudentMessage, clearAllStudentMessages, toggleShowChatInRoom,
-  sendTeacherBroadcastMessage
+  sendTeacherBroadcastMessage, clearSessionAnswersMemory
 } from '../api';
 import LiveChatModal from './LiveChatModal';
 
@@ -485,20 +485,22 @@ export default function LiveTeacherRoom({
             }
           }
         } else {
-          formattedAnswers[idx] = '';
+          // Unanswered question is marked as wrong answer ('خطأ')
+          formattedAnswers[idx] = 'خطأ';
+          evaluatedCount++;
         }
       });
 
-      // Include if student answered at least one question
-      const hasAnyAnswer = Object.values(formattedAnswers).some(val => val !== '');
-      if (hasAnyAnswer) {
+      // Include if student participated or was connected
+      const hasAnyAnswer = Object.values(formattedAnswers).some(val => val !== '' && val !== '—');
+      if (hasAnyAnswer || (sessionState.connectedStudents && sessionState.connectedStudents.some(s => String(s.sheetNumber || s.username) === String(snum)))) {
         records.push({
           timestamp,
           sheetNumber: snum,
           username: uname,
           lessonTitle: selectedLesson.title,
           answers: formattedAnswers,
-          totalScore: evaluatedCount > 0 ? `${correctCount}/${evaluatedCount}` : ''
+          totalScore: evaluatedCount > 0 ? `${correctCount}/${evaluatedCount}` : `0/${selectedLesson.questions.length}`
         });
       }
     });
@@ -531,6 +533,13 @@ export default function LiveTeacherRoom({
 
       // 2. Mark session finished in server
       await finishLiveSession();
+
+      // Auto-clear session answers memory after 1500ms to start next session completely fresh
+      setTimeout(async () => {
+        try {
+          await clearSessionAnswersMemory();
+        } catch {}
+      }, 1500);
 
       // 3. Stop video playback
       if (videoRef.current) {

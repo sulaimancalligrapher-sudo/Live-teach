@@ -101,6 +101,8 @@ import {
   uploadPdfToServer,
   deletePdfFromIndexedDB,
   clearConnectedStudents,
+  clearSessionAnswersMemory,
+  recordLiveAnswersBatchT,
 } from '../api';
 import LiveChatModal from './LiveChatModal';
 import { NativePdfViewer } from './NativePdfViewer';
@@ -1048,6 +1050,14 @@ export default function LiveDirectManager({
         showNotice('تم إنهاء الحصة المباشرة وإغلاق القاعة وتحديث الشاشة بنجاح 🛑', 'success');
       }
       await loadAnswers();
+
+      // Auto-clear session memory after 1500ms to start next session completely fresh
+      setTimeout(async () => {
+        try {
+          await clearSessionAnswersMemory();
+          await loadAnswers();
+        } catch {}
+      }, 1500);
     } catch (e: any) {
       console.error('Failed to end live program:', e);
       showNotice('حدث خطأ أثناء إنهاء الحصة: ' + (e?.message || 'خطأ في الاتصال'), 'error');

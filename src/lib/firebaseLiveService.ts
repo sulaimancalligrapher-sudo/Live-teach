@@ -265,11 +265,10 @@ export async function endLiveProgram(): Promise<{ success: boolean; state?: Live
     const updatedState: Partial<LiveSessionState> = {
       isProgramActive: false,
       status: 'program_ended',
-      connectedStudents: [],
+      videoPlaying: false,
       currentQuestion: null,
       currentQuestionIndex: null,
-      answersForCurrentQuestion: {},
-      allSessionAnswers: {},
+      questionTriggeredAt: null,
     };
 
     await setDoc(LIVE_DOC_REF, {
@@ -282,6 +281,32 @@ export async function endLiveProgram(): Promise<{ success: boolean; state?: Live
   } catch (error: any) {
     console.error('Failed to end live program in Firebase:', error);
     throw new Error('فشل إنهاء البرنامج في السحاب: ' + (error?.message || 'خطأ غير معروف'));
+  }
+}
+
+// Clears session answers memory and active quiz state cleanly after saving
+export async function clearSessionAnswersMemory(): Promise<{ success: boolean; state?: LiveSessionState }> {
+  try {
+    const resetPayload: Partial<LiveSessionState> = {
+      answersForCurrentQuestion: {},
+      allSessionAnswers: {},
+      connectedStudents: [],
+      quizState: null,
+      currentQuestion: null,
+      currentQuestionIndex: null,
+      questionTriggeredAt: null,
+    };
+
+    await setDoc(LIVE_DOC_REF, {
+      ...resetPayload,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+
+    cachedState = { ...cachedState, ...resetPayload };
+    return { success: true, state: cachedState };
+  } catch (error: any) {
+    console.error('Failed to clear session answers memory:', error);
+    return { success: false };
   }
 }
 

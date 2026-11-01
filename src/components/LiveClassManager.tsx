@@ -23,7 +23,7 @@ import {
   finishLiveSession, revealLiveAnswer, resumeLiveVideo,
   initLiveSession, triggerLiveQuestion,
   replyToStudentMessage, deleteStudentMessage, clearAllStudentMessages, toggleShowChatInRoom,
-  sendTeacherBroadcastMessage
+  sendTeacherBroadcastMessage, clearSessionAnswersMemory
 } from '../api';
 import LiveChatModal from './LiveChatModal';
 import { showAppAlert } from './AppDialog';
@@ -489,7 +489,7 @@ export default function LiveClassManager({
       const u = String(s.username || '').trim();
       const num = String(s.sheetNumber || '').trim();
       if (u) {
-        studentMap.set(u.toLowerCase(), { username: u, sheetNumber: num });
+        studentMap.set(normalizeArabicText(u), { username: u, sheetNumber: num });
       }
     });
 
@@ -498,8 +498,13 @@ export default function LiveClassManager({
       Object.keys(stateToUse.allSessionAnswers).forEach(rawKey => {
         let u = rawKey.includes('_') ? rawKey.split('_')[0] : rawKey;
         let num = rawKey.includes('_') ? rawKey.split('_').slice(1).join('_') : '';
-        if (u && !studentMap.has(u.toLowerCase())) {
-          studentMap.set(u.toLowerCase(), { username: u, sheetNumber: num });
+        if (u) {
+          const norm = normalizeArabicText(u);
+          if (!studentMap.has(norm)) {
+            studentMap.set(norm, { username: u, sheetNumber: num });
+          } else if (!studentMap.get(norm)?.sheetNumber && num) {
+            studentMap.get(norm)!.sheetNumber = num;
+          }
         }
       });
     }
@@ -524,8 +529,13 @@ export default function LiveClassManager({
         }
         let u = studentKey.includes('_') ? studentKey.split('_')[0] : studentKey;
         let num = studentKey.includes('_') ? studentKey.split('_').slice(1).join('_') : '';
-        if (u && !studentMap.has(u.toLowerCase())) {
-          studentMap.set(u.toLowerCase(), { username: u, sheetNumber: num });
+        if (u) {
+          const norm = normalizeArabicText(u);
+          if (!studentMap.has(norm)) {
+            studentMap.set(norm, { username: u, sheetNumber: num });
+          } else if (!studentMap.get(norm)?.sheetNumber && num) {
+            studentMap.get(norm)!.sheetNumber = num;
+          }
         }
       });
     }
@@ -621,18 +631,32 @@ export default function LiveClassManager({
     setShowFinishLessonConfirmModal(false);
     setIsFinishingLesson(true);
     try {
-      // 1. Auto-save student answers to Google Sheets
-      const saveResult = await saveCurrentLessonAnswersToSheets();
+      const latestState = await getLiveSessionState() || sessionStateRef.current || sessionState;
+      if (latestState) {
+        sessionStateRef.current = latestState;
+        setSessionState(latestState);
+      }
+
+      // 1. Auto-save student answers to Google Sheets Answers-T
+      const saveResult = await saveCurrentLessonAnswersToSheets(latestState);
 
       // 2. Mark session finished in server
       await finishLiveSession();
 
       if (saveResult.count > 0) {
-        setSaveMessage(`تم حفظ إجابات ${saveResult.count} طالب في الشيت وإنهاء الدرس بنجاح.`);
+        setSaveMessage(`تم حفظ إجابات ${saveResult.count} طالب في ورقة Answers-T وإنهاء الدرس بنجاح.`);
       } else {
         setSaveMessage('تم إنهاء الدرس بنجاح.');
       }
       setTimeout(() => setSaveMessage(null), 4000);
+
+      // 3. Auto-clear session answers memory after 1500ms to start next session completely fresh
+      setTimeout(async () => {
+        try {
+          await clearSessionAnswersMemory();
+          await loadAnswers();
+        } catch {}
+      }, 1500);
     } catch (e: any) {
       console.error('Failed to finish lesson from admin:', e);
       showAppAlert('حدث خطأ أثناء إنهاء الدرس: ' + (e?.message || 'خطأ غير معروف'), 'خطأ في إنهاء الدرس', 'danger');
@@ -708,6 +732,7 @@ export default function LiveClassManager({
 
   useEffect(() => {
     loadLessons();
+    loadAnswers();
   }, []);
 
   useEffect(() => {
@@ -806,95 +831,42 @@ export default function LiveClassManager({
     setShowEndConfirmModal(false);
     setIsTogglingProgram(true);
     try {
-      // Auto-save any unsaved student answers before terminating
-      if (sessionState?.allSessionAnswers && Object.keys(sessionState.allSessionAnswers).length > 0) {
-        try {
-          const timestamp = new Date().toLocaleString('ar-SA');
-          const lessonTitle = sessionState.lessonTitle || (lessons[0]?.title || 'درس تفاعلي مباشر');
-          const currentLesson = lessons.find(l => l.title === lessonTitle) || lessons[0];
-          const records: LiveAnswerRecord[] = [];
-          const students = sessionState.connectedStudents || [];
-          const studentMap = new Map<string, { username: string; sheetNumber: string }>();
-
-          students.forEach(s => {
-            const u = String(s.username || '').trim();
-            const num = String(s.sheetNumber || '').trim();
-            if (u) {
-              studentMap.set(u.toLowerCase(), { username: u, sheetNumber: num });
-            }
-          });
-
-          Object.entries(sessionState.allSessionAnswers).forEach(([rawKey, answers]) => {
-            let u = rawKey.includes('_') ? rawKey.split('_')[0] : rawKey;
-            let num = rawKey.includes('_') ? rawKey.split('_').slice(1).join('_') : '';
-            const existing = studentMap.get(u.toLowerCase());
-            const finalUser = existing ? existing.username : u;
-            const finalNum = existing?.sheetNumber || num || '';
-
-            const formattedAns: Record<number, string> = {};
-            let correctCount = 0;
-            let evaluatedCount = 0;
-
-            if (currentLesson && currentLesson.questions && currentLesson.questions.length > 0) {
-              currentLesson.questions.forEach((q, idx) => {
-                const ans = answers[idx];
-                if (ans !== undefined && ans !== null && String(ans).trim() !== '') {
-                  const strAns = String(ans).trim();
-                  const norm = normalizeArabicText(strAns);
-                  if (norm === 'صح' || norm === 'صحيح' || norm === '✓' || norm === 'true') {
-                    formattedAns[idx] = 'صح';
-                    correctCount++;
-                    evaluatedCount++;
-                  } else if (norm === 'خطا' || norm === 'خاطي' || norm === '✗' || norm === 'false') {
-                    formattedAns[idx] = 'خطأ';
-                    evaluatedCount++;
-                  } else {
-                    const evalRes = evaluateLiveAnswer(q, strAns);
-                    if (evalRes.isCorrect === true) {
-                      formattedAns[idx] = 'صح';
-                      correctCount++;
-                      evaluatedCount++;
-                    } else if (evalRes.isCorrect === false) {
-                      formattedAns[idx] = 'خطأ';
-                      evaluatedCount++;
-                    } else {
-                      formattedAns[idx] = strAns;
-                    }
-                  }
-                } else {
-                  formattedAns[idx] = '';
-                }
-              });
-            } else {
-              Object.entries(answers).forEach(([qIdx, ans]) => {
-                formattedAns[Number(qIdx)] = String(ans);
-              });
-            }
-
-            records.push({
-              timestamp,
-              sheetNumber: finalNum,
-              username: finalUser,
-              lessonTitle,
-              answers: formattedAns,
-              totalScore: evaluatedCount > 0 ? `${correctCount}/${evaluatedCount}` : ''
-            });
-          });
-
-          if (records.length > 0) {
-            await recordLiveAnswersBatchT(records);
-          }
-        } catch (saveErr) {
-          console.warn('Auto-saving before ending program encountered an issue:', saveErr);
-        }
+      // 1. Refresh latest session state from Firebase to ensure we have all student answers
+      const latestState = await getLiveSessionState() || sessionStateRef.current || sessionState;
+      if (latestState) {
+        sessionStateRef.current = latestState;
+        setSessionState(latestState);
       }
 
+      // 2. Auto-save all student answers to Google Sheets Answers-T (unanswered marked as 'خطأ')
+      let savedCount = 0;
+      try {
+        const saveRes = await saveCurrentLessonAnswersToSheets(latestState);
+        savedCount = saveRes.count;
+      } catch (saveErr) {
+        console.warn('Auto-saving before ending program encountered an issue:', saveErr);
+      }
+
+      // 3. End live program for all systems and close student access
       const res = await endLiveProgram();
       if (res.success && res.state) {
         setSessionState(res.state);
-        setProgramToast('تم حفظ إجابات الطلاب وإنهاء البرنامج بنجاح 🛑');
+      }
+
+      if (savedCount > 0) {
+        setProgramToast(`تم توثيق إجابات ${savedCount} طالب في ورقة Answers-T وإنهاء البرنامج بنجاح 🛑`);
+      } else {
+        setProgramToast('تم إنهاء البرنامج وإغلاق القاعة لجميع المشتركين بنجاح 🛑');
       }
       setTimeout(() => setProgramToast(null), 4000);
+
+      // 4. Auto-clear session answers memory after 1500ms to start next session completely fresh
+      setTimeout(async () => {
+        try {
+          await clearSessionAnswersMemory();
+          await loadAnswers();
+        } catch {}
+      }, 1500);
     } catch (e: any) {
       console.error('Failed to end program:', e);
       setProgramToast('تعذر إنهاء البرنامج: ' + (e?.message || 'خطأ في الشبكة'));
@@ -981,6 +953,138 @@ export default function LiveClassManager({
       (a.lessonTitle && a.lessonTitle.toLowerCase().includes(q))
     );
   });
+
+  const [isQuickSavingLiveAnswers, setIsQuickSavingLiveAnswers] = useState(false);
+
+  // Live session answers currently residing in active session memory
+  const liveSessionAnswers = useMemo(() => {
+    if (!sessionState) return [];
+    const allAnswers = sessionState.allSessionAnswers || {};
+    const currentAnswers = sessionState.answersForCurrentQuestion || {};
+    const currentQIdx = sessionState.currentQuestionIndex;
+    const students = sessionState.connectedStudents || [];
+
+    const studentMap = new Map<string, { username: string; sheetNumber: string; answers: Record<number, any> }>();
+
+    students.forEach(s => {
+      const u = String(s.username || '').trim();
+      const num = String(s.sheetNumber || '').trim();
+      if (u) {
+        studentMap.set(normalizeArabicText(u), { username: u, sheetNumber: num, answers: {} });
+      }
+    });
+
+    Object.entries(allAnswers).forEach(([rawKey, ansMap]) => {
+      let u = rawKey.includes('_') ? rawKey.split('_')[0] : rawKey;
+      let num = rawKey.includes('_') ? rawKey.split('_').slice(1).join('_') : '';
+      if (u) {
+        const key = normalizeArabicText(u);
+        const existing = studentMap.get(key);
+        if (!existing) {
+          studentMap.set(key, { username: u, sheetNumber: num, answers: { ...(ansMap || {}) } });
+        } else {
+          existing.answers = { ...existing.answers, ...(ansMap || {}) };
+          if (!existing.sheetNumber && num) existing.sheetNumber = num;
+        }
+      }
+    });
+
+    if (currentAnswers && currentQIdx !== null && currentQIdx !== undefined) {
+      Object.entries(currentAnswers).forEach(([rawKey, ansSub]) => {
+        let u = rawKey.includes('_') ? rawKey.split('_')[0] : rawKey;
+        let num = rawKey.includes('_') ? rawKey.split('_').slice(1).join('_') : '';
+        const val = typeof ansSub === 'object' && ansSub !== null && 'answer' in ansSub ? (ansSub as any).answer : ansSub;
+        if (u) {
+          const key = normalizeArabicText(u);
+          const existing = studentMap.get(key);
+          if (!existing) {
+            studentMap.set(key, { username: u, sheetNumber: num, answers: { [currentQIdx]: val } });
+          } else {
+            if (existing.answers[currentQIdx] === undefined) {
+              existing.answers[currentQIdx] = val;
+            }
+            if (!existing.sheetNumber && num) existing.sheetNumber = num;
+          }
+        }
+      });
+    }
+
+    const lessonTitle = sessionState.lessonTitle || activeLesson?.title || (lessons[0]?.title || 'درس تفاعلي مباشر');
+    const targetLesson = lessons.find(l => l.title === lessonTitle) || activeLesson;
+
+    return Array.from(studentMap.values()).map(st => {
+      let correctCount = 0;
+      let evaluatedCount = 0;
+      const formattedAns: Record<number, string> = {};
+
+      if (targetLesson && targetLesson.questions && targetLesson.questions.length > 0) {
+        targetLesson.questions.forEach((q, idx) => {
+          const raw = st.answers[idx];
+          if (raw !== undefined && raw !== null && String(raw).trim() !== '') {
+            const strAns = String(raw).trim();
+            const norm = normalizeArabicText(strAns);
+            if (norm === 'صح' || norm === 'صحيح' || norm === '✓' || norm === 'true') {
+              formattedAns[idx] = 'صح';
+              correctCount++;
+              evaluatedCount++;
+            } else if (norm === 'خطا' || norm === 'خاطي' || norm === '✗' || norm === 'false') {
+              formattedAns[idx] = 'خطأ';
+              evaluatedCount++;
+            } else {
+              const evalRes = evaluateLiveAnswer(q, strAns);
+              if (evalRes.isCorrect === true) {
+                formattedAns[idx] = 'صح';
+                correctCount++;
+                evaluatedCount++;
+              } else if (evalRes.isCorrect === false) {
+                formattedAns[idx] = 'خطأ';
+                evaluatedCount++;
+              } else {
+                formattedAns[idx] = strAns;
+              }
+            }
+          } else {
+            formattedAns[idx] = '—';
+          }
+        });
+      } else {
+        Object.entries(st.answers).forEach(([idx, val]) => {
+          formattedAns[Number(idx)] = String(val);
+        });
+      }
+
+      const hasAny = Object.values(st.answers).some(a => a !== undefined && a !== null && String(a).trim() !== '');
+
+      return {
+        username: st.username,
+        sheetNumber: st.sheetNumber,
+        answers: formattedAns,
+        score: evaluatedCount > 0 ? `${correctCount}/${evaluatedCount}` : '—',
+        hasAnyAnswer: hasAny,
+      };
+    });
+  }, [sessionState, lessons, activeLesson]);
+
+  const handleQuickSaveLiveAnswersToSheets = async () => {
+    setIsQuickSavingLiveAnswers(true);
+    try {
+      const latestState = await getLiveSessionState() || sessionStateRef.current || sessionState;
+      const res = await saveCurrentLessonAnswersToSheets(latestState);
+      if (res.count > 0) {
+        setProgramToast(`تم حفظ وتوثيق إجابات ${res.count} طالب في ورقة Answers-T بنجاح 📥`);
+      } else {
+        setProgramToast('لا توجد إجابات لحفظها حالياً.');
+      }
+      setTimeout(() => setProgramToast(null), 4000);
+      await loadAnswers();
+    } catch (e: any) {
+      console.error('Quick save error:', e);
+      setProgramToast('حدث خطأ أثناء الحفظ في الشيت: ' + (e?.message || ''));
+      setTimeout(() => setProgramToast(null), 4000);
+    } finally {
+      setIsQuickSavingLiveAnswers(false);
+    }
+  };
 
   const isProgramRunning = Boolean(sessionState?.isProgramActive);
 
@@ -1263,6 +1367,99 @@ export default function LiveClassManager({
                 >
                   <X className="w-4 h-4" />
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* Active Live Session In-Memory Answers Card */}
+          {liveSessionAnswers.length > 0 && (
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-amber-500/10 via-slate-900 to-indigo-950/40 border-2 border-amber-500/40 rounded-3xl shadow-xl space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-black text-amber-300">
+                        إجابات الحصة التفاعلية المباشرة الجارية (الذاكرة الحية)
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-full bg-amber-400/20 border border-amber-400/30 text-amber-300 text-[10px] font-bold">
+                        {liveSessionAnswers.length} طالب
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      موضوع الدرس: <b className="text-white">{sessionState?.lessonTitle || 'درس تفاعلي'}</b> — تُحفظ تلقائياً في ورقة Answers-T عند إنهاء البرنامج، أو يمكنك حفظها يدوياً الآن:
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleQuickSaveLiveAnswersToSheets}
+                  disabled={isQuickSavingLiveAnswers}
+                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                >
+                  <Save className={`w-4 h-4 ${isQuickSavingLiveAnswers ? 'animate-spin' : ''}`} />
+                  <span>{isQuickSavingLiveAnswers ? 'جارٍ الحفظ في الشيت...' : 'حفظ فوري في ورقة Answers-T 📥'}</span>
+                </button>
+              </div>
+
+              {/* Live answers table/list */}
+              <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/80">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-900 text-slate-400 border-b border-slate-800 font-bold">
+                    <tr>
+                      <th className="p-2.5 whitespace-nowrap">رقم المشترك</th>
+                      <th className="p-2.5 whitespace-nowrap">اسم الطالب</th>
+                      <th className="p-2.5 whitespace-nowrap">الإجابات المرصودة بالذاكرة الحية</th>
+                      <th className="p-2.5 whitespace-nowrap">النتيجة</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60 font-semibold text-slate-300">
+                    {liveSessionAnswers.map((st, sIdx) => (
+                      <tr key={sIdx} className="hover:bg-slate-900/40">
+                        <td className="p-2.5 font-mono text-amber-400 font-bold whitespace-nowrap">
+                          {st.sheetNumber || `—`}
+                        </td>
+                        <td className="p-2.5 font-bold text-white whitespace-nowrap">
+                          {st.username}
+                        </td>
+                        <td className="p-2.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {Object.entries(st.answers).map(([qIdx, ansVal]) => {
+                              const ansStr = String(ansVal || '').trim();
+                              const isCorrect = ansStr === 'صح';
+                              const isWrong = ansStr === 'خطأ';
+                              const isNone = ansStr === '—' || !ansStr;
+
+                              return (
+                                <span
+                                  key={qIdx}
+                                  className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold whitespace-nowrap ${
+                                    isCorrect
+                                      ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                                      : isWrong
+                                      ? 'bg-rose-500/15 border-rose-500/30 text-rose-400'
+                                      : isNone
+                                      ? 'bg-slate-900 border-slate-800 text-slate-600'
+                                      : 'bg-indigo-500/15 border-indigo-500/30 text-indigo-300'
+                                  }`}
+                                >
+                                  س{Number(qIdx) + 1}: {ansStr || '—'}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </td>
+                        <td className="p-2.5 whitespace-nowrap">
+                          <span className="px-2 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono font-black text-[11px]">
+                            {st.score}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}

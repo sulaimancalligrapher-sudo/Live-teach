@@ -1850,21 +1850,47 @@ export async function saveLiveLessonT(lesson: LiveLessonRow): Promise<{ success:
   }
 }
 
+const LOCAL_STORAGE_LIVE_ANSWERS_T = 'local_live_answers_t_cache';
+
 // Fetch Live Answers from Google Sheets (Answers-T)
 export async function fetchLiveAnswersT(): Promise<LiveAnswerRecord[]> {
   try {
-    const res = await fetchGas({ action: 'getLiveAnswersT' }, 'GET');
+    let res = await fetchGas({ action: 'getLiveAnswersT' }, 'GET');
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      try {
+        res = await fetchGas({ action: 'getLiveAnswers', sheetName: 'Answers-T' }, 'GET');
+      } catch {}
+    }
     if (res && res.success && Array.isArray(res.data)) {
+      localStorage.setItem(LOCAL_STORAGE_LIVE_ANSWERS_T, JSON.stringify(res.data));
       return res.data;
     }
   } catch (err) {
     console.warn('Could not fetch Answers-T from Google Sheets:', err);
+  }
+
+  const cached = localStorage.getItem(LOCAL_STORAGE_LIVE_ANSWERS_T);
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch {}
   }
   return [];
 }
 
 // Batch Record Student Answers to Google Sheets (Answers-T)
 export async function recordLiveAnswersBatchT(records: LiveAnswerRecord[]): Promise<{ success: boolean; count?: number; message?: string }> {
+  // Always update local cache immediately so Answers tab displays rows without delay
+  try {
+    const existingCache = localStorage.getItem(LOCAL_STORAGE_LIVE_ANSWERS_T);
+    let existingList: LiveAnswerRecord[] = existingCache ? JSON.parse(existingCache) : [];
+    // Merge or prepend new records
+    const merged = [...records, ...existingList.filter(old => 
+      !records.some(r => r.username === old.username && r.lessonTitle === old.lessonTitle)
+    )];
+    localStorage.setItem(LOCAL_STORAGE_LIVE_ANSWERS_T, JSON.stringify(merged));
+  } catch {}
+
   try {
     let res = await fetchGas({ action: 'batchRecordLiveAnswersT' }, 'POST', {
       action: 'batchRecordLiveAnswersT',
@@ -2309,6 +2335,7 @@ export {
   setStudentQuizRetryMode,
   clearConnectedStudents,
   stopAllActiveBroadcasts,
+  clearSessionAnswersMemory,
 } from './lib/firebaseLiveService';
 
 export {

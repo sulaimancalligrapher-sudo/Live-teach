@@ -564,6 +564,32 @@ export async function triggerLiveQuestion(payload: {
   showResult?: 'نعم' | 'لا';
 }): Promise<{ success: boolean; state?: LiveSessionState }> {
   try {
+    // Reconstruct answersForCurrentQuestion from cumulative allSessionAnswers if any student previously answered this question
+    const qIdx = payload.questionIndex;
+    const restoredCurrentAnswers: Record<string, LiveStudentAnswerSubmission> = {};
+    const allAnswers = cachedState.allSessionAnswers || {};
+    const students = cachedState.connectedStudents || [];
+
+    Object.entries(allAnswers).forEach(([studentKey, ansMap]) => {
+      if (ansMap && ansMap[qIdx] !== undefined && ansMap[qIdx] !== null && String(ansMap[qIdx]).trim() !== '') {
+        const rawAns = String(ansMap[qIdx]).trim();
+        const parts = studentKey.split('_');
+        const u = parts[0] || studentKey;
+        const s = parts.slice(1).join('_') || '';
+        // Recover sheetNumber from connectedStudents if missing
+        const matched = students.find(cs => cs.username === u);
+        const effectiveSheet = s || matched?.sheetNumber || '';
+
+        restoredCurrentAnswers[studentKey] = {
+          username: u,
+          sheetNumber: effectiveSheet,
+          answer: rawAns,
+          isCorrect: rawAns === 'صح' ? true : rawAns === 'خطأ' ? false : null,
+          submittedAt: Date.now(),
+        };
+      }
+    });
+
     const update: Partial<LiveSessionState> = {
       status: 'question_active',
       videoPlaying: false,
@@ -572,7 +598,7 @@ export async function triggerLiveQuestion(payload: {
       questionTriggeredAt: Date.now(),
       timeLimit: payload.timeLimit ?? cachedState.timeLimit ?? 30,
       showResult: payload.showResult ?? cachedState.showResult ?? 'نعم',
-      answersForCurrentQuestion: {},
+      answersForCurrentQuestion: restoredCurrentAnswers,
     };
 
     await updateDoc(LIVE_DOC_REF, {

@@ -189,17 +189,34 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
       setTextAnswer('');
       setSubmittedAnswer(null);
 
-      // Check if student already submitted for this specific active question (restore state if page reloaded)
+      // Check if student already submitted for this specific active question (restore state if page reloaded or coming back from another tab)
       const u = username.trim().toLowerCase();
       const s = sheetNumber.trim();
       const studentKey = s ? `${username.trim()}_${s}` : username.trim();
 
-      const prevSub = 
+      // Check current answers
+      let prevSub = 
         Object.values(sessionState.answersForCurrentQuestion || {}).find(
           sub => String(sub.username || '').trim().toLowerCase() === u
         ) ||
         sessionState.answersForCurrentQuestion?.[studentKey] ||
         sessionState.answersForCurrentQuestion?.[username.trim()];
+
+      // Fallback check cumulative allSessionAnswers if current answer was wiped
+      if (!prevSub && sessionState.allSessionAnswers) {
+        const qIdx = sessionState.currentQuestionIndex;
+        if (qIdx !== null && qIdx !== undefined) {
+          const matchKey = Object.keys(sessionState.allSessionAnswers).find(
+            k => k.split('_')[0].trim().toLowerCase() === u
+          );
+          if (matchKey && sessionState.allSessionAnswers[matchKey]?.[qIdx] !== undefined) {
+            const rawAns = sessionState.allSessionAnswers[matchKey][qIdx];
+            if (rawAns !== undefined && rawAns !== null && String(rawAns).trim() !== '') {
+              prevSub = { answer: String(rawAns).trim() } as any;
+            }
+          }
+        }
+      }
 
       if (prevSub) {
         const prev = typeof prevSub === 'object' ? prevSub.answer : String(prevSub);

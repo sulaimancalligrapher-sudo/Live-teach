@@ -1197,8 +1197,8 @@ export default function LiveDirectManager({
               {isTogglingProgram
                 ? 'جارٍ التنفيذ...'
                 : isProgramRunning
-                ? 'إنهاء الحصة المباشرة 🛑'
-                : 'بدء الحصة المباشرة 🚀'}
+                ? 'إنهاء'
+                : 'بدء'}
             </span>
           </button>
 
@@ -1216,7 +1216,7 @@ export default function LiveDirectManager({
             title="فتح شاشة العرض المخصصة للبروجكتر والمسرح"
           >
             <Tv className="w-4 h-4" />
-            <span>فتح شاشة العرض (المسرح) 🖥️</span>
+            <span>شاشة العرض</span>
           </button>
 
           {/* Student Join Link */}
@@ -1227,7 +1227,7 @@ export default function LiveDirectManager({
             title="نسخ رابط دخول الطلاب المباشر"
           >
             {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4 text-indigo-400" />}
-            <span>{copiedLink ? 'تم نسخ الرابط!' : 'رابط الطلاب'}</span>
+            <span>{copiedLink ? 'تم النسخ' : 'رابط'}</span>
           </button>
 
           {/* QR Code Modal Toggle */}
@@ -1277,7 +1277,7 @@ export default function LiveDirectManager({
         </motion.div>
       )}
 
-      {/* 4 Main Tabs: 1- إعدادات التدريس | 2- أدوات التعليم و PDF | 3- الأسئلة | 4- سجل الإجابات */}
+      {/* 5 Main Tabs */}
       <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
         <button
           onClick={() => setActiveTab('teaching')}
@@ -1288,7 +1288,7 @@ export default function LiveDirectManager({
           }`}
         >
           <Radio className="w-4 h-4" />
-          <span>إعدادات التدريس والتحكم المباشر 🎙️</span>
+          <span>التحكم المباشر</span>
         </button>
 
         <button
@@ -1300,7 +1300,7 @@ export default function LiveDirectManager({
           }`}
         >
           <BookOpen className="w-4 h-4 text-emerald-400" />
-          <span>أدوات التعليم و PDF 📚</span>
+          <span>PDF</span>
           <span className="px-2 py-0.5 rounded-full bg-slate-950/40 text-[10px] font-mono text-emerald-300">
             {pdfLessons.length}
           </span>
@@ -1315,7 +1315,7 @@ export default function LiveDirectManager({
           }`}
         >
           <HelpCircle className="w-4 h-4" />
-          <span>قسم إعدادات الأسئلة (Questions-Live)</span>
+          <span>Questions-Live</span>
           <span className="px-2 py-0.5 rounded-full bg-slate-950/40 text-[10px] font-mono">
             {lessons.length}
           </span>
@@ -1330,7 +1330,7 @@ export default function LiveDirectManager({
           }`}
         >
           <BarChart3 className="w-4 h-4" />
-          <span>قسم سجل الإجابات (Answers-Live)</span>
+          <span>Answers-Live</span>
           <span className="px-2 py-0.5 rounded-full bg-slate-950/40 text-[10px] font-mono">
             {answers.length}
           </span>
@@ -1345,7 +1345,7 @@ export default function LiveDirectManager({
           }`}
         >
           <Trophy className="w-4 h-4 text-amber-400" />
-          <span>تحدي كويز 🏆 (Quiz Arena)</span>
+          <span>تحدي كويز</span>
         </button>
       </div>
 
@@ -1378,7 +1378,7 @@ export default function LiveDirectManager({
                 className="w-full md:w-auto px-5 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/40 transition-all cursor-pointer active:scale-95 shrink-0"
               >
                 <Power className={`w-4 h-4 ${isTogglingProgram ? 'animate-spin' : ''}`} />
-                <span>{isTogglingProgram ? 'جارٍ البدء...' : 'بدء الحصة المباشرة الآن 🚀'}</span>
+                <span>{isTogglingProgram ? 'جارٍ التنفيذ...' : 'بدء'}</span>
               </button>
             </div>
           ) : (

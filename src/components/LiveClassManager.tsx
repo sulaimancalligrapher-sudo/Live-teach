@@ -1035,7 +1035,10 @@ export default function LiveClassManager({
             }`}
           >
             <Tv className="w-4 h-4" />
-            <span>دروس ورقة Questions-T ({lessons.length})</span>
+            <span>دروس</span>
+            <span className="px-1.5 py-0.5 rounded-md bg-slate-950/50 text-[10px] font-mono">
+              {lessons.length}
+            </span>
           </button>
 
           <button
@@ -1047,7 +1050,7 @@ export default function LiveClassManager({
             }`}
           >
             <FileSpreadsheet className="w-4 h-4" />
-            <span>سجل إجابات الطلاب Answers-T</span>
+            <span>اجابات</span>
           </button>
 
           <button
@@ -1059,7 +1062,10 @@ export default function LiveClassManager({
             }`}
           >
             <Users className="w-4 h-4 text-emerald-400" />
-            <span>الطلاب المتصلون حالياً ({sessionState?.connectedStudents?.length || 0})</span>
+            <span>المتصلون</span>
+            <span className="px-1.5 py-0.5 rounded-full bg-slate-950/50 text-[10px] font-mono text-emerald-400 font-bold">
+              {sessionState?.connectedStudents?.length || 0}
+            </span>
             {(sessionState?.connectedStudents?.length || 0) > 0 && (
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             )}
@@ -1074,7 +1080,7 @@ export default function LiveClassManager({
             }`}
           >
             <QrCode className="w-4 h-4" />
-            <span>رمز ورابط دخول الطلاب</span>
+            <span>رمز و ربط</span>
           </button>
         </div>
       </div>
@@ -1086,7 +1092,7 @@ export default function LiveClassManager({
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="text-xs text-slate-400 font-bold">
-              دروس الفيديو التفاعلية المجهزة للعرض الصفي
+              دروس ورقة Questions-T المجهزة للعرض الصفي
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -1130,67 +1136,49 @@ export default function LiveClassManager({
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2.5">
               {lessons.map((lesson, idx) => (
                 <div
                   key={idx}
-                  className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl hover:border-slate-700 transition-all flex flex-col justify-between space-y-4 group"
+                  className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-3.5 sm:p-4 shadow-md transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
                 >
-                  <div className="space-y-2">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-2.5">
-                        <span className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs">
-                          {idx + 1}
-                        </span>
-                        <div>
-                          <h3 className="text-base font-black text-slate-100 group-hover:text-amber-400 transition-colors">
-                            {lesson.title}
-                          </h3>
-                          <div className="text-[11px] text-slate-500 font-mono mt-0.5 truncate max-w-xs" dir="ltr">
-                            {lesson.videoUrl || 'لم يحدد رابط فيديو'}
-                          </div>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs shrink-0">
+                      {idx + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="text-sm sm:text-base font-black text-slate-100 group-hover:text-amber-400 transition-colors truncate">
+                        {lesson.title}
+                      </h3>
+                      {lesson.videoUrl && (
+                        <div className="text-[11px] text-slate-500 font-mono truncate max-w-xs sm:max-w-md mt-0.5" dir="ltr">
+                          {lesson.videoUrl}
                         </div>
-                      </div>
-
-                      <span className="px-2.5 py-1 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-indigo-400 font-bold shrink-0">
-                        {lesson.questions?.length || 0} أسئلة
-                      </span>
-                    </div>
-
-                    {/* Question Time Points Chips */}
-                    <div className="flex items-center gap-1.5 overflow-x-auto py-1">
-                      {lesson.questions?.slice(0, 6).map((q, qIdx) => (
-                        <span
-                          key={qIdx}
-                          className="px-2 py-0.5 rounded-lg bg-slate-950 border border-slate-800/80 text-[10px] font-mono text-slate-400 shrink-0"
-                        >
-                          س{qIdx + 1}: {formatSecondsToTime(q.time)}
-                        </span>
-                      ))}
-                      {(lesson.questions?.length || 0) > 6 && (
-                        <span className="text-[10px] text-slate-500 font-bold shrink-0">
-                          +{(lesson.questions?.length || 0) - 6} أخرى
-                        </span>
                       )}
                     </div>
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 pt-3 border-t border-slate-800/60">
+                  <div className="flex items-center gap-2 sm:gap-3 shrink-0 justify-end">
+                    <span className="px-2.5 py-1 rounded-xl bg-slate-950 border border-slate-800 text-xs text-indigo-400 font-bold shrink-0">
+                      {lesson.questions?.length || 0} أسئلة
+                    </span>
+
                     <button
                       onClick={() => onStartTeacherTheater(lesson)}
-                      className="flex-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-md shadow-amber-500/10 active:scale-98 transition-all cursor-pointer"
+                      className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black py-2 px-3.5 rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/10 active:scale-95 transition-all cursor-pointer"
+                      title="بدء الدرس المباشر"
                     >
-                      <Play className="w-4 h-4 fill-slate-950" />
-                      <span>بدء العرض على البروجكتر 📽️</span>
+                      <Play className="w-3.5 h-3.5 fill-slate-950" />
+                      <span>بدء</span>
                     </button>
 
                     <button
                       onClick={() => handleEditLesson(lesson)}
-                      className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-all cursor-pointer"
+                      className="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 px-3 rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer border border-slate-700 active:scale-95"
                       title="تعديل تفاصيل الدرس والأسئلة"
                     >
-                      <Edit3 className="w-4 h-4" />
+                      <Edit3 className="w-3.5 h-3.5" />
+                      <span>تعديل</span>
                     </button>
                   </div>
                 </div>

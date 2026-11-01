@@ -1345,7 +1345,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
               <div className="space-y-2 relative">
                 <span className="text-[11px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
                   {sessionState?.mode === 'direct'
-                    ? (sessionState?.status === 'playing' ? '🎙️ الأستاذ يشرح الآن' : 'في انتظار بدء الشرح المباشر')
+                    ? (sessionState?.status === 'playing' || sessionState?.status === 'direct_explanation' ? '🎙️ الأستاذ يشرح الآن' : 'في انتظار بدء الشرح المباشر')
                     : (sessionState?.status === 'playing' ? '🔴 الفيديو يعمل على الشاشة الآن' : 'في انتظار بدء العرض')}
                 </span>
                 <h3 className="text-lg sm:text-xl font-black text-slate-100">

@@ -148,6 +148,10 @@ export default function LiveTeacherRoom({
   // Initialize or Switch Lesson in Real-time Hub
   useEffect(() => {
     if (selectedLesson) {
+      // If the session is already active with this lesson and mode video, don't re-initialize
+      if (sessionState?.lessonTitle === selectedLesson.title && sessionState?.mode === 'video') {
+        return;
+      }
       triggeredQuestionsRef.current = new Set();
       setCurrentTime(0);
       setIsPlaying(false);
@@ -162,6 +166,7 @@ export default function LiveTeacherRoom({
       initLiveSession({
         lessonTitle: selectedLesson.title,
         videoUrl: selectedLesson.videoUrl,
+        mode: 'video',
         timeLimit: selectedLesson.settingTimeLimit || 30,
         showResult: selectedLesson.settingShowResult || 'نعم'
       }).then(res => {
@@ -210,9 +215,9 @@ export default function LiveTeacherRoom({
     }
   }, [sessionState?.lessonTitle, lessonsList]);
 
-  // Time tracking and smart auto-pause for questions
+  // Time tracking and smart auto-pause for questions (strictly when mode is 'video')
   const handleTimeUpdate = () => {
-    if (!videoRef.current || !selectedLesson) return;
+    if (sessionState?.mode !== 'video' || !videoRef.current || !selectedLesson) return;
     const time = videoRef.current.currentTime;
     setCurrentTime(time);
 
@@ -248,8 +253,17 @@ export default function LiveTeacherRoom({
     }
   };
 
-  // Synchronize play/pause state from Admin
+  // Synchronize play/pause state from Admin (strictly when mode is 'video')
   useEffect(() => {
+    // If not in video mode (e.g. direct lecture or quiz), ensure video is paused and silent
+    if (sessionState?.mode !== 'video') {
+      if (videoRef.current && !videoRef.current.paused) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      }
+      return;
+    }
+
     if (sessionState?.videoPlaying !== undefined && videoRef.current) {
       const isQuestionScreen = sessionState.status === 'question_active' || sessionState.status === 'revealed';
       const shouldPlay = sessionState.videoPlaying && !isQuestionScreen;
@@ -261,7 +275,7 @@ export default function LiveTeacherRoom({
         setIsPlaying(false);
       }
     }
-  }, [sessionState?.videoPlaying, sessionState?.status]);
+  }, [sessionState?.videoPlaying, sessionState?.status, sessionState?.mode]);
 
   // When a question appears, immediately auto-close the chat modal on projector screen so the question is front and center
   useEffect(() => {
@@ -270,16 +284,16 @@ export default function LiveTeacherRoom({
     }
   }, [sessionState?.status]);
 
-  // When teacher resumes video after answering a question (from Admin or Remote)
+  // When teacher resumes video after answering a question (strictly when mode is 'video')
   useEffect(() => {
-    if (sessionState?.status === 'playing' && videoRef.current) {
+    if (sessionState?.mode === 'video' && sessionState?.status === 'playing' && videoRef.current) {
       if (videoRef.current.paused) {
         // Advance slightly by 0.3s to smoothly clear the paused question point
         videoRef.current.currentTime = Math.min(videoRef.current.duration || 9999, videoRef.current.currentTime + 0.3);
         videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
       }
     }
-  }, [sessionState?.status]);
+  }, [sessionState?.status, sessionState?.mode]);
 
   // Play / Pause Toggle
   const togglePlay = () => {

@@ -498,24 +498,49 @@ export async function initLiveSession(payload: {
 }): Promise<{ success: boolean; state?: LiveSessionState }> {
   try {
     const isDirect = payload.mode === 'direct' || !payload.videoUrl;
-    const pin = cachedState.sessionPin || generatePinCode();
-    const isSameLesson = cachedState.lessonTitle === payload.lessonTitle;
+    
+    // Always fetch existing session state from Firestore to preserve active PIN, connected students, and answers
+    let existingData: any = null;
+    try {
+      const snap = await getDoc(LIVE_DOC_REF);
+      if (snap.exists()) {
+        existingData = snap.data();
+      }
+    } catch (readErr) {
+      console.warn('Could not read existing doc in initLiveSession, using cached state:', readErr);
+    }
+
+    const pin = (existingData?.sessionPin && String(existingData.sessionPin).trim().length > 0)
+      ? String(existingData.sessionPin).trim()
+      : (cachedState.sessionPin || '1234');
+
+    const sessionId = existingData?.sessionId || cachedState.sessionId || ('live-' + Date.now());
+    const isProgramActive = existingData?.isProgramActive ?? cachedState.isProgramActive ?? true;
+    const connectedStudents = Array.isArray(existingData?.connectedStudents) 
+      ? existingData.connectedStudents 
+      : (cachedState.connectedStudents || []);
+
+    const existingAllAnswers = existingData?.allSessionAnswers || cachedState.allSessionAnswers || {};
+    const existingCurrentAnswers = existingData?.answersForCurrentQuestion || cachedState.answersForCurrentQuestion || {};
+    const isSameLesson = (existingData?.lessonTitle || cachedState.lessonTitle) === payload.lessonTitle;
+
     const update: Partial<LiveSessionState> = {
-      sessionId: cachedState.sessionId || ('live-' + Date.now()),
+      sessionId: sessionId,
       sessionPin: pin,
-      isProgramActive: true,
+      isProgramActive: isProgramActive,
       lessonTitle: payload.lessonTitle,
       videoUrl: payload.videoUrl || '',
       mode: isDirect ? 'direct' : 'video',
       explanationText: payload.explanationText || '',
       timeLimit: payload.timeLimit ?? 30,
       showResult: payload.showResult ?? 'نعم',
-      status: isDirect ? 'playing' : 'waiting',
+      status: isDirect ? 'direct_explanation' : 'waiting',
       currentQuestionIndex: null,
       currentQuestion: null,
       questionTriggeredAt: null,
-      answersForCurrentQuestion: isSameLesson ? (cachedState.answersForCurrentQuestion || {}) : {},
-      allSessionAnswers: isSameLesson ? (cachedState.allSessionAnswers || {}) : {},
+      connectedStudents: connectedStudents,
+      answersForCurrentQuestion: isSameLesson ? existingCurrentAnswers : {},
+      allSessionAnswers: existingAllAnswers,
     };
 
     await updateDoc(LIVE_DOC_REF, {
@@ -537,7 +562,9 @@ export async function returnToLiveExplanation(payload?: {
 }): Promise<{ success: boolean; state?: LiveSessionState }> {
   try {
     const update: Partial<LiveSessionState> = {
-      status: 'playing',
+      status: 'direct_explanation',
+      mode: 'direct',
+      videoPlaying: false,
       currentQuestionIndex: null,
       currentQuestion: null,
       questionTriggeredAt: null,

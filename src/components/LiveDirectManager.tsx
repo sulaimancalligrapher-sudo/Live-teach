@@ -808,11 +808,15 @@ export default function LiveDirectManager({
   // Helper to format answers as 'صح' / 'خطأ' / 'نص' to match Answers-T & Answers-Live structure
   const formatAnswersForAnswersLive = (
     answersMap: Record<number, string>,
-    targetQuestions?: LiveDirectQuestionItem[]
+    targetQuestions?: LiveDirectQuestionItem[],
+    askedQuestionIndices?: Set<number>
   ): Record<number, string> => {
     const formatted: Record<number, string> = {};
     if (targetQuestions && targetQuestions.length > 0) {
       targetQuestions.forEach((q, idx) => {
+        const wasAsked = !askedQuestionIndices || askedQuestionIndices.size === 0 || askedQuestionIndices.has(idx);
+        if (!wasAsked) return;
+
         const rawAns = answersMap[idx];
         if (rawAns !== undefined && rawAns !== null && String(rawAns).trim() !== '') {
           const strAns = String(rawAns).trim();
@@ -836,13 +840,21 @@ export default function LiveDirectManager({
             }
           }
         } else {
-          formatted[idx] = '';
+          // Unanswered question is marked as wrong answer ('خطأ')
+          formatted[idx] = 'خطأ';
         }
       });
     } else {
-      Object.entries(answersMap).forEach(([idx, val]) => {
-        formatted[Number(idx)] = String(val);
-      });
+      if (askedQuestionIndices && askedQuestionIndices.size > 0) {
+        askedQuestionIndices.forEach(idx => {
+          const val = answersMap[idx];
+          formatted[idx] = (val !== undefined && val !== null && String(val).trim() !== '') ? String(val).trim() : 'خطأ';
+        });
+      } else {
+        Object.entries(answersMap).forEach(([idx, val]) => {
+          formatted[Number(idx)] = (val !== undefined && val !== null && String(val).trim() !== '') ? String(val).trim() : 'خطأ';
+        });
+      }
     }
     return formatted;
   };
@@ -868,6 +880,22 @@ export default function LiveDirectManager({
           allAnswers[studentKey][currentQIdx] = String(val).trim();
         }
       });
+    }
+
+    // Determine all question indices that were posed or active in this session
+    const askedQuestionIndices = new Set<number>();
+    if (currentQIdx !== null && currentQIdx !== undefined) {
+      askedQuestionIndices.add(Number(currentQIdx));
+    }
+    Object.values(allAnswers).forEach(map => {
+      if (map) {
+        Object.keys(map).forEach(k => askedQuestionIndices.add(Number(k)));
+      }
+    });
+
+    // If questions exist in lesson and none specifically tracked, include all questions from the lesson
+    if (askedQuestionIndices.size === 0 && currentLesson?.questions && currentLesson.questions.length > 0) {
+      currentLesson.questions.forEach((_, i) => askedQuestionIndices.add(i));
     }
 
     // 2. Build canonical student map from connectedStudents, allAnswers keys, and currentAnswers keys
@@ -955,17 +983,17 @@ export default function LiveDirectManager({
         });
       }
 
-      if (Object.keys(studentAnswers).length > 0) {
-        const formatted = formatAnswersForAnswersLive(studentAnswers, currentLesson?.questions);
-        recordsToSave.push({
-          timestamp,
-          sheetNumber: sNum,
-          username: u,
-          studentName: u,
-          lessonTitle: title,
-          answers: formatted,
-        });
-      }
+      // Format answers: answered questions evaluated, unanswered marked as 'خطأ'
+      const formatted = formatAnswersForAnswersLive(studentAnswers, currentLesson?.questions, askedQuestionIndices);
+
+      recordsToSave.push({
+        timestamp,
+        sheetNumber: sNum,
+        username: u,
+        studentName: u,
+        lessonTitle: title,
+        answers: formatted,
+      });
     });
 
     return recordsToSave;

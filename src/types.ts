@@ -286,7 +286,7 @@ export interface LiveSessionState {
   videoUrl: string;
   mode?: 'video' | 'direct'; // 'video' for Video Classroom (Questions-T), 'direct' for Live Lecture (Questions-Live)
   explanationText?: string; // Optional message or topic shown to students during live explanation
-  status: 'idle' | 'waiting' | 'playing' | 'question_active' | 'revealed' | 'finished' | 'program_ended';
+  status: 'idle' | 'waiting' | 'playing' | 'question_active' | 'revealed' | 'finished' | 'program_ended' | 'direct_explanation';
   currentQuestionIndex: number | null;
   currentQuestion: LiveQuestionItem | null;
   questionTriggeredAt: number | null;

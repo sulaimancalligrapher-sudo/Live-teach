@@ -473,7 +473,8 @@ export default function LiveClassManager({
     const stateToUse = targetState || sessionStateRef.current || sessionState;
     const hasAllSession = stateToUse?.allSessionAnswers && Object.keys(stateToUse.allSessionAnswers).length > 0;
     const hasCurrentQ = stateToUse?.answersForCurrentQuestion && Object.keys(stateToUse.answersForCurrentQuestion).length > 0;
-    if (!hasAllSession && !hasCurrentQ) {
+    const hasStudents = stateToUse?.connectedStudents && stateToUse.connectedStudents.length > 0;
+    if (!hasAllSession && !hasCurrentQ && !hasStudents) {
       return { success: true, count: 0 };
     }
 
@@ -529,12 +530,17 @@ export default function LiveClassManager({
       });
     }
 
-    Object.entries(mergedAnswers).forEach(([rawKey, answers]) => {
-      let u = rawKey.includes('_') ? rawKey.split('_')[0] : rawKey;
-      let num = rawKey.includes('_') ? rawKey.split('_').slice(1).join('_') : '';
-      const existing = studentMap.get(u.toLowerCase());
-      const finalUser = existing ? existing.username : u;
-      const finalNum = existing?.sheetNumber || num || '';
+    // Process every student in the session
+    studentMap.forEach(({ username: finalUser, sheetNumber: finalNum }) => {
+      const keyNorm = normalizeArabicText(finalUser);
+      let answers: Record<number, any> = {};
+
+      Object.entries(mergedAnswers).forEach(([rawKey, ansMap]) => {
+        let u = rawKey.includes('_') ? rawKey.split('_')[0] : rawKey;
+        if (normalizeArabicText(u) === keyNorm && ansMap) {
+          answers = { ...answers, ...ansMap };
+        }
+      });
 
       const formattedAns: Record<number, string> = {};
       let correctCount = 0;
@@ -567,7 +573,9 @@ export default function LiveClassManager({
               }
             }
           } else {
-            formattedAns[idx] = '';
+            // Unanswered question is counted as wrong ('خطأ')
+            formattedAns[idx] = 'خطأ';
+            evaluatedCount++;
           }
         });
       } else {
@@ -576,17 +584,14 @@ export default function LiveClassManager({
         });
       }
 
-      const hasAnyAnswer = Object.values(formattedAns).some(val => val !== '');
-      if (hasAnyAnswer) {
-        records.push({
-          timestamp,
-          sheetNumber: finalNum,
-          username: finalUser,
-          lessonTitle,
-          answers: formattedAns,
-          totalScore: evaluatedCount > 0 ? `${correctCount}/${evaluatedCount}` : ''
-        });
-      }
+      records.push({
+        timestamp,
+        sheetNumber: finalNum,
+        username: finalUser,
+        lessonTitle,
+        answers: formattedAns,
+        totalScore: evaluatedCount > 0 ? `${correctCount}/${evaluatedCount}` : ''
+      });
     });
 
     if (records.length > 0) {

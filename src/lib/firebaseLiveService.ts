@@ -47,6 +47,9 @@ export const defaultLiveSessionState: LiveSessionState = {
   pdfPage: 1,
   messages: [],
   lessonTitle: '',
+  videoLessonTitle: '',
+  directLessonTitle: '',
+  quizLessonTitle: '',
   videoUrl: '',
   mode: 'video',
   explanationText: '',
@@ -59,6 +62,8 @@ export const defaultLiveSessionState: LiveSessionState = {
   connectedStudents: [],
   answersForCurrentQuestion: {},
   allSessionAnswers: {},
+  videoAnswers: {},
+  directAnswers: {},
   quizState: null,
 };
 
@@ -121,6 +126,9 @@ export function subscribeToLiveSession(
           pdfAnnotations: data.pdfAnnotations || {},
           messages: Array.isArray(data.messages) ? data.messages : [],
           lessonTitle: data.lessonTitle || '',
+          videoLessonTitle: data.videoLessonTitle || (data.mode === 'video' ? data.lessonTitle : ''),
+          directLessonTitle: data.directLessonTitle || (data.mode === 'direct' ? data.lessonTitle : ''),
+          quizLessonTitle: data.quizLessonTitle || data.quizState?.quizTitle || '',
           videoUrl: data.videoUrl || '',
           mode: (data.mode as any) || (data.videoUrl ? 'video' : 'direct'),
           explanationText: data.explanationText || '',
@@ -133,6 +141,8 @@ export function subscribeToLiveSession(
           connectedStudents: activeStudents,
           answersForCurrentQuestion: data.answersForCurrentQuestion || {},
           allSessionAnswers: data.allSessionAnswers || {},
+          videoAnswers: data.videoAnswers || {},
+          directAnswers: data.directAnswers || {},
           quizState: data.quizState || null,
         };
         cachedState = state;
@@ -199,6 +209,9 @@ export async function getLiveSessionState(): Promise<LiveSessionState | null> {
         pdfAnnotations: data.pdfAnnotations || {},
         messages: Array.isArray(data.messages) ? data.messages : [],
         lessonTitle: data.lessonTitle || '',
+        videoLessonTitle: data.videoLessonTitle || (data.mode === 'video' ? data.lessonTitle : ''),
+        directLessonTitle: data.directLessonTitle || (data.mode === 'direct' ? data.lessonTitle : ''),
+        quizLessonTitle: data.quizLessonTitle || data.quizState?.quizTitle || '',
         videoUrl: data.videoUrl || '',
         mode: (data.mode as any) || (data.videoUrl ? 'video' : 'direct'),
         explanationText: data.explanationText || '',
@@ -211,6 +224,8 @@ export async function getLiveSessionState(): Promise<LiveSessionState | null> {
         connectedStudents: activeStudents,
         answersForCurrentQuestion: data.answersForCurrentQuestion || {},
         allSessionAnswers: data.allSessionAnswers || {},
+        videoAnswers: data.videoAnswers || {},
+        directAnswers: data.directAnswers || {},
         quizState: data.quizState || null,
       };
       cachedState = state;
@@ -553,14 +568,26 @@ export async function initLiveSession(payload: {
 
     const existingAllAnswers = existingData?.allSessionAnswers || cachedState.allSessionAnswers || {};
     const existingCurrentAnswers = existingData?.answersForCurrentQuestion || cachedState.answersForCurrentQuestion || {};
-    const isSameLesson = (existingData?.lessonTitle || cachedState.lessonTitle) === payload.lessonTitle;
+    const previousLessonTitle = isDirect 
+      ? (existingData?.directLessonTitle || cachedState.directLessonTitle || '')
+      : (existingData?.videoLessonTitle || cachedState.videoLessonTitle || '');
+    const isSameLesson = previousLessonTitle === payload.lessonTitle;
+
+    const effectiveVideoLessonTitle = isDirect 
+      ? (existingData?.videoLessonTitle || cachedState.videoLessonTitle || '')
+      : payload.lessonTitle;
+    const effectiveDirectLessonTitle = isDirect 
+      ? payload.lessonTitle
+      : (existingData?.directLessonTitle || cachedState.directLessonTitle || '');
 
     const update: Partial<LiveSessionState> = {
       sessionId: sessionId,
       sessionPin: pin,
       isProgramActive: isProgramActive,
       lessonTitle: payload.lessonTitle,
-      videoUrl: payload.videoUrl || '',
+      videoLessonTitle: effectiveVideoLessonTitle,
+      directLessonTitle: effectiveDirectLessonTitle,
+      videoUrl: isDirect ? (existingData?.videoUrl || cachedState.videoUrl || '') : (payload.videoUrl || ''),
       mode: isDirect ? 'direct' : 'video',
       explanationText: payload.explanationText || '',
       timeLimit: payload.timeLimit ?? 30,
@@ -572,6 +599,8 @@ export async function initLiveSession(payload: {
       connectedStudents: connectedStudents,
       answersForCurrentQuestion: isSameLesson ? existingCurrentAnswers : {},
       allSessionAnswers: existingAllAnswers,
+      videoAnswers: existingData?.videoAnswers || cachedState.videoAnswers || {},
+      directAnswers: existingData?.directAnswers || cachedState.directAnswers || {},
     };
 
     await updateDoc(LIVE_DOC_REF, {
@@ -770,9 +799,26 @@ export async function submitLiveAnswer(payload: {
 
     allAnswers[studentKey][payload.questionIndex] = formattedAnswer;
 
+    // Scoped answers per lesson to avoid cross-lesson interference
+    const currentLesson = state.lessonTitle || (state.mode === 'direct' ? state.directLessonTitle : state.videoLessonTitle) || 'default';
+    const videoAnswers: Record<string, Record<string, Record<number, string>>> = { ...(state.videoAnswers || {}) };
+    const directAnswers: Record<string, Record<string, Record<number, string>>> = { ...(state.directAnswers || {}) };
+
+    if (state.mode === 'direct') {
+      if (!directAnswers[currentLesson]) directAnswers[currentLesson] = {};
+      if (!directAnswers[currentLesson][studentKey]) directAnswers[currentLesson][studentKey] = {};
+      directAnswers[currentLesson][studentKey][payload.questionIndex] = formattedAnswer;
+    } else {
+      if (!videoAnswers[currentLesson]) videoAnswers[currentLesson] = {};
+      if (!videoAnswers[currentLesson][studentKey]) videoAnswers[currentLesson][studentKey] = {};
+      videoAnswers[currentLesson][studentKey][payload.questionIndex] = formattedAnswer;
+    }
+
     await updateDoc(LIVE_DOC_REF, {
       answersForCurrentQuestion: currentAnswers,
       allSessionAnswers: allAnswers,
+      videoAnswers: videoAnswers,
+      directAnswers: directAnswers,
       connectedStudents: updatedStudents,
       updatedAt: serverTimestamp(),
     });
@@ -781,12 +827,59 @@ export async function submitLiveAnswer(payload: {
       ...state, 
       answersForCurrentQuestion: currentAnswers, 
       allSessionAnswers: allAnswers,
+      videoAnswers: videoAnswers,
+      directAnswers: directAnswers,
       connectedStudents: updatedStudents,
     };
     return { success: true, state: cachedState };
   } catch (error: any) {
     console.error('Failed to submit answer in Firebase:', error);
     return { success: false, error: error?.message || 'فشل إرسال الإجابة لقاعدة البيانات' };
+  }
+}
+
+// Clears direct lecture lesson answers cleanly for a specific lesson or all direct lessons
+export async function clearLiveDirectLessonAnswers(lessonTitle?: string): Promise<{ success: boolean; state?: LiveSessionState }> {
+  try {
+    const state = await getLiveSessionState() || cachedState;
+    const directAnswers = { ...(state.directAnswers || {}) };
+    const allSessionAnswers = { ...(state.allSessionAnswers || {}) };
+    const targetTitle = lessonTitle || state.directLessonTitle || state.lessonTitle;
+
+    if (targetTitle && directAnswers[targetTitle]) {
+      delete directAnswers[targetTitle];
+    } else if (!lessonTitle) {
+      Object.keys(directAnswers).forEach(k => delete directAnswers[k]);
+    }
+
+    let answersForCurrentQuestion = state.answersForCurrentQuestion || {};
+    // If currently running this direct lesson, clear current question and unmark answered
+    if (state.mode === 'direct' && (!lessonTitle || state.lessonTitle === lessonTitle)) {
+      answersForCurrentQuestion = {};
+      Object.keys(allSessionAnswers).forEach(studentKey => {
+        delete allSessionAnswers[studentKey];
+      });
+    }
+
+    const update: Partial<LiveSessionState> = {
+      directAnswers,
+      allSessionAnswers,
+      answersForCurrentQuestion,
+      currentQuestion: null,
+      currentQuestionIndex: null,
+      questionTriggeredAt: null,
+    };
+
+    await updateDoc(LIVE_DOC_REF, {
+      ...update,
+      updatedAt: serverTimestamp(),
+    });
+
+    cachedState = { ...cachedState, ...update };
+    return { success: true, state: cachedState };
+  } catch (error: any) {
+    console.error('Failed to clear live direct lesson answers:', error);
+    return { success: false };
   }
 }
 
@@ -835,12 +928,11 @@ export async function resumeLiveVideo(): Promise<{ success: boolean; state?: Liv
 export async function finishLiveSession(): Promise<{ success: boolean; state?: LiveSessionState }> {
   try {
     const update: Partial<LiveSessionState> = {
-      isProgramActive: false,
       status: 'finished',
+      videoPlaying: false,
       currentQuestion: null,
       currentQuestionIndex: null,
       answersForCurrentQuestion: {},
-      allSessionAnswers: {},
     };
 
     await setDoc(LIVE_DOC_REF, {

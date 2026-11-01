@@ -283,6 +283,9 @@ export interface LiveSessionState {
   }>>; // Realtime drawings keyed by page number
   messages?: LiveStudentMessage[]; // Live list of questions and reactions from students
   lessonTitle: string;
+  videoLessonTitle?: string; // Independent title for Interactive Video (Questions-T)
+  directLessonTitle?: string; // Independent title for Live Lecture (Questions-Live)
+  quizLessonTitle?: string; // Independent title for Quiz Challenge (Questions-Qui)
   videoUrl: string;
   mode?: 'video' | 'direct'; // 'video' for Video Classroom (Questions-T), 'direct' for Live Lecture (Questions-Live)
   explanationText?: string; // Optional message or topic shown to students during live explanation
@@ -295,6 +298,8 @@ export interface LiveSessionState {
   connectedStudents: LiveConnectedStudent[];
   answersForCurrentQuestion: Record<string, LiveStudentAnswerSubmission>;
   allSessionAnswers: Record<string, Record<number, string>>;
+  videoAnswers?: Record<string, Record<string, Record<number, string>>>; // [lessonTitle][studentKey][qIdx]
+  directAnswers?: Record<string, Record<string, Record<number, string>>>; // [lessonTitle][studentKey][qIdx]
   roomPin?: string; // Room security entry PIN for live direct classroom
   quizState?: QuizActiveState | null; // Quiz / Challenge Mode (Questions-Qui & Answers-Qui)
 }

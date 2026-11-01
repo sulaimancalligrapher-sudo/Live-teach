@@ -103,6 +103,7 @@ import {
   clearConnectedStudents,
   clearSessionAnswersMemory,
   recordLiveAnswersBatchT,
+  clearLiveDirectLessonAnswers,
 } from '../api';
 import LiveChatModal from './LiveChatModal';
 import { NativePdfViewer } from './NativePdfViewer';
@@ -131,7 +132,12 @@ export default function LiveDirectManager({
 
   // Real-time Session State
   const [sessionState, setSessionState] = useState<LiveSessionState | null>(null);
-  const [selectedLessonTitle, setSelectedLessonTitle] = useState<string>('');
+  const [selectedLessonTitle, setSelectedLessonTitle] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('selected_direct_lesson_title') || '';
+    }
+    return '';
+  });
   const [copiedPin, setCopiedPin] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
   const [isRegeneratingPin, setIsRegeneratingPin] = useState(false);
@@ -598,11 +604,23 @@ export default function LiveDirectManager({
     );
   }, [answers, searchAnswers]);
 
+  // Keep selectedLessonTitle in sync if loaded empty
+  useEffect(() => {
+    if (!selectedLessonTitle) {
+      if (sessionState?.directLessonTitle) {
+        setSelectedLessonTitle(sessionState.directLessonTitle);
+      } else if (sessionState?.mode === 'direct' && sessionState?.lessonTitle) {
+        setSelectedLessonTitle(sessionState.lessonTitle);
+      }
+    }
+  }, [sessionState?.directLessonTitle, sessionState?.mode, sessionState?.lessonTitle, selectedLessonTitle]);
+
   // Currently active lesson in teaching tab
   const activeLesson = useMemo(() => {
-    if (!selectedLessonTitle) return null;
-    return lessons.find(l => l.title === selectedLessonTitle) || null;
-  }, [lessons, selectedLessonTitle]);
+    const title = selectedLessonTitle || sessionState?.directLessonTitle || (sessionState?.mode === 'direct' ? sessionState?.lessonTitle : '') || (lessons.length > 0 ? lessons[0].title : '');
+    if (!title) return null;
+    return lessons.find(l => l.title === title) || lessons[0] || null;
+  }, [lessons, selectedLessonTitle, sessionState?.directLessonTitle, sessionState?.lessonTitle, sessionState?.mode]);
 
   // Student Join Link and QR
   const effectivePin = sessionState?.sessionPin ? sessionState.sessionPin.trim() : '';
@@ -745,12 +763,15 @@ export default function LiveDirectManager({
     }
   };
 
-  // Reset Session
+  // Reset Session (cleans memory for current direct lecture lesson so questions return fresh)
   const handleResetSession = async () => {
     setIsResettingSession(true);
     try {
-      await resetLiveSession();
-      showNotice('تم تصفير ذاكرة الحصة بنجاح 🔄', 'info');
+      const res = await clearLiveDirectLessonAnswers(selectedLessonTitle);
+      if (res && res.state) {
+        setSessionState(res.state);
+      }
+      showNotice(`تم تصفير ذاكرة إجابات موضوع "${selectedLessonTitle || 'الحصة'}" بنجاح 🔄`, 'info');
     } catch {
       showNotice('فشل تصفير الجلسة', 'error');
     } finally {
@@ -811,15 +832,34 @@ export default function LiveDirectManager({
   // Helper to determine the count of students who submitted an answer for question idx
   const getQuestionAnswerCount = useCallback((qIdx: number): number => {
     const answeredStudents = new Set<string>();
-    if (sessionState?.allSessionAnswers) {
-      Object.entries(sessionState.allSessionAnswers).forEach(([studentKey, studentAnswers]) => {
+    const currentTitle = selectedLessonTitle || sessionState?.directLessonTitle || (sessionState?.mode === 'direct' ? sessionState?.lessonTitle : '');
+
+    // 1. Check scoped directAnswers for this specific lesson
+    if (currentTitle && sessionState?.directAnswers && sessionState.directAnswers[currentTitle]) {
+      const lessonMap = sessionState.directAnswers[currentTitle];
+      Object.entries(lessonMap).forEach(([studentKey, studentAnswers]) => {
         if (studentAnswers && studentAnswers[qIdx] !== undefined && studentAnswers[qIdx] !== null && String(studentAnswers[qIdx]).trim() !== '') {
           const u = studentKey.includes('_') ? studentKey.split('_')[0] : studentKey;
           answeredStudents.add(normalizeArabicText(u));
         }
       });
     }
-    if (sessionState?.currentQuestionIndex === qIdx && sessionState?.answersForCurrentQuestion) {
+
+    // 2. Fallback to allSessionAnswers ONLY if sessionState is actively in 'direct' mode AND for this exact lesson
+    if (answeredStudents.size === 0 && sessionState?.mode === 'direct' && sessionState?.allSessionAnswers) {
+      const sessionTitle = sessionState.directLessonTitle || sessionState.lessonTitle;
+      if (!currentTitle || sessionTitle === currentTitle) {
+        Object.entries(sessionState.allSessionAnswers).forEach(([studentKey, studentAnswers]) => {
+          if (studentAnswers && studentAnswers[qIdx] !== undefined && studentAnswers[qIdx] !== null && String(studentAnswers[qIdx]).trim() !== '') {
+            const u = studentKey.includes('_') ? studentKey.split('_')[0] : studentKey;
+            answeredStudents.add(normalizeArabicText(u));
+          }
+        });
+      }
+    }
+
+    // 3. Current active question answers if currently direct mode and matching qIdx
+    if (sessionState?.mode === 'direct' && sessionState?.currentQuestionIndex === qIdx && sessionState?.answersForCurrentQuestion) {
       Object.entries(sessionState.answersForCurrentQuestion).forEach(([studentKey, sub]) => {
         const ans = typeof sub === 'object' && sub !== null && 'answer' in sub ? sub.answer : sub;
         if (ans !== undefined && ans !== null && String(ans).trim() !== '') {
@@ -828,8 +868,9 @@ export default function LiveDirectManager({
         }
       });
     }
+
     return answeredStudents.size;
-  }, [sessionState?.allSessionAnswers, sessionState?.answersForCurrentQuestion, sessionState?.currentQuestionIndex]);
+  }, [selectedLessonTitle, sessionState?.directAnswers, sessionState?.allSessionAnswers, sessionState?.directLessonTitle, sessionState?.lessonTitle, sessionState?.mode, sessionState?.answersForCurrentQuestion, sessionState?.currentQuestionIndex]);
 
   const isQuestionAnswered = useCallback((qIdx: number): boolean => {
     return getQuestionAnswerCount(qIdx) > 0;
@@ -1094,6 +1135,9 @@ export default function LiveDirectManager({
   // Select lesson in teaching control
   const handleSelectLesson = async (title: string) => {
     setSelectedLessonTitle(title);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('selected_direct_lesson_title', title);
+    }
     setPreviewQuestionIndex(0);
     if (!title) return;
 

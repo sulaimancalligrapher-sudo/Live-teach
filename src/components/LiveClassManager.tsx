@@ -98,7 +98,12 @@ export default function LiveClassManager({
   const [isFinishingLesson, setIsFinishingLesson] = useState(false);
   const [showFinishLessonConfirmModal, setShowFinishLessonConfirmModal] = useState(false);
   const [pendingLessonSwitchTitle, setPendingLessonSwitchTitle] = useState<string | null>(null);
-  const [selectedLessonTitle, setSelectedLessonTitle] = useState<string>('');
+  const [selectedLessonTitle, setSelectedLessonTitle] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('selected_video_lesson_title') || '';
+    }
+    return '';
+  });
   const [isSavingAndSwitchingLesson, setIsSavingAndSwitchingLesson] = useState(false);
   const [isUpdatingRevealVisibility, setIsUpdatingRevealVisibility] = useState(false);
   const [isUpdatingResumeVisibility, setIsUpdatingResumeVisibility] = useState(false);
@@ -409,23 +414,27 @@ export default function LiveClassManager({
     }
   };
 
-  // Keep selectedLessonTitle in sync with active sessionState.lessonTitle
+  // Keep selectedLessonTitle in sync with active sessionState only when in video mode
   useEffect(() => {
-    if (sessionState?.lessonTitle && !selectedLessonTitle) {
-      setSelectedLessonTitle(sessionState.lessonTitle);
+    if (!selectedLessonTitle) {
+      if (sessionState?.videoLessonTitle) {
+        setSelectedLessonTitle(sessionState.videoLessonTitle);
+      } else if (sessionState?.mode === 'video' && sessionState?.lessonTitle) {
+        setSelectedLessonTitle(sessionState.lessonTitle);
+      }
     }
-  }, [sessionState?.lessonTitle]);
+  }, [sessionState?.videoLessonTitle, sessionState?.mode, sessionState?.lessonTitle, selectedLessonTitle]);
 
   // Determine currently active lesson from explicitly selected lesson, active session, or first available lesson
   const activeLesson = useMemo(() => {
-    const titleToUse = selectedLessonTitle || sessionState?.lessonTitle || (lessons.length > 0 ? lessons[0].title : '');
+    const titleToUse = selectedLessonTitle || sessionState?.videoLessonTitle || (sessionState?.mode === 'video' ? sessionState?.lessonTitle : '') || (lessons.length > 0 ? lessons[0].title : '');
     if (titleToUse) {
       const trimmed = titleToUse.trim().toLowerCase();
       const match = lessons.find(l => l.title.trim().toLowerCase() === trimmed);
       if (match) return match;
     }
     return lessons[0] || null;
-  }, [selectedLessonTitle, sessionState?.lessonTitle, lessons]);
+  }, [selectedLessonTitle, sessionState?.videoLessonTitle, sessionState?.lessonTitle, sessionState?.mode, lessons]);
 
   // Trigger question directly from Admin panel (transferred from display screen)
   const handleTriggerQuestionFromAdmin = async (q: LiveQuestionItem, idx: number) => {
@@ -719,6 +728,9 @@ export default function LiveClassManager({
         showResult: target.settingShowResult || 'نعم',
       });
       setSelectedLessonTitle(target.title);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('selected_video_lesson_title', target.title);
+      }
       if (res && res.state) {
         setSessionState(res.state);
         sessionStateRef.current = res.state;

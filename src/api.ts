@@ -1851,9 +1851,31 @@ export async function saveLiveLessonT(lesson: LiveLessonRow): Promise<{ success:
 }
 
 const LOCAL_STORAGE_LIVE_ANSWERS_T = 'local_live_answers_t_cache';
+const LOCAL_STORAGE_SYSTEM_ANSWERS_HISTORY_T = 'system_live_answers_history_t';
 
-// Fetch Live Answers from Google Sheets (Answers-T)
+// Get permanent system-level answers history for Interactive Video (Questions-T)
+export function getSystemLiveAnswersHistoryT(): LiveAnswerRecord[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_SYSTEM_ANSWERS_HISTORY_T);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+// Clear system answers history if requested by teacher
+export function clearSystemLiveAnswersHistoryT(): void {
+  try {
+    localStorage.removeItem(LOCAL_STORAGE_SYSTEM_ANSWERS_HISTORY_T);
+    localStorage.removeItem(LOCAL_STORAGE_LIVE_ANSWERS_T);
+  } catch {}
+}
+
+// Fetch Live Answers from Google Sheets (Answers-T) merged with system history
 export async function fetchLiveAnswersT(): Promise<LiveAnswerRecord[]> {
+  const systemHistory = getSystemLiveAnswersHistoryT();
+  let sheetRecords: LiveAnswerRecord[] = [];
+
   try {
     let res = await fetchGas({ action: 'getLiveAnswersT' }, 'GET');
     if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
@@ -1862,11 +1884,31 @@ export async function fetchLiveAnswersT(): Promise<LiveAnswerRecord[]> {
       } catch {}
     }
     if (res && res.success && Array.isArray(res.data)) {
-      localStorage.setItem(LOCAL_STORAGE_LIVE_ANSWERS_T, JSON.stringify(res.data));
-      return res.data;
+      sheetRecords = res.data;
     }
   } catch (err) {
     console.warn('Could not fetch Answers-T from Google Sheets:', err);
+  }
+
+  // Deduplicate and merge sheet records with system history so answers are NEVER lost
+  const mergedMap = new Map<string, LiveAnswerRecord>();
+  // 1. Add system history first
+  systemHistory.forEach((item) => {
+    const key = `${item.lessonTitle || ''}_${item.username || ''}_${item.sheetNumber || ''}_${item.timestamp || ''}`;
+    mergedMap.set(key, item);
+  });
+  // 2. Add or update with sheet records
+  sheetRecords.forEach((item) => {
+    const key = `${item.lessonTitle || ''}_${item.username || ''}_${item.sheetNumber || ''}_${item.timestamp || ''}`;
+    mergedMap.set(key, item);
+  });
+
+  const finalRecords = Array.from(mergedMap.values());
+  if (finalRecords.length > 0) {
+    try {
+      localStorage.setItem(LOCAL_STORAGE_LIVE_ANSWERS_T, JSON.stringify(finalRecords));
+    } catch {}
+    return finalRecords;
   }
 
   const cached = localStorage.getItem(LOCAL_STORAGE_LIVE_ANSWERS_T);
@@ -1880,16 +1922,26 @@ export async function fetchLiveAnswersT(): Promise<LiveAnswerRecord[]> {
 
 // Batch Record Student Answers to Google Sheets (Answers-T)
 export async function recordLiveAnswersBatchT(records: LiveAnswerRecord[]): Promise<{ success: boolean; count?: number; message?: string }> {
-  // Always update local cache immediately so Answers tab displays rows without delay
+  // 1. Always update system persistent history immediately so records are 100% immune to tab reloads or empty sheet states
   try {
-    const existingCache = localStorage.getItem(LOCAL_STORAGE_LIVE_ANSWERS_T);
-    let existingList: LiveAnswerRecord[] = existingCache ? JSON.parse(existingCache) : [];
-    // Merge or prepend new records
-    const merged = [...records, ...existingList.filter(old => 
-      !records.some(r => r.username === old.username && r.lessonTitle === old.lessonTitle)
-    )];
-    localStorage.setItem(LOCAL_STORAGE_LIVE_ANSWERS_T, JSON.stringify(merged));
-  } catch {}
+    const currentHistory = getSystemLiveAnswersHistoryT();
+    const historyMap = new Map<string, LiveAnswerRecord>();
+    records.forEach(r => {
+      const k = `${r.lessonTitle || ''}_${r.username || ''}_${r.sheetNumber || ''}_${r.timestamp || ''}`;
+      historyMap.set(k, r);
+    });
+    currentHistory.forEach(h => {
+      const k = `${h.lessonTitle || ''}_${h.username || ''}_${h.sheetNumber || ''}_${h.timestamp || ''}`;
+      if (!historyMap.has(k)) {
+        historyMap.set(k, h);
+      }
+    });
+    const updatedHistory = Array.from(historyMap.values());
+    localStorage.setItem(LOCAL_STORAGE_SYSTEM_ANSWERS_HISTORY_T, JSON.stringify(updatedHistory));
+    localStorage.setItem(LOCAL_STORAGE_LIVE_ANSWERS_T, JSON.stringify(updatedHistory));
+  } catch (err) {
+    console.warn('System local history save note:', err);
+  }
 
   try {
     let res = await fetchGas({ action: 'batchRecordLiveAnswersT' }, 'POST', {
@@ -2520,7 +2572,7 @@ export async function setupPdfLessonsSheetApi(): Promise<{ success: boolean; mes
   }
 }
 
-export { generatePinCode } from './lib/firebaseLiveService';
+export { generatePinCode, clearLiveDirectLessonAnswers } from './lib/firebaseLiveService';
 
 
 

@@ -48,6 +48,8 @@ export const defaultLiveSessionState: LiveSessionState = {
   messages: [],
   lessonTitle: '',
   videoUrl: '',
+  mode: 'video',
+  explanationText: '',
   status: 'idle',
   currentQuestionIndex: null,
   currentQuestion: null,
@@ -120,6 +122,8 @@ export function subscribeToLiveSession(
           messages: Array.isArray(data.messages) ? data.messages : [],
           lessonTitle: data.lessonTitle || '',
           videoUrl: data.videoUrl || '',
+          mode: (data.mode as any) || (data.videoUrl ? 'video' : 'direct'),
+          explanationText: data.explanationText || '',
           status: data.status || 'idle',
           currentQuestionIndex: data.currentQuestionIndex !== undefined ? data.currentQuestionIndex : null,
           currentQuestion: data.currentQuestion || null,
@@ -196,6 +200,8 @@ export async function getLiveSessionState(): Promise<LiveSessionState | null> {
         messages: Array.isArray(data.messages) ? data.messages : [],
         lessonTitle: data.lessonTitle || '',
         videoUrl: data.videoUrl || '',
+        mode: (data.mode as any) || (data.videoUrl ? 'video' : 'direct'),
+        explanationText: data.explanationText || '',
         status: data.status || 'idle',
         currentQuestionIndex: data.currentQuestionIndex !== undefined ? data.currentQuestionIndex : null,
         currentQuestion: data.currentQuestion || null,
@@ -1032,11 +1038,19 @@ export async function toggleShowPlayPauseInRoom(show: boolean): Promise<{ succes
 // Teacher toggles Play/Pause state synced across room and admin
 export async function toggleLiveVideoPlay(playing: boolean): Promise<{ success: boolean; state?: LiveSessionState }> {
   try {
-    await updateDoc(LIVE_DOC_REF, {
+    const update: any = {
       videoPlaying: playing,
+      mode: 'video',
       updatedAt: serverTimestamp(),
-    });
-    cachedState = { ...cachedState, videoPlaying: playing };
+    };
+    if (playing) {
+      update.status = 'playing';
+    } else if (cachedState.status === 'playing') {
+      update.status = 'waiting';
+    }
+
+    await updateDoc(LIVE_DOC_REF, update);
+    cachedState = { ...cachedState, ...update };
     return { success: true, state: cachedState };
   } catch (error: any) {
     console.error('Failed to toggle videoPlay in Firebase:', error);

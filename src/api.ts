@@ -1866,10 +1866,28 @@ export async function fetchLiveAnswersT(): Promise<LiveAnswerRecord[]> {
 // Batch Record Student Answers to Google Sheets (Answers-T)
 export async function recordLiveAnswersBatchT(records: LiveAnswerRecord[]): Promise<{ success: boolean; count?: number; message?: string }> {
   try {
-    const res = await fetchGas({ action: 'batchRecordLiveAnswersT' }, 'POST', {
+    let res = await fetchGas({ action: 'batchRecordLiveAnswersT' }, 'POST', {
       action: 'batchRecordLiveAnswersT',
       records: records
     });
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      try {
+        res = await fetchGas({ action: 'saveLiveAnswersT' }, 'POST', {
+          action: 'saveLiveAnswersT',
+          records: records
+        });
+      } catch {}
+    }
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      try {
+        res = await fetchGas({ action: 'batchRecordLiveAnswers' }, 'POST', {
+          action: 'batchRecordLiveAnswers',
+          sheetName: 'Answers-T',
+          sheet: 'Answers-T',
+          records: records
+        });
+      } catch {}
+    }
     return res || { success: true, count: records.length };
   } catch (err: any) {
     console.error('Error recording batch answers to Answers-T:', err);
@@ -1975,10 +1993,28 @@ export async function fetchLiveAnswersDirect(): Promise<LiveDirectAnswerRecord[]
 // Batch Record Student Answers to Google Sheets (Answers-Live)
 export async function recordLiveAnswersBatchDirect(records: LiveDirectAnswerRecord[]): Promise<{ success: boolean; count?: number; message?: string }> {
   try {
-    const res = await fetchGas({ action: 'batchRecordLiveAnswersDirect' }, 'POST', {
+    let res = await fetchGas({ action: 'batchRecordLiveAnswersDirect' }, 'POST', {
       action: 'batchRecordLiveAnswersDirect',
       records: records
     });
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      try {
+        res = await fetchGas({ action: 'saveLiveAnswersDirect' }, 'POST', {
+          action: 'saveLiveAnswersDirect',
+          records: records
+        });
+      } catch {}
+    }
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      try {
+        res = await fetchGas({ action: 'batchRecordLiveAnswers' }, 'POST', {
+          action: 'batchRecordLiveAnswers',
+          sheetName: 'Answers-Live',
+          sheet: 'Answers-Live',
+          records: records
+        });
+      } catch {}
+    }
     return res || { success: true, count: records.length };
   } catch (err: any) {
     console.error('Error recording batch answers to Answers-Live:', err);

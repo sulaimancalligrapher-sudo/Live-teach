@@ -44,6 +44,7 @@ import {
   Layers,
   Upload,
   Trophy,
+  RotateCcw,
 } from 'lucide-react';
 import {
   LiveDirectLessonRow,
@@ -805,18 +806,42 @@ export default function LiveDirectManager({
     }
   };
 
+  // Helper to determine the count of students who submitted an answer for question idx
+  const getQuestionAnswerCount = useCallback((qIdx: number): number => {
+    const answeredStudents = new Set<string>();
+    if (sessionState?.allSessionAnswers) {
+      Object.entries(sessionState.allSessionAnswers).forEach(([studentKey, studentAnswers]) => {
+        if (studentAnswers && studentAnswers[qIdx] !== undefined && studentAnswers[qIdx] !== null && String(studentAnswers[qIdx]).trim() !== '') {
+          const u = studentKey.includes('_') ? studentKey.split('_')[0] : studentKey;
+          answeredStudents.add(normalizeArabicText(u));
+        }
+      });
+    }
+    if (sessionState?.currentQuestionIndex === qIdx && sessionState?.answersForCurrentQuestion) {
+      Object.entries(sessionState.answersForCurrentQuestion).forEach(([studentKey, sub]) => {
+        const ans = typeof sub === 'object' && sub !== null && 'answer' in sub ? sub.answer : sub;
+        if (ans !== undefined && ans !== null && String(ans).trim() !== '') {
+          const u = (typeof sub === 'object' && sub?.username) ? sub.username : (studentKey.includes('_') ? studentKey.split('_')[0] : studentKey);
+          answeredStudents.add(normalizeArabicText(u));
+        }
+      });
+    }
+    return answeredStudents.size;
+  }, [sessionState?.allSessionAnswers, sessionState?.answersForCurrentQuestion, sessionState?.currentQuestionIndex]);
+
+  const isQuestionAnswered = useCallback((qIdx: number): boolean => {
+    return getQuestionAnswerCount(qIdx) > 0;
+  }, [getQuestionAnswerCount]);
+
   // Helper to format answers as 'صح' / 'خطأ' / 'نص' to match Answers-T & Answers-Live structure
   const formatAnswersForAnswersLive = (
     answersMap: Record<number, string>,
     targetQuestions?: LiveDirectQuestionItem[],
-    askedQuestionIndices?: Set<number>
+    _askedQuestionIndices?: Set<number>
   ): Record<number, string> => {
     const formatted: Record<number, string> = {};
     if (targetQuestions && targetQuestions.length > 0) {
       targetQuestions.forEach((q, idx) => {
-        const wasAsked = !askedQuestionIndices || askedQuestionIndices.size === 0 || askedQuestionIndices.has(idx);
-        if (!wasAsked) return;
-
         const rawAns = answersMap[idx];
         if (rawAns !== undefined && rawAns !== null && String(rawAns).trim() !== '') {
           const strAns = String(rawAns).trim();
@@ -845,16 +870,9 @@ export default function LiveDirectManager({
         }
       });
     } else {
-      if (askedQuestionIndices && askedQuestionIndices.size > 0) {
-        askedQuestionIndices.forEach(idx => {
-          const val = answersMap[idx];
-          formatted[idx] = (val !== undefined && val !== null && String(val).trim() !== '') ? String(val).trim() : 'خطأ';
-        });
-      } else {
-        Object.entries(answersMap).forEach(([idx, val]) => {
-          formatted[Number(idx)] = (val !== undefined && val !== null && String(val).trim() !== '') ? String(val).trim() : 'خطأ';
-        });
-      }
+      Object.entries(answersMap).forEach(([idx, val]) => {
+        formatted[Number(idx)] = (val !== undefined && val !== null && String(val).trim() !== '') ? String(val).trim() : 'خطأ';
+      });
     }
     return formatted;
   };
@@ -1114,6 +1132,14 @@ export default function LiveDirectManager({
     try {
       await revealLiveAnswer();
       showNotice('تم كشف الإجابة الصحيحة للطلاب وعلى الشاشة 🌟', 'success');
+
+      // Automatically advance question preview to the next question
+      if (activeLesson?.questions && activeLesson.questions.length > 0) {
+        const curIdx = sessionState?.currentQuestionIndex ?? previewQuestionIndex;
+        if (curIdx + 1 < activeLesson.questions.length) {
+          setPreviewQuestionIndex(curIdx + 1);
+        }
+      }
     } catch (e) {
       console.error('Failed to reveal answer:', e);
     }
@@ -1126,6 +1152,14 @@ export default function LiveDirectManager({
         explanationText: activeLesson ? `موضوع الحصة: ${activeLesson.title}` : 'استمع وركز مع شرح الأستاذ 🎙️',
       });
       showNotice('تمت العودة لوضع الشرح المباشر (الشاشة وهواتف الطلاب في وضع الاستماع) 🎙️', 'info');
+
+      // Ensure question preview is set to the next question if previous question was completed
+      if (activeLesson?.questions && activeLesson.questions.length > 0) {
+        const curIdx = sessionState?.currentQuestionIndex ?? previewQuestionIndex;
+        if (curIdx + 1 < activeLesson.questions.length && isQuestionAnswered(curIdx)) {
+          setPreviewQuestionIndex(curIdx + 1);
+        }
+      }
     } catch (e) {
       console.error('Failed to return to explanation:', e);
     }
@@ -1839,6 +1873,8 @@ export default function LiveDirectManager({
                     const isActive = sessionState?.currentQuestionIndex === idx && sessionState?.status === 'question_active';
                     const isRevealed = sessionState?.currentQuestionIndex === idx && sessionState?.status === 'revealed';
                     const isSelectedForPreview = previewQuestionIndex === idx;
+                    const ansCount = getQuestionAnswerCount(idx);
+                    const hasAnswers = ansCount > 0;
 
                     return (
                       <button
@@ -1848,13 +1884,23 @@ export default function LiveDirectManager({
                           isActive
                             ? 'bg-amber-500 border-amber-400 text-slate-950 font-black shadow-lg shadow-amber-500/20 ring-2 ring-amber-300 animate-pulse'
                             : isRevealed
-                            ? 'bg-emerald-950 border-emerald-500/60 text-emerald-300'
+                            ? 'bg-emerald-950 border-emerald-500 text-emerald-300 shadow-md ring-1 ring-emerald-400/50'
+                            : hasAnswers
+                            ? isSelectedForPreview
+                              ? 'bg-emerald-800 text-white border-emerald-400 shadow-md ring-2 ring-emerald-300'
+                              : 'bg-emerald-950/70 border-emerald-500/60 text-emerald-300 hover:bg-emerald-900/60'
                             : isSelectedForPreview
-                            ? 'bg-indigo-600 text-white border-indigo-400 shadow-md'
+                            ? 'bg-indigo-600 text-white border-indigo-400 shadow-md ring-2 ring-indigo-300'
                             : 'bg-slate-900 hover:bg-slate-850 border-slate-800 text-slate-300'
                         }`}
+                        title={hasAnswers ? `تمت الإجابة (${ansCount} طلاب)` : `السؤال ${idx + 1}`}
                       >
                         <span>س{idx + 1}</span>
+                        {hasAnswers && (
+                          <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-full flex items-center gap-0.5 font-sans font-bold">
+                            ✓ {ansCount}
+                          </span>
+                        )}
                         {q.image && (
                           <span className="text-[10px] bg-amber-400/20 text-amber-300 px-1 rounded">🖼️</span>
                         )}
@@ -1876,6 +1922,12 @@ export default function LiveDirectManager({
                           <span className="px-2.5 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 font-bold text-xs">
                             معاينة السؤال {previewQuestionIndex + 1}
                           </span>
+                          {isQuestionAnswered(previewQuestionIndex) && (
+                            <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold text-xs flex items-center gap-1 border border-emerald-500/40">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>تمت الإجابة ({getQuestionAnswerCount(previewQuestionIndex)} طالب)</span>
+                            </span>
+                          )}
                           {activeLesson.questions[previewQuestionIndex].isTextAnswer ? (
                             <span className="px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 text-xs font-bold flex items-center gap-1">
                               ✍️ إجابة كتابية / نصية
@@ -1916,14 +1968,43 @@ export default function LiveDirectManager({
                           </select>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => handleLaunchQuestion(activeLesson.questions[previewQuestionIndex], previewQuestionIndex, launchTimerDuration)}
-                          className="px-5 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
-                        >
-                          <Play className="w-4 h-4 fill-slate-950" />
-                          <span>طرح السؤال للطلاب الآن 🚀</span>
-                        </button>
+                        {/* Launch Buttons: Smart switch between First Launch, Re-launch, or Next Question */}
+                        {isQuestionAnswered(previewQuestionIndex) ? (
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => handleLaunchQuestion(activeLesson.questions[previewQuestionIndex], previewQuestionIndex, launchTimerDuration)}
+                              className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-750 text-amber-300 font-bold rounded-xl text-xs flex items-center gap-1.5 border border-amber-500/40 transition-all cursor-pointer shadow-sm active:scale-95"
+                              title="إعادة طرح السؤال للطلاب مرة أخرى"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                              <span>إعادة طرح السؤال 🔄</span>
+                            </button>
+                            {previewQuestionIndex + 1 < activeLesson.questions.length && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const nextIdx = previewQuestionIndex + 1;
+                                  setPreviewQuestionIndex(nextIdx);
+                                  handleLaunchQuestion(activeLesson.questions[nextIdx], nextIdx, launchTimerDuration);
+                                }}
+                                className="px-5 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer active:scale-95"
+                              >
+                                <Play className="w-4 h-4 fill-slate-950" />
+                                <span>طرح السؤال التالي (س{previewQuestionIndex + 2}) 🚀</span>
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleLaunchQuestion(activeLesson.questions[previewQuestionIndex], previewQuestionIndex, launchTimerDuration)}
+                            className="px-5 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
+                          >
+                            <Play className="w-4 h-4 fill-slate-950" />
+                            <span>طرح السؤال للطلاب الآن 🚀</span>
+                          </button>
+                        )}
                       </div>
                     </div>
 

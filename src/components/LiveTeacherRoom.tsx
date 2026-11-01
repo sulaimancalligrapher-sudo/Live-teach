@@ -215,9 +215,11 @@ export default function LiveTeacherRoom({
     }
   }, [sessionState?.lessonTitle, lessonsList]);
 
-  // Time tracking and smart auto-pause for questions (strictly when mode is 'video')
+  // Time tracking and smart auto-pause for questions (when mode is 'video' or video is present)
+  const isVideoMode = sessionState?.mode === 'video' || (!sessionState?.mode && Boolean(selectedLesson?.videoUrl));
+
   const handleTimeUpdate = () => {
-    if (sessionState?.mode !== 'video' || !videoRef.current || !selectedLesson) return;
+    if (!isVideoMode || !videoRef.current || !selectedLesson) return;
     const time = videoRef.current.currentTime;
     setCurrentTime(time);
 
@@ -253,10 +255,10 @@ export default function LiveTeacherRoom({
     }
   };
 
-  // Synchronize play/pause state from Admin (strictly when mode is 'video')
+  // Synchronize play/pause state from Admin (when in video mode)
   useEffect(() => {
     // If not in video mode (e.g. direct lecture or quiz), ensure video is paused and silent
-    if (sessionState?.mode !== 'video') {
+    if (!isVideoMode) {
       if (videoRef.current && !videoRef.current.paused) {
         videoRef.current.pause();
         setIsPlaying(false);
@@ -275,7 +277,7 @@ export default function LiveTeacherRoom({
         setIsPlaying(false);
       }
     }
-  }, [sessionState?.videoPlaying, sessionState?.status, sessionState?.mode]);
+  }, [sessionState?.videoPlaying, sessionState?.status, sessionState?.mode, isVideoMode]);
 
   // When a question appears, immediately auto-close the chat modal on projector screen so the question is front and center
   useEffect(() => {
@@ -286,14 +288,14 @@ export default function LiveTeacherRoom({
 
   // When teacher resumes video after answering a question (strictly when mode is 'video')
   useEffect(() => {
-    if (sessionState?.mode === 'video' && sessionState?.status === 'playing' && videoRef.current) {
+    if (isVideoMode && sessionState?.status === 'playing' && videoRef.current) {
       if (videoRef.current.paused) {
         // Advance slightly by 0.3s to smoothly clear the paused question point
         videoRef.current.currentTime = Math.min(videoRef.current.duration || 9999, videoRef.current.currentTime + 0.3);
         videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
       }
     }
-  }, [sessionState?.status, sessionState?.mode]);
+  }, [sessionState?.status, sessionState?.mode, isVideoMode]);
 
   // Play / Pause Toggle
   const togglePlay = () => {

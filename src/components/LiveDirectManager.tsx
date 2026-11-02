@@ -924,9 +924,27 @@ export default function LiveDirectManager({
   const buildDirectAnswerRecords = (): LiveDirectAnswerRecord[] => {
     if (!sessionState) return [];
     const timestamp = new Date().toLocaleString('ar-SA');
-    const title = sessionState.lessonTitle || selectedLessonTitle || 'حصة تدريبية مباشرة';
+    const title = sessionState.directLessonTitle || (sessionState.mode === 'direct' ? sessionState.lessonTitle : '') || selectedLessonTitle || 'حصة تدريبية مباشرة';
     const currentLesson = lessons.find(l => l.title === title) || activeLesson;
-    const allAnswers = { ...(sessionState.allSessionAnswers || {}) };
+    const allAnswers: Record<string, Record<number, string>> = {};
+
+    // 0. Include scoped directAnswers for this specific lesson
+    if (sessionState.directAnswers && sessionState.directAnswers[title]) {
+      Object.entries(sessionState.directAnswers[title]).forEach(([studentKey, ansMap]) => {
+        allAnswers[studentKey] = { ...(ansMap || {}) };
+      });
+    }
+
+    // Also merge allSessionAnswers if in direct mode
+    if (sessionState.mode === 'direct' && sessionState.allSessionAnswers) {
+      Object.entries(sessionState.allSessionAnswers).forEach(([studentKey, ansMap]) => {
+        if (!allAnswers[studentKey]) {
+          allAnswers[studentKey] = {};
+        }
+        allAnswers[studentKey] = { ...(allAnswers[studentKey] || {}), ...(ansMap || {}) };
+      });
+    }
+
     const currentAnswers = sessionState.answersForCurrentQuestion || {};
     const currentQIdx = sessionState.currentQuestionIndex;
 
@@ -1060,6 +1078,11 @@ export default function LiveDirectManager({
     return recordsToSave;
   };
 
+  // Real-time live session answers in active memory
+  const liveDirectSessionAnswers = useMemo(() => {
+    return buildDirectAnswerRecords();
+  }, [sessionState, lessons, activeLesson, selectedLessonTitle]);
+
   const handleConfirmEndProgram = async () => {
     setShowEndConfirmModal(false);
     setIsTogglingProgram(true);
@@ -1090,15 +1113,7 @@ export default function LiveDirectManager({
       } else {
         showNotice('تم إنهاء الحصة المباشرة وإغلاق القاعة وتحديث الشاشة بنجاح 🛑', 'success');
       }
-      await loadAnswers();
-
-      // Auto-clear session memory after 1500ms to start next session completely fresh
-      setTimeout(async () => {
-        try {
-          await clearSessionAnswersMemory();
-          await loadAnswers();
-        } catch {}
-      }, 1500);
+      await loadAnswers().catch(() => {});
     } catch (e: any) {
       console.error('Failed to end live program:', e);
       showNotice('حدث خطأ أثناء إنهاء الحصة: ' + (e?.message || 'خطأ في الاتصال'), 'error');
@@ -3001,6 +3016,95 @@ export default function LiveDirectManager({
               {isSettingUpSheets ? 'جاري الفحص...' : 'فحص وتهيئة الشيت ⚡'}
             </button>
           </div>
+
+          {/* Active Live Session In-Memory Answers Card */}
+          {liveDirectSessionAnswers.length > 0 && liveDirectSessionAnswers.some(r => Object.keys(r.answers || {}).length > 0) && (
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-amber-500/10 via-slate-900 to-indigo-950/40 border-2 border-amber-500/40 rounded-3xl shadow-xl space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-black text-amber-300">
+                        إجابات الحصة المباشرة الجارية (الذاكرة الحية)
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-full bg-amber-400/20 border border-amber-400/30 text-amber-300 text-[10px] font-bold">
+                        {liveDirectSessionAnswers.length} طالب
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      موضوع الحصة: <b className="text-white">{sessionState?.directLessonTitle || selectedLessonTitle || 'حصة تدريبية'}</b> — تُحفظ تلقائياً في ورقة Answers-Live عند إنهاء الحصة أو فورياً عبر الزر:
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleQuickSaveAnswers}
+                  disabled={isFinishingSession}
+                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                >
+                  <Save className={`w-4 h-4 ${isFinishingSession ? 'animate-spin' : ''}`} />
+                  <span>{isFinishingSession ? 'جارٍ الحفظ في الشيت...' : 'حفظ فوري في ورقة Answers-Live 💾'}</span>
+                </button>
+              </div>
+
+              {/* Live answers table */}
+              <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/80">
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-900/90 text-slate-400 border-b border-slate-800">
+                    <tr>
+                      <th className="p-3">الطالب</th>
+                      <th className="p-3">رقم المشترك</th>
+                      <th className="p-3">الإجابات المسجلة بالذاكرة الحية</th>
+                      <th className="p-3">الحالة</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {liveDirectSessionAnswers.map((st, idx) => {
+                      const ansEntries = Object.entries(st.answers || {});
+                      const hasAnswers = ansEntries.length > 0;
+                      return (
+                        <tr key={idx} className="hover:bg-slate-900/40">
+                          <td className="p-3 font-bold text-slate-200">{st.username}</td>
+                          <td className="p-3 font-mono text-indigo-400">#{st.sheetNumber || '-'}</td>
+                          <td className="p-3">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {ansEntries.map(([qIdx, ansVal]) => (
+                                <span
+                                  key={qIdx}
+                                  className={`px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                                    ansVal === 'صح'
+                                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                      : ansVal === 'خطأ'
+                                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                      : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
+                                  }`}
+                                >
+                                  س{Number(qIdx) + 1}: {ansVal}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            {hasAnswers ? (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 text-[10px] font-bold border border-emerald-500/20">
+                                مسجلة في الذاكرة الحية ✓
+                              </span>
+                            ) : (
+                              <span className="text-slate-500 text-[10px]">بانتظار الإجابة</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {loadingAnswers ? (
             <div className="p-12 text-center text-slate-500 bg-slate-900/50 rounded-3xl border border-slate-800">

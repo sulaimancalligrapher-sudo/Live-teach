@@ -145,11 +145,16 @@ export default function LiveTeacherRoom({
 
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=350x350&data=${encodeURIComponent(studentJoinUrl)}`;
 
-  // Initialize or Switch Lesson in Real-time Hub
+  // Initialize or Switch Lesson in Real-time Hub (strictly for video mode)
   useEffect(() => {
     if (selectedLesson) {
+      // If the session is currently running in direct lecture or quiz challenge, do NOT hijack or overwrite it!
+      if (sessionState?.mode && sessionState.mode !== 'video') {
+        return;
+      }
       // If the session is already active with this lesson and mode video, don't re-initialize
-      if (sessionState?.lessonTitle === selectedLesson.title && sessionState?.mode === 'video') {
+      const currentVideoTitle = sessionState?.videoLessonTitle || sessionState?.lessonTitle;
+      if (currentVideoTitle === selectedLesson.title && sessionState?.mode === 'video') {
         return;
       }
       triggeredQuestionsRef.current = new Set();
@@ -173,7 +178,7 @@ export default function LiveTeacherRoom({
         if (res.state) setSessionState(res.state);
       });
     }
-  }, [selectedLesson?.title, selectedLesson?.videoUrl]);
+  }, [selectedLesson?.title, selectedLesson?.videoUrl, sessionState?.mode]);
 
   // Connect to Live Session via Firebase Real-time WebSockets
   useEffect(() => {
@@ -195,10 +200,16 @@ export default function LiveTeacherRoom({
   }, []);
 
   // Synchronize selected lesson when switched from Admin panel or when lessonsList loads
+  // Strictly respects videoLessonTitle and mode === 'video'
   useEffect(() => {
-    if (sessionState?.lessonTitle && lessonsList.length > 0) {
-      if (!selectedLesson || selectedLesson.title !== sessionState.lessonTitle) {
-        const match = lessonsList.find(l => l.title === sessionState.lessonTitle);
+    // Only synchronize video lesson if session is in video mode (or uninitialized)
+    if (sessionState?.mode && sessionState.mode !== 'video') {
+      return;
+    }
+    const targetVideoTitle = sessionState?.videoLessonTitle || (sessionState?.mode === 'video' ? sessionState?.lessonTitle : null);
+    if (targetVideoTitle && lessonsList.length > 0) {
+      if (!selectedLesson || selectedLesson.title !== targetVideoTitle) {
+        const match = lessonsList.find(l => l.title === targetVideoTitle);
         if (match) {
           setSelectedLesson(match);
           setIsPlaying(false);
@@ -213,7 +224,7 @@ export default function LiveTeacherRoom({
     } else if (!selectedLesson && lessonsList.length > 0) {
       setSelectedLesson(lessonsList[0]);
     }
-  }, [sessionState?.lessonTitle, lessonsList]);
+  }, [sessionState?.videoLessonTitle, sessionState?.lessonTitle, sessionState?.mode, lessonsList]);
 
   // Time tracking and smart auto-pause for questions (when mode is 'video' or video is present)
   const isVideoMode = sessionState?.mode === 'video' || (!sessionState?.mode && Boolean(selectedLesson?.videoUrl));

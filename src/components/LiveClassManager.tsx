@@ -658,14 +658,7 @@ export default function LiveClassManager({
         setSaveMessage('تم إنهاء الدرس بنجاح.');
       }
       setTimeout(() => setSaveMessage(null), 4000);
-
-      // 3. Auto-clear session answers memory after 1500ms to start next session completely fresh
-      setTimeout(async () => {
-        try {
-          await clearSessionAnswersMemory();
-          await loadAnswers();
-        } catch {}
-      }, 1500);
+      await loadAnswers().catch(() => {});
     } catch (e: any) {
       console.error('Failed to finish lesson from admin:', e);
       showAppAlert('حدث خطأ أثناء إنهاء الدرس: ' + (e?.message || 'خطأ غير معروف'), 'خطأ في إنهاء الدرس', 'danger');
@@ -871,14 +864,7 @@ export default function LiveClassManager({
         setProgramToast('تم إنهاء البرنامج وإغلاق القاعة لجميع المشتركين بنجاح 🛑');
       }
       setTimeout(() => setProgramToast(null), 4000);
-
-      // 4. Auto-clear session answers memory after 1500ms to start next session completely fresh
-      setTimeout(async () => {
-        try {
-          await clearSessionAnswersMemory();
-          await loadAnswers();
-        } catch {}
-      }, 1500);
+      await loadAnswers().catch(() => {});
     } catch (e: any) {
       console.error('Failed to end program:', e);
       setProgramToast('تعذر إنهاء البرنامج: ' + (e?.message || 'خطأ في الشبكة'));
@@ -1021,8 +1007,26 @@ export default function LiveClassManager({
       });
     }
 
-    const lessonTitle = sessionState.lessonTitle || activeLesson?.title || (lessons[0]?.title || 'درس تفاعلي مباشر');
+    const lessonTitle = sessionState.videoLessonTitle || (sessionState.mode === 'video' ? sessionState.lessonTitle : '') || activeLesson?.title || (lessons[0]?.title || 'درس تفاعلي مباشر');
     const targetLesson = lessons.find(l => l.title === lessonTitle) || activeLesson;
+
+    // Merge scoped videoAnswers for this lesson if present
+    if (sessionState.videoAnswers && sessionState.videoAnswers[lessonTitle]) {
+      Object.entries(sessionState.videoAnswers[lessonTitle]).forEach(([rawKey, ansMap]) => {
+        let u = rawKey.includes('_') ? rawKey.split('_')[0] : rawKey;
+        let num = rawKey.includes('_') ? rawKey.split('_').slice(1).join('_') : '';
+        if (u) {
+          const key = normalizeArabicText(u);
+          const existing = studentMap.get(key);
+          if (!existing) {
+            studentMap.set(key, { username: u, sheetNumber: num, answers: { ...(ansMap || {}) } });
+          } else {
+            existing.answers = { ...existing.answers, ...(ansMap || {}) };
+            if (!existing.sheetNumber && num) existing.sheetNumber = num;
+          }
+        }
+      });
+    }
 
     return Array.from(studentMap.values()).map(st => {
       let correctCount = 0;

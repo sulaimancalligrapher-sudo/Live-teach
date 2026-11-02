@@ -23,10 +23,10 @@ import {
   finishLiveSession, revealLiveAnswer, resumeLiveVideo,
   initLiveSession, triggerLiveQuestion,
   replyToStudentMessage, deleteStudentMessage, clearAllStudentMessages, toggleShowChatInRoom,
-  sendTeacherBroadcastMessage, clearSessionAnswersMemory
+  sendTeacherBroadcastMessage, clearSessionAnswersMemory, clearLiveVideoLessonAnswers
 } from '../api';
 import LiveChatModal from './LiveChatModal';
-import { showAppAlert } from './AppDialog';
+import { showAppAlert, showAppConfirm } from './AppDialog';
 
 interface LiveClassManagerProps {
   onStartTeacherTheater: (lesson: LiveLessonRow) => void;
@@ -487,7 +487,7 @@ export default function LiveClassManager({
       return { success: true, count: 0 };
     }
 
-    const lessonTitle = stateToUse?.lessonTitle || activeLesson?.title || (lessons[0]?.title || 'درس تفاعلي مباشر');
+    const lessonTitle = stateToUse?.videoLessonTitle || stateToUse?.videoChannel?.lessonTitle || (stateToUse?.mode === 'video' ? stateToUse?.lessonTitle : '') || activeLesson?.title || (lessons[0]?.title || 'درس تفاعلي مباشر');
     const targetLesson = lessons.find(l => l.title === lessonTitle) || activeLesson;
     const timestamp = new Date().toLocaleString('ar-SA');
     const records: LiveAnswerRecord[] = [];
@@ -502,8 +502,24 @@ export default function LiveClassManager({
       }
     });
 
-    // Also include students from allSessionAnswers keys
-    if (stateToUse?.allSessionAnswers) {
+    // Merge answers prioritizing videoChannel / videoAnswers
+    const videoAnswersSource = stateToUse?.videoChannel?.answers || stateToUse?.videoChannel?.allSessionAnswers || (stateToUse?.videoAnswers && stateToUse.videoAnswers[lessonTitle]) || (stateToUse?.mode === 'video' ? stateToUse?.allSessionAnswers : {}) || {};
+
+    // Also include students from answers keys
+    Object.keys(videoAnswersSource).forEach(rawKey => {
+      let u = rawKey.includes('_') ? rawKey.split('_')[0] : rawKey;
+      let num = rawKey.includes('_') ? rawKey.split('_').slice(1).join('_') : '';
+      if (u) {
+        const norm = normalizeArabicText(u);
+        if (!studentMap.has(norm)) {
+          studentMap.set(norm, { username: u, sheetNumber: num });
+        } else if (!studentMap.get(norm)?.sheetNumber && num) {
+          studentMap.get(norm)!.sheetNumber = num;
+        }
+      }
+    });
+
+    if (stateToUse?.allSessionAnswers && (!stateToUse.mode || stateToUse.mode === 'video')) {
       Object.keys(stateToUse.allSessionAnswers).forEach(rawKey => {
         let u = rawKey.includes('_') ? rawKey.split('_')[0] : rawKey;
         let num = rawKey.includes('_') ? rawKey.split('_').slice(1).join('_') : '';
@@ -518,17 +534,27 @@ export default function LiveClassManager({
       });
     }
 
-    // Merge all answers (allSessionAnswers + current active question answers if any)
+    // Merge all answers (videoChannel answers + allSessionAnswers + current active question answers if any)
     const mergedAnswers: Record<string, Record<number, any>> = {};
-    if (stateToUse?.allSessionAnswers) {
-      Object.entries(stateToUse.allSessionAnswers).forEach(([k, ansObj]) => {
+    if (videoAnswersSource) {
+      Object.entries(videoAnswersSource).forEach(([k, ansObj]) => {
         mergedAnswers[k] = { ...(ansObj || {}) };
       });
     }
 
-    if (stateToUse?.answersForCurrentQuestion && stateToUse.currentQuestionIndex !== null && stateToUse.currentQuestionIndex !== undefined) {
-      const qIdx = stateToUse.currentQuestionIndex;
-      Object.entries(stateToUse.answersForCurrentQuestion).forEach(([studentKey, ansData]: [string, any]) => {
+    if (stateToUse?.allSessionAnswers && (!stateToUse.mode || stateToUse.mode === 'video')) {
+      Object.entries(stateToUse.allSessionAnswers).forEach(([k, ansObj]) => {
+        if (!mergedAnswers[k]) mergedAnswers[k] = {};
+        mergedAnswers[k] = { ...mergedAnswers[k], ...(ansObj || {}) };
+      });
+    }
+
+    const currentQAnswers = stateToUse?.videoChannel?.answersForCurrentQuestion || (stateToUse?.mode === 'video' ? stateToUse?.answersForCurrentQuestion : undefined);
+    const activeQIdx = stateToUse?.videoChannel?.currentQuestionIndex ?? (stateToUse?.mode === 'video' ? stateToUse?.currentQuestionIndex : null);
+
+    if (currentQAnswers && activeQIdx !== null && activeQIdx !== undefined) {
+      const qIdx = activeQIdx;
+      Object.entries(currentQAnswers).forEach(([studentKey, ansData]: [string, any]) => {
         if (!mergedAnswers[studentKey]) {
           mergedAnswers[studentKey] = {};
         }
@@ -1102,6 +1128,37 @@ export default function LiveClassManager({
     }
   };
 
+  const [isResettingVideoMemory, setIsResettingVideoMemory] = useState(false);
+
+  const handleResetVideoMemory = async () => {
+    const confirmed = await showAppConfirm(
+      'هل أنت متأكد من تصفير ذاكرة إجابات الفيديو التفاعلي بالكامل؟ سيتم مسح الإجابات المعلقة في الذاكرة الحية والخادم لهذا الدرس فقط، ولن تتأثر الإجابات الموثقة في الشيت.',
+      'تصفير ذاكرة إجابات الفيديو التفاعلي',
+      'warning'
+    );
+    if (!confirmed) return;
+
+    setIsResettingVideoMemory(true);
+    try {
+      const lessonTitleToClear = sessionState?.videoLessonTitle || selectedLessonTitle;
+      const res = await clearLiveVideoLessonAnswers(lessonTitleToClear);
+      if (res && res.success) {
+        if (res.state) {
+          setSessionState(res.state);
+          sessionStateRef.current = res.state;
+        }
+        setProgramToast('تم تصفير ذاكرة إجابات الفيديو التفاعلي من الخادم بنجاح 🔄');
+      } else {
+        setProgramToast('تعذر تصفير الذاكرة: ' + ((res as any)?.message || 'خطأ غير معروف'));
+      }
+      setTimeout(() => setProgramToast(null), 3500);
+    } catch (err: any) {
+      showAppAlert('حدث خطأ أثناء تصفير الذاكرة: ' + (err?.message || ''), 'خطأ', 'danger');
+    } finally {
+      setIsResettingVideoMemory(false);
+    }
+  };
+
   const isProgramRunning = Boolean(sessionState?.isProgramActive);
 
   return (
@@ -1343,6 +1400,16 @@ export default function LiveClassManager({
               </button>
 
               <button
+                onClick={handleResetVideoMemory}
+                disabled={isResettingVideoMemory}
+                title="تصفير ذاكرة إجابات الفيديو التفاعلي ومسحها من الخادم والرام"
+                className="px-3.5 py-2 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 text-rose-400 ${isResettingVideoMemory ? 'animate-spin' : ''}`} />
+                <span>{isResettingVideoMemory ? 'جارٍ التصفير...' : 'تصفير ذاكرة الفيديو 🔄'}</span>
+              </button>
+
+              <button
                 onClick={loadAnswers}
                 disabled={loadingAnswers}
                 className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer self-start sm:self-auto"
@@ -1405,19 +1472,31 @@ export default function LiveClassManager({
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      موضوع الدرس: <b className="text-white">{sessionState?.lessonTitle || 'درس تفاعلي'}</b> — تُحفظ تلقائياً في ورقة Answers-T عند إنهاء البرنامج، أو يمكنك حفظها يدوياً الآن:
+                      موضوع الدرس: <b className="text-white">{sessionState?.videoLessonTitle || sessionState?.lessonTitle || 'درس تفاعلي'}</b> — تُحفظ تلقائياً في ورقة Answers-T عند إنهاء البرنامج، أو يمكنك حفظها يدوياً الآن:
                     </p>
                   </div>
                 </div>
 
-                <button
-                  onClick={handleQuickSaveLiveAnswersToSheets}
-                  disabled={isQuickSavingLiveAnswers}
-                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer active:scale-95 disabled:opacity-50 whitespace-nowrap"
-                >
-                  <Save className={`w-4 h-4 ${isQuickSavingLiveAnswers ? 'animate-spin' : ''}`} />
-                  <span>{isQuickSavingLiveAnswers ? 'جارٍ الحفظ في الشيت...' : 'حفظ فوري في ورقة Answers-T 📥'}</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleResetVideoMemory}
+                    disabled={isResettingVideoMemory}
+                    title="تصفير ذاكرة إجابات الفيديو التفاعلي فقط ومسحها من الخادم"
+                    className="px-3.5 py-2 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isResettingVideoMemory ? 'animate-spin' : ''}`} />
+                    <span>{isResettingVideoMemory ? 'جارٍ التصفير...' : 'تصفير ذاكرة الفيديو 🔄'}</span>
+                  </button>
+
+                  <button
+                    onClick={handleQuickSaveLiveAnswersToSheets}
+                    disabled={isQuickSavingLiveAnswers}
+                    className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                  >
+                    <Save className={`w-4 h-4 ${isQuickSavingLiveAnswers ? 'animate-spin' : ''}`} />
+                    <span>{isQuickSavingLiveAnswers ? 'جارٍ الحفظ في الشيت...' : 'حفظ فوري في ورقة Answers-T 📥'}</span>
+                  </button>
+                </div>
               </div>
 
               {/* Live answers table/list */}

@@ -49,18 +49,11 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
     }
   };
 
-  // Determine current effective view
+  // Determine current effective view with strict channel isolation
+  const currentMode = sessionState?.activeMode || sessionState?.mode;
   const isQuizActive = Boolean(sessionState?.quizState?.isActive);
-  const isDirectActive = Boolean(
-    sessionState?.showPdfInRoom || 
-    sessionState?.status === 'question_active' || 
-    sessionState?.status === 'revealed' ||
-    sessionState?.mode === 'direct'
-  );
-  const isVideoActive = Boolean(
-    sessionState?.mode === 'video' && 
-    (sessionState?.videoPlaying || sessionState?.status === 'playing')
-  );
+  const isDirectActive = Boolean(currentMode === 'direct');
+  const isVideoActive = Boolean(currentMode === 'video');
 
   let effectiveView: 'standby' | 'video' | 'direct' | 'quiz' = 'standby';
 

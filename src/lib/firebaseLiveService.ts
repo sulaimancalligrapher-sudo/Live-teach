@@ -543,7 +543,7 @@ export async function initLiveSession(payload: {
   showResult?: 'نعم' | 'لا';
 }): Promise<{ success: boolean; state?: LiveSessionState }> {
   try {
-    const isDirect = payload.mode === 'direct' || !payload.videoUrl;
+    const isDirect = payload.mode === 'direct' || (!payload.videoUrl && payload.mode !== 'video');
     
     // Always fetch existing session state from Firestore to preserve active PIN, connected students, and answers
     let existingData: any = null;
@@ -566,19 +566,17 @@ export async function initLiveSession(payload: {
       ? existingData.connectedStudents 
       : (cachedState.connectedStudents || []);
 
-    const existingAllAnswers = existingData?.allSessionAnswers || cachedState.allSessionAnswers || {};
-    const existingCurrentAnswers = existingData?.answersForCurrentQuestion || cachedState.answersForCurrentQuestion || {};
-    const previousLessonTitle = isDirect 
-      ? (existingData?.directLessonTitle || cachedState.directLessonTitle || '')
-      : (existingData?.videoLessonTitle || cachedState.videoLessonTitle || '');
-    const isSameLesson = previousLessonTitle === payload.lessonTitle;
-
     const effectiveVideoLessonTitle = isDirect 
       ? (existingData?.videoLessonTitle || cachedState.videoLessonTitle || '')
       : payload.lessonTitle;
     const effectiveDirectLessonTitle = isDirect 
       ? payload.lessonTitle
       : (existingData?.directLessonTitle || cachedState.directLessonTitle || '');
+
+    const videoAnswers = existingData?.videoAnswers || cachedState.videoAnswers || {};
+    const directAnswers = existingData?.directAnswers || cachedState.directAnswers || {};
+
+    const targetMode = isDirect ? 'direct' : 'video';
 
     const update: Partial<LiveSessionState> = {
       sessionId: sessionId,
@@ -588,8 +586,9 @@ export async function initLiveSession(payload: {
       videoLessonTitle: effectiveVideoLessonTitle,
       directLessonTitle: effectiveDirectLessonTitle,
       videoUrl: isDirect ? (existingData?.videoUrl || cachedState.videoUrl || '') : (payload.videoUrl || ''),
-      mode: isDirect ? 'direct' : 'video',
-      explanationText: payload.explanationText || '',
+      mode: targetMode,
+      activeMode: targetMode,
+      explanationText: payload.explanationText || (isDirect ? `موضوع الحصة: ${payload.lessonTitle}` : ''),
       timeLimit: payload.timeLimit ?? 30,
       showResult: payload.showResult ?? 'نعم',
       status: isDirect ? 'direct_explanation' : 'waiting',
@@ -597,16 +596,33 @@ export async function initLiveSession(payload: {
       currentQuestion: null,
       questionTriggeredAt: null,
       connectedStudents: connectedStudents,
-      answersForCurrentQuestion: isSameLesson ? existingCurrentAnswers : {},
-      allSessionAnswers: existingAllAnswers,
-      videoAnswers: existingData?.videoAnswers || cachedState.videoAnswers || {},
-      directAnswers: existingData?.directAnswers || cachedState.directAnswers || {},
+      answersForCurrentQuestion: {},
+      allSessionAnswers: isDirect ? (directAnswers[payload.lessonTitle] || {}) : (videoAnswers[payload.lessonTitle] || {}),
+      videoAnswers: videoAnswers,
+      directAnswers: directAnswers,
     };
 
     await updateDoc(LIVE_DOC_REF, {
       ...update,
       updatedAt: serverTimestamp(),
     });
+
+    // Also inform server of lesson init
+    try {
+      await fetch('/api/live/init', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lessonTitle: payload.lessonTitle,
+          videoUrl: payload.videoUrl,
+          mode: targetMode,
+          explanationText: payload.explanationText,
+          timeLimit: payload.timeLimit,
+          showResult: payload.showResult,
+          sessionPin: pin,
+        })
+      });
+    } catch {}
 
     cachedState = { ...cachedState, ...update };
     return { success: true, state: cachedState };
@@ -624,6 +640,7 @@ export async function returnToLiveExplanation(payload?: {
     const update: Partial<LiveSessionState> = {
       status: 'direct_explanation',
       mode: 'direct',
+      activeMode: 'direct',
       videoPlaying: false,
       currentQuestionIndex: null,
       currentQuestion: null,
@@ -649,25 +666,43 @@ export async function triggerLiveQuestion(payload: {
   question: LiveQuestionItem;
   timeLimit?: number;
   showResult?: 'نعم' | 'لا';
+  channel?: 'video' | 'direct';
 }): Promise<{ success: boolean; state?: LiveSessionState }> {
   try {
-    // When a live question is triggered, start with fresh answersForCurrentQuestion
-    // so students get clean selectable options and do not get locked out with old previous submissions
+    const targetChannel = payload.channel || (cachedState.mode === 'direct' ? 'direct' : 'video');
+
     const update: Partial<LiveSessionState> = {
       status: 'question_active',
       videoPlaying: false,
+      mode: targetChannel,
+      activeMode: targetChannel,
       currentQuestionIndex: payload.questionIndex,
       currentQuestion: payload.question,
       questionTriggeredAt: Date.now(),
       timeLimit: payload.timeLimit ?? cachedState.timeLimit ?? 30,
       showResult: payload.showResult ?? cachedState.showResult ?? 'نعم',
-      answersForCurrentQuestion: {},
+      answersForCurrentQuestion: {}, // Clean slate for new question!
     };
 
     await updateDoc(LIVE_DOC_REF, {
       ...update,
       updatedAt: serverTimestamp(),
     });
+
+    // Notify server as well
+    try {
+      await fetch('/api/live/trigger-question', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          questionIndex: payload.questionIndex,
+          question: payload.question,
+          timeLimit: payload.timeLimit,
+          showResult: payload.showResult,
+          channel: targetChannel,
+        })
+      });
+    } catch {}
 
     cachedState = { ...cachedState, ...update };
     return { success: true, state: cachedState };
@@ -684,6 +719,7 @@ export async function submitLiveAnswer(payload: {
   answer: string;
   questionIndex: number;
   isCorrect?: boolean | null;
+  channel?: 'video' | 'direct';
 }): Promise<{ success: boolean; state?: LiveSessionState; error?: string }> {
   try {
     const state = await getLiveSessionState() || cachedState;
@@ -750,7 +786,6 @@ export async function submitLiveAnswer(payload: {
       }
     });
 
-    // Store EXACTLY ONE entry per student in currentAnswers
     currentAnswers[studentKey] = submission;
 
     // Deduplicate allSessionAnswers: merge and clean up any alternate keys
@@ -776,11 +811,15 @@ export async function submitLiveAnswer(payload: {
     allAnswers[studentKey][payload.questionIndex] = formattedAnswer;
 
     // Scoped answers per lesson to avoid cross-lesson interference
-    const currentLesson = state.lessonTitle || (state.mode === 'direct' ? state.directLessonTitle : state.videoLessonTitle) || 'default';
+    const targetChannel = payload.channel || state.mode || 'video';
+    const currentLesson = targetChannel === 'direct' 
+      ? (state.directLessonTitle || state.lessonTitle || 'default') 
+      : (state.videoLessonTitle || state.lessonTitle || 'default');
+
     const videoAnswers: Record<string, Record<string, Record<number, string>>> = { ...(state.videoAnswers || {}) };
     const directAnswers: Record<string, Record<string, Record<number, string>>> = { ...(state.directAnswers || {}) };
 
-    if (state.mode === 'direct') {
+    if (targetChannel === 'direct') {
       if (!directAnswers[currentLesson]) directAnswers[currentLesson] = {};
       if (!directAnswers[currentLesson][studentKey]) directAnswers[currentLesson][studentKey] = {};
       directAnswers[currentLesson][studentKey][payload.questionIndex] = formattedAnswer;
@@ -799,6 +838,22 @@ export async function submitLiveAnswer(payload: {
       updatedAt: serverTimestamp(),
     });
 
+    // Also forward to server
+    try {
+      await fetch('/api/live/submit-answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: cleanUser,
+          sheetNumber: cleanSheet,
+          answer: payload.answer,
+          questionIndex: payload.questionIndex,
+          isCorrect: payload.isCorrect,
+          channel: targetChannel,
+        })
+      });
+    } catch {}
+
     cachedState = { 
       ...state, 
       answersForCurrentQuestion: currentAnswers, 
@@ -814,7 +869,7 @@ export async function submitLiveAnswer(payload: {
   }
 }
 
-// Clears direct lecture lesson answers cleanly for a specific lesson or all direct lessons
+// Clears direct lecture lesson answers cleanly for a specific lesson or all direct lessons AND purges server RAM
 export async function clearLiveDirectLessonAnswers(lessonTitle?: string): Promise<{ success: boolean; state?: LiveSessionState }> {
   try {
     const state = await getLiveSessionState() || cachedState;
@@ -851,10 +906,76 @@ export async function clearLiveDirectLessonAnswers(lessonTitle?: string): Promis
       updatedAt: serverTimestamp(),
     });
 
+    // ⚡ CALL SERVER TO PURGE RAM & DISK BACKUP COMPLETELY!
+    try {
+      await fetch('/api/live/reset-channel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: 'direct', lessonTitle: targetTitle })
+      });
+    } catch (apiErr) {
+      console.warn('Failed to call server reset-channel:', apiErr);
+    }
+
     cachedState = { ...cachedState, ...update };
     return { success: true, state: cachedState };
   } catch (error: any) {
     console.error('Failed to clear live direct lesson answers:', error);
+    return { success: false };
+  }
+}
+
+// Clears interactive video answers cleanly for a specific lesson or all video lessons AND purges server RAM
+export async function clearLiveVideoLessonAnswers(lessonTitle?: string): Promise<{ success: boolean; state?: LiveSessionState }> {
+  try {
+    const state = await getLiveSessionState() || cachedState;
+    const videoAnswers = { ...(state.videoAnswers || {}) };
+    const allSessionAnswers = { ...(state.allSessionAnswers || {}) };
+    const targetTitle = lessonTitle || state.videoLessonTitle || state.lessonTitle;
+
+    if (targetTitle && videoAnswers[targetTitle]) {
+      delete videoAnswers[targetTitle];
+    } else if (!lessonTitle) {
+      Object.keys(videoAnswers).forEach(k => delete videoAnswers[k]);
+    }
+
+    let answersForCurrentQuestion = state.answersForCurrentQuestion || {};
+    if (state.mode === 'video' && (!lessonTitle || state.lessonTitle === lessonTitle)) {
+      answersForCurrentQuestion = {};
+      Object.keys(allSessionAnswers).forEach(studentKey => {
+        delete allSessionAnswers[studentKey];
+      });
+    }
+
+    const update: Partial<LiveSessionState> = {
+      videoAnswers,
+      allSessionAnswers,
+      answersForCurrentQuestion,
+      currentQuestion: null,
+      currentQuestionIndex: null,
+      questionTriggeredAt: null,
+    };
+
+    await updateDoc(LIVE_DOC_REF, {
+      ...update,
+      updatedAt: serverTimestamp(),
+    });
+
+    // ⚡ CALL SERVER TO PURGE RAM & DISK BACKUP COMPLETELY!
+    try {
+      await fetch('/api/live/reset-channel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: 'video', lessonTitle: targetTitle })
+      });
+    } catch (apiErr) {
+      console.warn('Failed to call server reset-channel for video:', apiErr);
+    }
+
+    cachedState = { ...cachedState, ...update };
+    return { success: true, state: cachedState };
+  } catch (error: any) {
+    console.error('Failed to clear live video lesson answers:', error);
     return { success: false };
   }
 }
@@ -938,6 +1059,15 @@ export async function resetLiveSession(): Promise<{ success: boolean; state?: Li
       ...freshState,
       updatedAt: serverTimestamp(),
     });
+
+    // ⚡ Clear server RAM and wipe backup file completely
+    try {
+      await fetch('/api/live/reset-channel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channel: 'all' })
+      });
+    } catch {}
 
     cachedState = freshState;
     return { success: true, state: cachedState };

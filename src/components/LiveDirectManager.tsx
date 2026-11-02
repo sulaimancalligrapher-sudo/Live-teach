@@ -765,13 +765,21 @@ export default function LiveDirectManager({
 
   // Reset Session (cleans memory for current direct lecture lesson so questions return fresh)
   const handleResetSession = async () => {
+    const ok = await showAppConfirm(
+      `هل تريد تصفير ومسح ذاكرة إجابات موضوع "${selectedLessonTitle || 'الحصة المباشرة'}" بالكامل من الخادم؟`,
+      'تصفير ذاكرة الشرح المباشر',
+      'warning',
+      'نعم، تصفير الذاكرة'
+    );
+    if (!ok) return;
+
     setIsResettingSession(true);
     try {
       const res = await clearLiveDirectLessonAnswers(selectedLessonTitle);
       if (res && res.state) {
         setSessionState(res.state);
       }
-      showNotice(`تم تصفير ذاكرة إجابات موضوع "${selectedLessonTitle || 'الحصة'}" بنجاح 🔄`, 'info');
+      showNotice(`تم تصفير ومسح ذاكرة إجابات موضوع "${selectedLessonTitle || 'الحصة'}" بالكامل بنجاح 🔄`, 'info');
     } catch {
       showNotice('فشل تصفير الجلسة', 'error');
     } finally {
@@ -877,10 +885,13 @@ export default function LiveDirectManager({
   }, [getQuestionAnswerCount]);
 
   // Helper to format answers as 'صح' / 'خطأ' / 'نص' to match Answers-T & Answers-Live structure
+  // CRITICAL: During the live session (finalize = false), unanswered questions remain completely EMPTY ('')!
+  // Setting 'خطأ' on unattempted questions occurs EXCLUSIVELY when finalize = true (on save to sheets / end session).
   const formatAnswersForAnswersLive = (
     answersMap: Record<number, string>,
     targetQuestions?: LiveDirectQuestionItem[],
-    _askedQuestionIndices?: Set<number>
+    _askedQuestionIndices?: Set<number>,
+    finalize: boolean = false
   ): Record<number, string> => {
     const formatted: Record<number, string> = {};
     if (targetQuestions && targetQuestions.length > 0) {
@@ -907,21 +918,30 @@ export default function LiveDirectManager({
               }
             }
           }
-        } else {
-          // Unanswered question is marked as wrong answer ('خطأ')
+        } else if (finalize) {
+          // Unanswered question is marked as wrong answer ('خطأ') ONLY upon final save/end session
           formatted[idx] = 'خطأ';
+        } else {
+          // Keep empty during live class so questions 2, 3, etc. stay clean!
+          formatted[idx] = '';
         }
       });
     } else {
       Object.entries(answersMap).forEach(([idx, val]) => {
-        formatted[Number(idx)] = (val !== undefined && val !== null && String(val).trim() !== '') ? String(val).trim() : 'خطأ';
+        if (val !== undefined && val !== null && String(val).trim() !== '') {
+          formatted[Number(idx)] = String(val).trim();
+        } else if (finalize) {
+          formatted[Number(idx)] = 'خطأ';
+        } else {
+          formatted[Number(idx)] = '';
+        }
       });
     }
     return formatted;
   };
 
   // Helper to construct complete, deduplicated student answer records from the live session
-  const buildDirectAnswerRecords = (): LiveDirectAnswerRecord[] => {
+  const buildDirectAnswerRecords = (finalize: boolean = false): LiveDirectAnswerRecord[] => {
     if (!sessionState) return [];
     const timestamp = new Date().toLocaleString('ar-SA');
     const title = sessionState.directLessonTitle || (sessionState.mode === 'direct' ? sessionState.lessonTitle : '') || selectedLessonTitle || 'حصة تدريبية مباشرة';
@@ -1062,8 +1082,8 @@ export default function LiveDirectManager({
         });
       }
 
-      // Format answers: answered questions evaluated, unanswered marked as 'خطأ'
-      const formatted = formatAnswersForAnswersLive(studentAnswers, currentLesson?.questions, askedQuestionIndices);
+      // Format answers: during live class keep unanswered empty (''), only mark 'خطأ' on finalize (save/end)
+      const formatted = formatAnswersForAnswersLive(studentAnswers, currentLesson?.questions, askedQuestionIndices, finalize);
 
       recordsToSave.push({
         timestamp,
@@ -1078,16 +1098,17 @@ export default function LiveDirectManager({
     return recordsToSave;
   };
 
-  // Real-time live session answers in active memory
+  // Real-time live session answers in active memory (NEVER pre-fills 'خطأ')
   const liveDirectSessionAnswers = useMemo(() => {
-    return buildDirectAnswerRecords();
+    return buildDirectAnswerRecords(false);
   }, [sessionState, lessons, activeLesson, selectedLessonTitle]);
 
   const handleConfirmEndProgram = async () => {
     setShowEndConfirmModal(false);
     setIsTogglingProgram(true);
     try {
-      const recordsToSave = buildDirectAnswerRecords();
+      // Finalize student answers before saving: unattempted questions are marked 'خطأ' only now
+      const recordsToSave = buildDirectAnswerRecords(true);
       let savedCount = 0;
 
       // Auto-save student answers to Google Sheets Answers-Live
@@ -1126,7 +1147,8 @@ export default function LiveDirectManager({
   const handleQuickSaveAnswers = async () => {
     setIsFinishingSession(true);
     try {
-      const recordsToSave = buildDirectAnswerRecords();
+      // Finalize student answers before saving
+      const recordsToSave = buildDirectAnswerRecords(true);
       if (recordsToSave.length === 0) {
         showNotice('لا توجد إجابات مسجلة من الطلاب لحفظها حالياً', 'info');
         return;
@@ -1916,6 +1938,17 @@ export default function LiveDirectManager({
                   >
                     <Power className="w-4 h-4 text-rose-100" />
                     <span>إنهاء وحفظ</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResetSession}
+                    disabled={isResettingSession}
+                    className="px-3 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 font-bold rounded-xl text-xs flex items-center gap-1.5 border border-rose-500/30 transition-all cursor-pointer"
+                    title="تصفير ومسح ذاكرة إجابات موضوع الشرح المباشر الحالي من الخادم تماماً"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isResettingSession ? 'animate-spin' : ''}`} />
+                    <span>تصفير الذاكرة 🔄</span>
                   </button>
                 </div>
               </div>
@@ -3040,15 +3073,28 @@ export default function LiveDirectManager({
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleQuickSaveAnswers}
-                  disabled={isFinishingSession}
-                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer active:scale-95 disabled:opacity-50 whitespace-nowrap"
-                >
-                  <Save className={`w-4 h-4 ${isFinishingSession ? 'animate-spin' : ''}`} />
-                  <span>{isFinishingSession ? 'جارٍ الحفظ في الشيت...' : 'حفظ فوري في ورقة Answers-Live 💾'}</span>
-                </button>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleQuickSaveAnswers}
+                    disabled={isFinishingSession}
+                    className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                  >
+                    <Save className={`w-4 h-4 ${isFinishingSession ? 'animate-spin' : ''}`} />
+                    <span>{isFinishingSession ? 'جارٍ الحفظ في الشيت...' : 'حفظ فوري في ورقة Answers-Live 💾'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResetSession}
+                    disabled={isResettingSession}
+                    className="px-3.5 py-2 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50 whitespace-nowrap"
+                    title="تصفير ومسح ذاكرة إجابات موضوع الشرح المباشر الحالي من الخادم"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isResettingSession ? 'animate-spin' : ''}`} />
+                    <span>تصفير الذاكرة 🔄</span>
+                  </button>
+                </div>
               </div>
 
               {/* Live answers table */}

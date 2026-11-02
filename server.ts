@@ -42,19 +42,67 @@ async function startServer() {
     submittedAt: number;
   }
 
+  interface LiveChannelState {
+    lessonTitle: string;
+    videoUrl?: string;
+    videoPlaying?: boolean;
+    explanationText?: string;
+    status: 'idle' | 'waiting' | 'playing' | 'question_active' | 'revealed' | 'finished' | 'program_ended' | 'direct_explanation';
+    currentQuestionIndex: number | null;
+    currentQuestion: LiveQuestionPayload | null;
+    questionTriggeredAt: number | null;
+    timeLimit: number;
+    showResult: 'نعم' | 'لا';
+    answersForCurrentQuestion: Record<string, LiveStudentAnswerSubmission>;
+    allSessionAnswers: Record<string, Record<number, string>>;
+    lessonAnswers: Record<string, Record<string, Record<number, string>>>;
+  }
+
   function generatePinCode(): string {
     return String(Math.floor(1000 + Math.random() * 9000));
   }
 
   const BACKUP_FILE = path.join(process.cwd(), '.live_session_backup.json');
 
+  let videoChannel: LiveChannelState = {
+    lessonTitle: '',
+    videoUrl: '',
+    videoPlaying: false,
+    status: 'idle',
+    currentQuestionIndex: null,
+    currentQuestion: null,
+    questionTriggeredAt: null,
+    timeLimit: 30,
+    showResult: 'نعم',
+    answersForCurrentQuestion: {},
+    allSessionAnswers: {},
+    lessonAnswers: {},
+  };
+
+  let directChannel: LiveChannelState = {
+    lessonTitle: '',
+    explanationText: '',
+    status: 'idle',
+    currentQuestionIndex: null,
+    currentQuestion: null,
+    questionTriggeredAt: null,
+    timeLimit: 30,
+    showResult: 'نعم',
+    answersForCurrentQuestion: {},
+    allSessionAnswers: {},
+    lessonAnswers: {},
+  };
+
   let currentLiveSession = {
     sessionId: 'live-main',
     sessionPin: '1234',
     isProgramActive: false,
+    mode: 'video' as 'video' | 'direct',
     lessonTitle: '',
+    videoLessonTitle: '',
+    directLessonTitle: '',
     videoUrl: '',
-    status: 'idle' as 'idle' | 'waiting' | 'playing' | 'question_active' | 'revealed' | 'finished' | 'program_ended',
+    status: 'idle' as 'idle' | 'waiting' | 'playing' | 'question_active' | 'revealed' | 'finished' | 'program_ended' | 'direct_explanation',
     currentQuestionIndex: null as number | null,
     currentQuestion: null as LiveQuestionPayload | null,
     questionTriggeredAt: null as number | null,
@@ -63,13 +111,66 @@ async function startServer() {
     connectedStudents: [] as LiveConnectedStudent[],
     answersForCurrentQuestion: {} as Record<string, LiveStudentAnswerSubmission>,
     allSessionAnswers: {} as Record<string, Record<number, string>>,
+    videoAnswers: {} as Record<string, Record<string, Record<number, string>>>,
+    directAnswers: {} as Record<string, Record<string, Record<number, string>>>,
+    videoChannel: {} as any,
+    directChannel: {} as any,
   };
+
+  function syncCurrentLiveSession() {
+    const isDirect = currentLiveSession.mode === 'direct';
+    const activeChan = isDirect ? directChannel : videoChannel;
+
+    currentLiveSession.videoLessonTitle = videoChannel.lessonTitle;
+    currentLiveSession.directLessonTitle = directChannel.lessonTitle;
+    currentLiveSession.lessonTitle = activeChan.lessonTitle || (isDirect ? directChannel.lessonTitle : videoChannel.lessonTitle);
+    currentLiveSession.videoUrl = videoChannel.videoUrl || '';
+    currentLiveSession.status = activeChan.status;
+    currentLiveSession.currentQuestionIndex = activeChan.currentQuestionIndex;
+    currentLiveSession.currentQuestion = activeChan.currentQuestion;
+    currentLiveSession.questionTriggeredAt = activeChan.questionTriggeredAt;
+    currentLiveSession.timeLimit = activeChan.timeLimit;
+    currentLiveSession.showResult = activeChan.showResult;
+    currentLiveSession.answersForCurrentQuestion = activeChan.answersForCurrentQuestion;
+    currentLiveSession.allSessionAnswers = activeChan.allSessionAnswers;
+    currentLiveSession.videoAnswers = videoChannel.lessonAnswers;
+    currentLiveSession.directAnswers = directChannel.lessonAnswers;
+
+    currentLiveSession.videoChannel = {
+      lessonTitle: videoChannel.lessonTitle,
+      videoUrl: videoChannel.videoUrl,
+      videoPlaying: videoChannel.videoPlaying,
+      status: videoChannel.status,
+      currentQuestionIndex: videoChannel.currentQuestionIndex,
+      currentQuestion: videoChannel.currentQuestion,
+      questionTriggeredAt: videoChannel.questionTriggeredAt,
+      timeLimit: videoChannel.timeLimit,
+      showResult: videoChannel.showResult,
+      answersForCurrentQuestion: videoChannel.answersForCurrentQuestion,
+      allSessionAnswers: videoChannel.allSessionAnswers,
+    };
+
+    currentLiveSession.directChannel = {
+      lessonTitle: directChannel.lessonTitle,
+      status: directChannel.status,
+      currentQuestionIndex: directChannel.currentQuestionIndex,
+      currentQuestion: directChannel.currentQuestion,
+      questionTriggeredAt: directChannel.questionTriggeredAt,
+      timeLimit: directChannel.timeLimit,
+      showResult: directChannel.showResult,
+      answersForCurrentQuestion: directChannel.answersForCurrentQuestion,
+      allSessionAnswers: directChannel.allSessionAnswers,
+    };
+  }
 
   function saveBackup() {
     try {
+      syncCurrentLiveSession();
       const dataToSave = {
         savedAt: new Date().toISOString(),
-        session: currentLiveSession
+        session: currentLiveSession,
+        videoChannel,
+        directChannel,
       };
       fs.writeFileSync(BACKUP_FILE, JSON.stringify(dataToSave, null, 2), 'utf-8');
     } catch (err) {
@@ -83,6 +184,8 @@ async function startServer() {
         const raw = fs.readFileSync(BACKUP_FILE, 'utf-8');
         const parsed = JSON.parse(raw);
         if (parsed && parsed.session) {
+          if (parsed.videoChannel) videoChannel = parsed.videoChannel;
+          if (parsed.directChannel) directChannel = parsed.directChannel;
           return parsed;
         }
       }
@@ -176,10 +279,10 @@ async function startServer() {
 
   // Teacher initializes or changes lesson (KEEPS current sessionPin if program is running!)
   app.post("/api/live/init", (req, res) => {
-    const { lessonTitle, videoUrl, timeLimit, showResult, sessionPin } = req.body;
+    const { lessonTitle, videoUrl, timeLimit, showResult, sessionPin, mode, explanationText } = req.body;
     currentLiveSession.sessionId = 'live-' + Date.now();
     
-    // Preserve existing PIN so students stay joined across video changes!
+    // Preserve existing PIN so students stay joined across lesson/mode changes!
     if (sessionPin && String(sessionPin).trim()) {
       currentLiveSession.sessionPin = String(sessionPin).trim();
     } else if (!currentLiveSession.sessionPin) {
@@ -187,16 +290,31 @@ async function startServer() {
     }
     
     currentLiveSession.isProgramActive = true;
-    currentLiveSession.lessonTitle = lessonTitle || 'درس تفاعلي مباشر';
-    currentLiveSession.videoUrl = videoUrl || '';
-    currentLiveSession.status = 'waiting';
-    currentLiveSession.currentQuestionIndex = null;
-    currentLiveSession.currentQuestion = null;
-    currentLiveSession.questionTriggeredAt = null;
-    currentLiveSession.timeLimit = typeof timeLimit === 'number' && timeLimit > 0 ? timeLimit : 30;
-    currentLiveSession.showResult = showResult || 'نعم';
-    currentLiveSession.answersForCurrentQuestion = {};
-    currentLiveSession.allSessionAnswers = {}; // Clear old session answers memory for new video
+    const targetMode = mode === 'direct' ? 'direct' : 'video';
+    currentLiveSession.mode = targetMode;
+
+    if (targetMode === 'direct') {
+      directChannel.lessonTitle = lessonTitle || 'شرح مباشر';
+      directChannel.status = 'direct_explanation';
+      directChannel.currentQuestionIndex = null;
+      directChannel.currentQuestion = null;
+      directChannel.questionTriggeredAt = null;
+      directChannel.explanationText = explanationText || `موضوع الحصة: ${lessonTitle || ''}`;
+      if (typeof timeLimit === 'number' && timeLimit > 0) directChannel.timeLimit = timeLimit;
+      if (showResult) directChannel.showResult = showResult;
+      directChannel.answersForCurrentQuestion = {};
+    } else {
+      videoChannel.lessonTitle = lessonTitle || 'درس تفاعلي مباشر';
+      videoChannel.videoUrl = videoUrl || '';
+      videoChannel.status = 'waiting';
+      videoChannel.currentQuestionIndex = null;
+      videoChannel.currentQuestion = null;
+      videoChannel.questionTriggeredAt = null;
+      if (typeof timeLimit === 'number' && timeLimit > 0) videoChannel.timeLimit = timeLimit;
+      if (showResult) videoChannel.showResult = showResult;
+      videoChannel.answersForCurrentQuestion = {};
+    }
+
     saveBackup();
     broadcastLiveState();
     res.json({ success: true, state: currentLiveSession });
@@ -206,6 +324,7 @@ async function startServer() {
   app.post("/api/live/update-pin", (req, res) => {
     const { pin } = req.body;
     currentLiveSession.sessionPin = pin && String(pin).trim() ? String(pin).trim() : generatePinCode();
+    saveBackup();
     broadcastLiveState();
     res.json({ success: true, pin: currentLiveSession.sessionPin, state: currentLiveSession });
   });
@@ -250,6 +369,7 @@ async function startServer() {
       });
     }
 
+    saveBackup();
     broadcastLiveState();
     res.json({ success: true, state: currentLiveSession });
   });
@@ -283,11 +403,16 @@ async function startServer() {
         s => !(s.username === cleanUser && s.sheetNumber === cleanSheet)
       );
 
-      // Clean up in-memory answers for leaving student
+      // Clean up in-memory answers for leaving student across channels
+      delete videoChannel.answersForCurrentQuestion[studentKey];
+      delete videoChannel.allSessionAnswers[studentKey];
+      delete directChannel.answersForCurrentQuestion[studentKey];
+      delete directChannel.allSessionAnswers[studentKey];
       delete currentLiveSession.answersForCurrentQuestion[studentKey];
       delete currentLiveSession.allSessionAnswers[studentKey];
 
       if (currentLiveSession.connectedStudents.length !== initialLen) {
+        saveBackup();
         broadcastLiveState();
       }
     }
@@ -297,7 +422,7 @@ async function startServer() {
   // Regular cleanup of disconnected / closed student sessions (if no ping for 45s)
   setInterval(() => {
     const now = Date.now();
-    const activeThreshold = 45000; // 45 seconds threshold gives plenty of time for tab switching
+    const activeThreshold = 45000;
     const initialLen = currentLiveSession.connectedStudents.length;
     currentLiveSession.connectedStudents = currentLiveSession.connectedStudents.filter(s => {
       return (now - (s.lastPing || 0)) < activeThreshold;
@@ -307,33 +432,41 @@ async function startServer() {
     }
   }, 5000);
 
-  // Teacher / Video triggers a question!
+  // Trigger a question in target channel ('video' | 'direct')
   app.post("/api/live/trigger-question", (req, res) => {
-    const { questionIndex, question, timeLimit, showResult } = req.body;
-    currentLiveSession.status = 'question_active';
-    currentLiveSession.currentQuestionIndex = questionIndex;
-    currentLiveSession.currentQuestion = question;
-    currentLiveSession.questionTriggeredAt = Date.now();
-    if (timeLimit) currentLiveSession.timeLimit = Number(timeLimit);
-    if (showResult) currentLiveSession.showResult = showResult;
-    currentLiveSession.answersForCurrentQuestion = {}; // Reset answers for this new question
+    const { questionIndex, question, timeLimit, showResult, channel } = req.body;
+    const targetChannelType = channel || currentLiveSession.mode || 'video';
+    const targetChannel = targetChannelType === 'direct' ? directChannel : videoChannel;
 
+    targetChannel.status = 'question_active';
+    targetChannel.currentQuestionIndex = questionIndex;
+    targetChannel.currentQuestion = question;
+    targetChannel.questionTriggeredAt = Date.now();
+    if (timeLimit) targetChannel.timeLimit = Number(timeLimit);
+    if (showResult) targetChannel.showResult = showResult;
+    targetChannel.answersForCurrentQuestion = {}; // Reset answers so students get fresh clean state!
+
+    currentLiveSession.mode = targetChannelType;
+    saveBackup();
     broadcastLiveState();
     res.json({ success: true, state: currentLiveSession });
   });
 
-  // Student submits an answer
+  // Student submits an answer to active channel
   app.post("/api/live/submit-answer", (req, res) => {
-    const { username, sheetNumber, answer, questionIndex, isCorrect } = req.body;
+    const { username, sheetNumber, answer, questionIndex, isCorrect, channel } = req.body;
     if (!username || answer === undefined) {
       return res.status(400).json({ success: false, error: 'بيانات غير مكتملة' });
     }
 
     const cleanUser = String(username).trim();
     const cleanSheet = String(sheetNumber || '').trim();
-    const studentKey = `${cleanUser}_${cleanSheet}`;
+    const studentKey = cleanSheet ? `${cleanUser}_${cleanSheet}` : cleanUser;
 
-    currentLiveSession.answersForCurrentQuestion[studentKey] = {
+    const targetChannelType = channel || currentLiveSession.mode || 'video';
+    const targetChannel = targetChannelType === 'direct' ? directChannel : videoChannel;
+
+    const submission: LiveStudentAnswerSubmission = {
       username: cleanUser,
       sheetNumber: cleanSheet,
       answer: String(answer),
@@ -341,54 +474,153 @@ async function startServer() {
       submittedAt: Date.now(),
     };
 
-    // Also store in allSessionAnswers
-    const qIdx = questionIndex !== undefined ? Number(questionIndex) : (currentLiveSession.currentQuestionIndex ?? 0);
-    if (!currentLiveSession.allSessionAnswers[studentKey]) {
-      currentLiveSession.allSessionAnswers[studentKey] = {};
-    }
-    currentLiveSession.allSessionAnswers[studentKey][qIdx] = String(answer);
+    targetChannel.answersForCurrentQuestion[studentKey] = submission;
 
-    saveBackup(); // Instant persistent disk write to prevent data loss on crash or power failure!
+    const qIdx = questionIndex !== undefined ? Number(questionIndex) : (targetChannel.currentQuestionIndex ?? 0);
+    if (!targetChannel.allSessionAnswers[studentKey]) {
+      targetChannel.allSessionAnswers[studentKey] = {};
+    }
+    targetChannel.allSessionAnswers[studentKey][qIdx] = String(answer);
+
+    const lessonTitle = targetChannel.lessonTitle || 'default';
+    if (!targetChannel.lessonAnswers[lessonTitle]) {
+      targetChannel.lessonAnswers[lessonTitle] = {};
+    }
+    if (!targetChannel.lessonAnswers[lessonTitle][studentKey]) {
+      targetChannel.lessonAnswers[lessonTitle][studentKey] = {};
+    }
+    targetChannel.lessonAnswers[lessonTitle][studentKey][qIdx] = String(answer);
+
+    saveBackup();
     broadcastLiveState();
     res.json({ success: true, state: currentLiveSession });
   });
 
   // Teacher reveals correct answer
   app.post("/api/live/reveal-answer", (req, res) => {
-    currentLiveSession.status = 'revealed';
+    const { channel } = req.body;
+    const targetChannel = (channel === 'direct' || currentLiveSession.mode === 'direct') ? directChannel : videoChannel;
+    targetChannel.status = 'revealed';
+    saveBackup();
     broadcastLiveState();
     res.json({ success: true, state: currentLiveSession });
   });
 
   // Teacher resumes video
   app.post("/api/live/resume", (req, res) => {
-    currentLiveSession.status = 'playing';
-    currentLiveSession.currentQuestion = null;
-    currentLiveSession.currentQuestionIndex = null;
-    currentLiveSession.questionTriggeredAt = null;
+    videoChannel.status = 'playing';
+    videoChannel.videoPlaying = true;
+    videoChannel.currentQuestion = null;
+    videoChannel.currentQuestionIndex = null;
+    videoChannel.questionTriggeredAt = null;
+    videoChannel.answersForCurrentQuestion = {};
+    saveBackup();
     broadcastLiveState();
     res.json({ success: true, state: currentLiveSession });
   });
 
-  // Teacher finishes session
+  // Teacher finishes session for active channel
   app.post("/api/live/finish", (req, res) => {
-    currentLiveSession.status = 'finished';
-    currentLiveSession.currentQuestion = null;
-    currentLiveSession.currentQuestionIndex = null;
-    currentLiveSession.questionTriggeredAt = null;
-    currentLiveSession.answersForCurrentQuestion = {};
-    currentLiveSession.allSessionAnswers = {}; // Clear so old answers are never carried into the next session
+    const { channel } = req.body;
+    const targetChannel = (channel === 'direct' || currentLiveSession.mode === 'direct') ? directChannel : videoChannel;
+    targetChannel.status = 'finished';
+    targetChannel.currentQuestion = null;
+    targetChannel.currentQuestionIndex = null;
+    targetChannel.questionTriggeredAt = null;
+    targetChannel.answersForCurrentQuestion = {};
+    targetChannel.allSessionAnswers = {};
+    saveBackup();
     broadcastLiveState();
     res.json({ success: true, state: currentLiveSession });
   });
 
-  // Reset session
+  // Explicit Channel RAM & Backup Reset (مسح وتصفير ذاكرة الرام الخاصة بقسم محدد تماماً)
+  app.post("/api/live/reset-channel", (req, res) => {
+    const { channel, lessonTitle } = req.body; // 'direct' | 'video' | 'all'
+    const target = channel || (currentLiveSession.mode === 'direct' ? 'direct' : 'video');
+
+    if (target === 'direct' || target === 'all') {
+      directChannel.status = 'idle';
+      directChannel.currentQuestionIndex = null;
+      directChannel.currentQuestion = null;
+      directChannel.questionTriggeredAt = null;
+      directChannel.answersForCurrentQuestion = {};
+      directChannel.allSessionAnswers = {};
+      if (lessonTitle && directChannel.lessonAnswers[lessonTitle]) {
+        delete directChannel.lessonAnswers[lessonTitle];
+      } else {
+        directChannel.lessonAnswers = {};
+      }
+    }
+
+    if (target === 'video' || target === 'all') {
+      videoChannel.status = 'idle';
+      videoChannel.currentQuestionIndex = null;
+      videoChannel.currentQuestion = null;
+      videoChannel.questionTriggeredAt = null;
+      videoChannel.answersForCurrentQuestion = {};
+      videoChannel.allSessionAnswers = {};
+      if (lessonTitle && videoChannel.lessonAnswers[lessonTitle]) {
+        delete videoChannel.lessonAnswers[lessonTitle];
+      } else {
+        videoChannel.lessonAnswers = {};
+      }
+    }
+
+    if (target === 'all') {
+      try {
+        if (fs.existsSync(BACKUP_FILE)) {
+          fs.unlinkSync(BACKUP_FILE);
+        }
+      } catch (err) {
+        console.warn('Backup file unlink error:', err);
+      }
+    } else {
+      saveBackup();
+    }
+
+    syncCurrentLiveSession();
+    broadcastLiveState();
+    res.json({ success: true, message: `تم تصفير ذاكرة رام الخادم لقسم ${target} بنجاح 🔄`, state: currentLiveSession });
+  });
+
+  // Full Global Reset
   app.post("/api/live/reset", (req, res) => {
+    videoChannel = {
+      lessonTitle: '',
+      videoUrl: '',
+      videoPlaying: false,
+      status: 'idle',
+      currentQuestionIndex: null,
+      currentQuestion: null,
+      questionTriggeredAt: null,
+      timeLimit: 30,
+      showResult: 'نعم',
+      answersForCurrentQuestion: {},
+      allSessionAnswers: {},
+      lessonAnswers: {},
+    };
+    directChannel = {
+      lessonTitle: '',
+      explanationText: '',
+      status: 'idle',
+      currentQuestionIndex: null,
+      currentQuestion: null,
+      questionTriggeredAt: null,
+      timeLimit: 30,
+      showResult: 'نعم',
+      answersForCurrentQuestion: {},
+      allSessionAnswers: {},
+      lessonAnswers: {},
+    };
     currentLiveSession = {
       sessionId: 'live-' + Date.now(),
       sessionPin: generatePinCode(),
       isProgramActive: false,
+      mode: 'video',
       lessonTitle: '',
+      videoLessonTitle: '',
+      directLessonTitle: '',
       videoUrl: '',
       status: 'idle',
       currentQuestionIndex: null,
@@ -399,7 +631,16 @@ async function startServer() {
       connectedStudents: [],
       answersForCurrentQuestion: {},
       allSessionAnswers: {},
+      videoAnswers: {},
+      directAnswers: {},
+      videoChannel: {},
+      directChannel: {},
     };
+    try {
+      if (fs.existsSync(BACKUP_FILE)) {
+        fs.unlinkSync(BACKUP_FILE);
+      }
+    } catch {}
     saveBackup();
     broadcastLiveState();
     res.json({ success: true, state: currentLiveSession });

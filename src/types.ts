@@ -249,6 +249,21 @@ export interface LiveStudentMessage {
   };
 }
 
+export interface LiveSessionChannelState {
+  lessonTitle: string;
+  status: 'idle' | 'waiting' | 'playing' | 'question_active' | 'revealed' | 'finished' | 'program_ended' | 'direct_explanation';
+  currentQuestionIndex: number | null;
+  currentQuestion: LiveQuestionItem | null;
+  questionTriggeredAt: number | null;
+  timeLimit: number;
+  showResult: 'نعم' | 'لا';
+  answersForCurrentQuestion: Record<string, LiveStudentAnswerSubmission>;
+  allSessionAnswers: Record<string, Record<number, string>>;
+  answers?: Record<string, Record<number, string>>;
+  videoUrl?: string;
+  videoPlaying?: boolean;
+}
+
 export interface LiveSessionState {
   sessionId: string;
   sessionPin?: string;
@@ -288,6 +303,7 @@ export interface LiveSessionState {
   quizLessonTitle?: string; // Independent title for Quiz Challenge (Questions-Qui)
   videoUrl: string;
   mode?: 'video' | 'direct'; // 'video' for Video Classroom (Questions-T), 'direct' for Live Lecture (Questions-Live)
+  activeMode?: 'video' | 'direct' | 'quiz'; // Synchronized active mode broadcasted to screens
   explanationText?: string; // Optional message or topic shown to students during live explanation
   status: 'idle' | 'waiting' | 'playing' | 'question_active' | 'revealed' | 'finished' | 'program_ended' | 'direct_explanation';
   currentQuestionIndex: number | null;
@@ -300,6 +316,8 @@ export interface LiveSessionState {
   allSessionAnswers: Record<string, Record<number, string>>;
   videoAnswers?: Record<string, Record<string, Record<number, string>>>; // [lessonTitle][studentKey][qIdx]
   directAnswers?: Record<string, Record<string, Record<number, string>>>; // [lessonTitle][studentKey][qIdx]
+  videoChannel?: LiveSessionChannelState; // Dedicated isolated room channel for Interactive Video
+  directChannel?: LiveSessionChannelState; // Dedicated isolated room channel for Live Direct Lesson
   roomPin?: string; // Room security entry PIN for live direct classroom
   quizState?: QuizActiveState | null; // Quiz / Challenge Mode (Questions-Qui & Answers-Qui)
 }

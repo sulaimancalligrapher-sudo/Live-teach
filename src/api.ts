@@ -2572,7 +2572,7 @@ export async function setupPdfLessonsSheetApi(): Promise<{ success: boolean; mes
   }
 }
 
-export { generatePinCode, clearLiveDirectLessonAnswers } from './lib/firebaseLiveService';
+export { generatePinCode, clearLiveDirectLessonAnswers, clearLiveVideoLessonAnswers } from './lib/firebaseLiveService';
 
 
 

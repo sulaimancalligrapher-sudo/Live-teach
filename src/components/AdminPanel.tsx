@@ -189,34 +189,10 @@ export default function AdminPanel({
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Live PIN Quick Pill */}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs">
-              <KeyRound className="w-4 h-4 text-amber-400" />
-              <span className="text-slate-400">رمز الدخول PIN:</span>
-              <span className="font-mono font-bold text-amber-300 tracking-wider text-sm">{currentPin}</span>
-              <button
-                onClick={handleGenerateNewPin}
-                disabled={isUpdatingPin}
-                title="توليد رمز جديد"
-                className="p-1 hover:text-amber-300 text-slate-400 transition cursor-pointer"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isUpdatingPin ? 'animate-spin' : ''}`} />
-              </button>
-            </div>
-
-            {/* Stop Broadcast Button */}
-            <button
-              onClick={handleStopAllBroadcasts}
-              title="إيقاف وتصفير البث النشط بالكامل وإعادته لحالة الخمول لمنع البث التلقائي"
-              className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
-            >
-              <Square className="w-3.5 h-3.5 fill-rose-300/30" />
-              <span>إيقاف البث النشط ⏹️</span>
-            </button>
-
             <button
               onClick={onClose}
               className="p-2 sm:p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
+              title="إغلاق لوحة التحكم"
             >
               <X className="w-5 h-5" />
             </button>

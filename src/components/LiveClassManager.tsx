@@ -84,6 +84,7 @@ export default function LiveClassManager({
   const [backupData, setBackupData] = useState<any | null>(null);
   const [isCheckingBackup, setIsCheckingBackup] = useState(false);
   const [isSavingRecovered, setIsSavingRecovered] = useState(false);
+  const [showSheetsTable, setShowSheetsTable] = useState(false);
   
   // Editor Modal State
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -988,15 +989,18 @@ export default function LiveClassManager({
     }
   };
 
-  // Filtered answers
-  const filteredAnswers = answers.filter(a => {
-    const q = searchQuery.toLowerCase();
-    return (
-      (a.username && a.username.toLowerCase().includes(q)) ||
-      (a.sheetNumber && a.sheetNumber.toLowerCase().includes(q)) ||
-      (a.lessonTitle && a.lessonTitle.toLowerCase().includes(q))
-    );
-  });
+  // Filtered answers (Google Sheets Answers-T)
+  const filteredAnswers = useMemo(() => {
+    if (!searchQuery.trim()) return answers;
+    const q = searchQuery.toLowerCase().trim();
+    return answers.filter(a => {
+      const matchUser = a.username && a.username.toLowerCase().includes(q);
+      const matchNum = a.sheetNumber && a.sheetNumber.toLowerCase().includes(q);
+      const matchLesson = a.lessonTitle && a.lessonTitle.toLowerCase().includes(q);
+      const matchAnswers = Object.values(a.answers || {}).some(v => String(v).toLowerCase().includes(q));
+      return matchUser || matchNum || matchLesson || matchAnswers;
+    });
+  }, [answers, searchQuery]);
 
   const [isQuickSavingLiveAnswers, setIsQuickSavingLiveAnswers] = useState(false);
 
@@ -1126,6 +1130,19 @@ export default function LiveClassManager({
       };
     });
   }, [sessionState, lessons, activeLesson]);
+
+  // Filtered live session answers matching search query
+  const filteredLiveSessionAnswers = useMemo(() => {
+    if (!searchQuery.trim()) return liveSessionAnswers;
+    const q = searchQuery.toLowerCase().trim();
+    return liveSessionAnswers.filter(st => {
+      const matchUser = st.username && st.username.toLowerCase().includes(q);
+      const matchNum = st.sheetNumber && st.sheetNumber.toLowerCase().includes(q);
+      const matchScore = st.score && st.score.toLowerCase().includes(q);
+      const matchAnswers = Object.values(st.answers || {}).some(v => String(v).toLowerCase().includes(q));
+      return matchUser || matchNum || matchScore || matchAnswers;
+    });
+  }, [liveSessionAnswers, searchQuery]);
 
   const handleQuickSaveLiveAnswersToSheets = async () => {
     setIsQuickSavingLiveAnswers(true);
@@ -1383,11 +1400,6 @@ export default function LiveClassManager({
                       <h3 className="text-sm sm:text-base font-black text-slate-100 group-hover:text-amber-400 transition-colors truncate">
                         {lesson.title}
                       </h3>
-                      {lesson.videoUrl && (
-                        <div className="text-[11px] text-slate-500 font-mono truncate max-w-xs sm:max-w-md mt-0.5" dir="ltr">
-                          {lesson.videoUrl}
-                        </div>
-                      )}
                     </div>
                   </div>
 
@@ -1422,63 +1434,67 @@ export default function LiveClassManager({
       )}
 
       {/* ========================================================================= */}
+      {/* ========================================================================= */}
       {/* TAB 2: ANSWERS RECORD (Answers-T) */}
       {/* ========================================================================= */}
       {activeTab === 'answers' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="relative flex-1 max-w-sm">
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="بحث باسم الطالب أو موضوع الدرس..."
-                className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-200 outline-none pr-10 focus:border-amber-500 font-bold"
-              />
-              <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-            </div>
+          {/* Top Actions Row: 4 Buttons in one row */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Button 1: فحص النسخة الاحتياطية الطارئة - أيقونة بدون نص */}
+            <button
+              onClick={handleCheckBackup}
+              disabled={isCheckingBackup}
+              title="فحص النسخة الاحتياطية الطارئة 🛡️"
+              className="p-2.5 bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-500/40 text-indigo-300 rounded-xl transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+            >
+              <DownloadCloud className={`w-4 h-4 text-indigo-400 ${isCheckingBackup ? 'animate-bounce' : ''}`} />
+            </button>
 
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Emergency Recovery Button */}
-              <button
-                onClick={handleCheckBackup}
-                disabled={isCheckingBackup}
-                title="استرجاع إجابات الطلاب المحفوظة تلقائياً في الخادم تحسباً لانقطاع الكهرباء أو إغلاق المتصفح"
-                className="px-3.5 py-2 bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-500/40 text-indigo-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
-              >
-                <DownloadCloud className={`w-4 h-4 text-indigo-400 ${isCheckingBackup ? 'animate-bounce' : ''}`} />
-                <span>فحص النسخة الاحتياطية الطارئة 🛡️</span>
-              </button>
+            {/* Button 2: تصفير ذاكرة الفيديو - النص كما هو مع أيقونة واحدة */}
+            <button
+              onClick={handleResetVideoMemory}
+              disabled={isResettingVideoMemory}
+              title="تصفير ومسح ذاكرة إجابات الفيديو التفاعلي من الخادم"
+              className="px-3.5 py-2.5 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 text-rose-400 ${isResettingVideoMemory ? 'animate-spin' : ''}`} />
+              <span>{isResettingVideoMemory ? 'جارٍ التصفير...' : 'تصفير ذاكرة الفيديو'}</span>
+            </button>
 
-              <button
-                onClick={handleResetVideoMemory}
-                disabled={isResettingVideoMemory}
-                title="تصفير ذاكرة إجابات الفيديو التفاعلي ومسحها من الخادم والرام"
-                className="px-3.5 py-2 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 text-rose-400 ${isResettingVideoMemory ? 'animate-spin' : ''}`} />
-                <span>{isResettingVideoMemory ? 'جارٍ التصفير...' : 'تصفير ذاكرة الفيديو 🔄'}</span>
-              </button>
+            {/* Button 3: مسح سجل - مع أيقونة واحدة */}
+            <button
+              onClick={handleClearAnswersSheet}
+              disabled={isClearingAnswersSheet}
+              title="مسح وتصفير جميع الإجابات المسجلة في ورقة Answers-T بالكامل"
+              className="px-3.5 py-2.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-500/50 text-rose-300 hover:text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+            >
+              <Trash2 className={`w-4 h-4 text-rose-400 ${isClearingAnswersSheet ? 'animate-spin' : ''}`} />
+              <span>{isClearingAnswersSheet ? 'جارٍ المسح...' : 'مسح سجل'}</span>
+            </button>
 
-              <button
-                onClick={handleClearAnswersSheet}
-                disabled={isClearingAnswersSheet}
-                title="مسح وتصفير جميع الإجابات المسجلة في ورقة Answers-T بالكامل"
-                className="px-3.5 py-2 bg-rose-950/60 hover:bg-rose-900 border border-rose-500/50 text-rose-300 hover:text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
-              >
-                <Trash2 className={`w-4 h-4 text-rose-400 ${isClearingAnswersSheet ? 'animate-spin' : ''}`} />
-                <span>{isClearingAnswersSheet ? 'جارٍ المسح...' : 'مسح سجل Answers-T 🗑️'}</span>
-              </button>
+            {/* Button 4: تحديث السجل - كما هو */}
+            <button
+              onClick={loadAnswers}
+              disabled={loadingAnswers}
+              title="تحديث وإعادة جلب الإجابات من ورقة Answers-T"
+              className="px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${loadingAnswers ? 'animate-spin text-amber-500' : ''}`} />
+              <span>تحديث السجل</span>
+            </button>
+          </div>
 
-              <button
-                onClick={loadAnswers}
-                disabled={loadingAnswers}
-                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer self-start sm:self-auto"
-              >
-                <RefreshCw className={`w-4 h-4 ${loadingAnswers ? 'animate-spin text-amber-500' : ''}`} />
-                <span>تحديث السجل</span>
-              </button>
-            </div>
+          {/* Under the 4 buttons: Search input for both tables */}
+          <div className="relative w-full">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="بحث باسم الطالب، رقم المشترك، أو موضوع الدرس في كلا الجدولين..."
+              className="w-full px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-200 outline-none pr-10 focus:border-amber-500 font-bold shadow-inner"
+            />
+            <Search className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           </div>
 
           {/* Emergency Backup Found Banner */}
@@ -1515,7 +1531,7 @@ export default function LiveClassManager({
             </div>
           )}
 
-          {/* Active Live Session In-Memory Answers Card */}
+          {/* Active Live Session In-Memory Answers Card (Table 1: RAM) */}
           {liveSessionAnswers.length > 0 && liveSessionAnswers.some(st => st.hasAnyAnswer) && (
             <div className="p-4 sm:p-5 bg-gradient-to-r from-amber-500/10 via-slate-900 to-indigo-950/40 border-2 border-amber-500/40 rounded-3xl shadow-xl space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -1529,7 +1545,7 @@ export default function LiveClassManager({
                         إجابات الحصة التفاعلية المباشرة الجارية (الذاكرة الحية)
                       </h4>
                       <span className="px-2 py-0.5 rounded-full bg-amber-400/20 border border-amber-400/30 text-amber-300 text-[10px] font-bold">
-                        {liveSessionAnswers.length} طالب
+                        {filteredLiveSessionAnswers.length} طالب
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-400 mt-0.5">
@@ -1539,16 +1555,6 @@ export default function LiveClassManager({
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleResetVideoMemory}
-                    disabled={isResettingVideoMemory}
-                    title="تصفير ذاكرة إجابات الفيديو التفاعلي فقط ومسحها من الخادم"
-                    className="px-3.5 py-2 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 disabled:opacity-50 whitespace-nowrap"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isResettingVideoMemory ? 'animate-spin' : ''}`} />
-                    <span>{isResettingVideoMemory ? 'جارٍ التصفير...' : 'تصفير ذاكرة الفيديو 🔄'}</span>
-                  </button>
-
                   <button
                     onClick={handleQuickSaveLiveAnswersToSheets}
                     disabled={isQuickSavingLiveAnswers}
@@ -1572,140 +1578,188 @@ export default function LiveClassManager({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60 font-semibold text-slate-300">
-                    {liveSessionAnswers.map((st, sIdx) => (
-                      <tr key={sIdx} className="hover:bg-slate-900/40">
-                        <td className="p-2.5 font-mono text-amber-400 font-bold whitespace-nowrap">
-                          {st.sheetNumber || `—`}
-                        </td>
-                        <td className="p-2.5 font-bold text-white whitespace-nowrap">
-                          {st.username}
-                        </td>
-                        <td className="p-2.5">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            {Object.entries(st.answers).map(([qIdx, ansVal]) => {
-                              const ansStr = String(ansVal || '').trim();
-                              const isCorrect = ansStr === 'صح';
-                              const isWrong = ansStr === 'خطأ';
-                              const isNone = ansStr === '—' || !ansStr;
-
-                              return (
-                                <span
-                                  key={qIdx}
-                                  className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold whitespace-nowrap ${
-                                    isCorrect
-                                      ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
-                                      : isWrong
-                                      ? 'bg-rose-500/15 border-rose-500/30 text-rose-400'
-                                      : isNone
-                                      ? 'bg-slate-900 border-slate-800 text-slate-600'
-                                      : 'bg-indigo-500/15 border-indigo-500/30 text-indigo-300'
-                                  }`}
-                                >
-                                  س{Number(qIdx) + 1}: {ansStr || '—'}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </td>
-                        <td className="p-2.5 whitespace-nowrap">
-                          <span className="px-2 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono font-black text-[11px]">
-                            {st.score}
-                          </span>
+                    {filteredLiveSessionAnswers.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="p-4 text-center text-slate-500 font-bold">
+                          لا توجد نتائج تطابق بحثك في الذاكرة الحية
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
+                    ) : (
+                      filteredLiveSessionAnswers.map((st, sIdx) => (
+                        <tr key={sIdx} className="hover:bg-slate-900/40">
+                          <td className="p-2.5 font-mono text-amber-400 font-bold whitespace-nowrap">
+                            {st.sheetNumber || `—`}
+                          </td>
+                          <td className="p-2.5 font-bold text-white whitespace-nowrap">
+                            {st.username}
+                          </td>
+                          <td className="p-2.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {Object.entries(st.answers).map(([qIdx, ansVal]) => {
+                                const ansStr = String(ansVal || '').trim();
+                                const isCorrect = ansStr === 'صح';
+                                const isWrong = ansStr === 'خطأ';
+                                const isNone = ansStr === '—' || !ansStr;
 
-          {loadingAnswers ? (
-            <div className="p-12 text-center text-slate-500 bg-slate-900/50 rounded-3xl border border-slate-800">
-              <RefreshCw className="w-8 h-8 animate-spin mx-auto text-amber-500 mb-2" />
-              <p className="text-xs font-bold">جاري جلب إجابات الطلاب من ورقة Answers-T...</p>
-            </div>
-          ) : filteredAnswers.length === 0 ? (
-            <div className="p-12 text-center bg-slate-900/50 rounded-3xl border border-slate-800 text-slate-500 space-y-2">
-              <FileSpreadsheet className="w-10 h-10 mx-auto opacity-30" />
-              <p className="text-xs font-bold">لم يتم تسجيل أي إجابات في ورقة Answers-T حتى الآن</p>
-              <p className="text-[11px] text-slate-600">
-                ستظهر النتائج هنا تلقائياً عند قيام الطلاب بالإجابة وحفظ الجلسة في شاشة البروجكتر.
-              </p>
-            </div>
-          ) : (
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-              <div className="overflow-x-auto">
-                <table className="w-full text-right text-xs">
-                  <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 font-bold">
-                    <tr>
-                      <th className="p-3.5 whitespace-nowrap">التاريخ والتوقيت (A)</th>
-                      <th className="p-3.5 whitespace-nowrap">رقم المشترك (B)</th>
-                      <th className="p-3.5 whitespace-nowrap">اسم المشترك (C)</th>
-                      <th className="p-3.5 whitespace-nowrap">موضوع الدرس (D)</th>
-                      <th className="p-3.5 whitespace-nowrap">إجابات الأسئلة (E:T)</th>
-                      <th className="p-3.5 whitespace-nowrap">الدرجة</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/60 font-semibold text-slate-300">
-                    {filteredAnswers.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-slate-800/40 transition-colors">
-                        <td className="p-3.5 text-slate-400 font-mono text-[11px] whitespace-nowrap">
-                          {item.timestamp}
-                        </td>
-                        <td className="p-3.5 font-mono text-amber-400 font-bold whitespace-nowrap">
-                          {item.sheetNumber || '-'}
-                        </td>
-                        <td className="p-3.5 font-bold text-slate-100 whitespace-nowrap">
-                          {item.username}
-                        </td>
-                        <td className="p-3.5 text-indigo-300 font-bold whitespace-nowrap">
-                          {item.lessonTitle}
-                        </td>
-                        <td className="p-3.5">
-                          <div className="flex items-center gap-1.5 flex-wrap max-w-md">
-                            {Object.entries(item.answers || {}).map(([qIdx, ans]) => {
-                              const ansStr = String(ans || '').trim();
-                              const isCorrect = ansStr === 'صح';
-                              const isWrong = ansStr === 'خطأ';
-                              const isFreeText = Boolean(ansStr && !isCorrect && !isWrong);
-
-                              return (
-                                <span
-                                  key={qIdx}
-                                  title={`السؤال ${Number(qIdx) + 1}: ${ansStr}`}
-                                  className={`px-2 py-0.5 rounded-lg border text-[11px] font-bold whitespace-nowrap ${
-                                    isCorrect 
-                                      ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' 
-                                      : isWrong 
-                                      ? 'bg-rose-500/15 border-rose-500/30 text-rose-400' 
-                                      : isFreeText 
-                                      ? 'bg-indigo-500/15 border-indigo-500/30 text-indigo-300 max-w-[120px] truncate' 
-                                      : 'bg-slate-950 border-slate-800 text-slate-600'
-                                  }`}
-                                >
-                                  س{Number(qIdx) + 1}: {ansStr || '—'}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        </td>
-                        <td className="p-3.5 whitespace-nowrap">
-                          {item.totalScore ? (
-                            <span className="px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono font-black">
-                              {item.totalScore}
+                                return (
+                                  <span
+                                    key={qIdx}
+                                    className={`px-2 py-0.5 rounded-lg border text-[10px] font-bold whitespace-nowrap ${
+                                      isCorrect
+                                        ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                                        : isWrong
+                                        ? 'bg-rose-500/15 border-rose-500/30 text-rose-400'
+                                        : isNone
+                                        ? 'bg-slate-900 border-slate-800 text-slate-600'
+                                        : 'bg-indigo-500/15 border-indigo-500/30 text-indigo-300'
+                                    }`}
+                                  >
+                                    س{Number(qIdx) + 1}: {ansStr || '—'}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </td>
+                          <td className="p-2.5 whitespace-nowrap">
+                            <span className="px-2 py-0.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono font-black text-[11px]">
+                              {st.score}
                             </span>
-                          ) : (
-                            <span className="text-slate-600 font-mono">-</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
+
+          {/* Table 2: Google Sheets Answers-T (Title + Button to reveal full table) */}
+          <div className="space-y-3">
+            <button
+              type="button"
+              onClick={() => setShowSheetsTable(prev => !prev)}
+              className="w-full bg-slate-900 hover:bg-slate-800/90 border border-slate-800 rounded-2xl p-4 flex items-center justify-between text-right transition cursor-pointer shadow-md group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold">
+                  <FileSpreadsheet className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-black text-slate-100 group-hover:text-amber-400 transition">
+                      سجل ورقة Google Sheets (Answers-T)
+                    </h4>
+                    <span className="px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300 text-[10px] font-bold font-mono">
+                      {filteredAnswers.length} سجل
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    {showSheetsTable ? 'انقر لإخفاء الجدول' : 'انقر هنا لعرض سجل إجابات الطلاب بالكامل'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 text-slate-400 group-hover:text-amber-400 transition">
+                <span className="text-xs font-bold hidden sm:inline">
+                  {showSheetsTable ? 'إخفاء الجدول' : 'عرض الجدول كاملاً'}
+                </span>
+                {showSheetsTable ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+              </div>
+            </button>
+
+            {/* Collapsible Sheets Table Body */}
+            {showSheetsTable && (
+              loadingAnswers ? (
+                <div className="p-12 text-center text-slate-500 bg-slate-900/50 rounded-3xl border border-slate-800">
+                  <RefreshCw className="w-8 h-8 animate-spin mx-auto text-amber-500 mb-2" />
+                  <p className="text-xs font-bold">جاري جلب إجابات الطلاب من ورقة Answers-T...</p>
+                </div>
+              ) : filteredAnswers.length === 0 ? (
+                <div className="p-12 text-center bg-slate-900/50 rounded-3xl border border-slate-800 text-slate-500 space-y-2">
+                  <FileSpreadsheet className="w-10 h-10 mx-auto opacity-30" />
+                  <p className="text-xs font-bold">
+                    {searchQuery ? 'لا توجد نتائج تطابق بحثك في سجل Answers-T' : 'لم يتم تسجيل أي إجابات في ورقة Answers-T حتى الآن'}
+                  </p>
+                  <p className="text-[11px] text-slate-600">
+                    ستظهر النتائج هنا تلقائياً عند قيام الطلاب بالإجابة وحفظ الجلسة في شاشة البروجكتر.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-right text-xs">
+                      <thead className="bg-slate-950 text-slate-400 border-b border-slate-800 font-bold">
+                        <tr>
+                          <th className="p-3.5 whitespace-nowrap">التاريخ والتوقيت (A)</th>
+                          <th className="p-3.5 whitespace-nowrap">رقم المشترك (B)</th>
+                          <th className="p-3.5 whitespace-nowrap">اسم المشترك (C)</th>
+                          <th className="p-3.5 whitespace-nowrap">موضوع الدرس (D)</th>
+                          <th className="p-3.5 whitespace-nowrap">إجابات الأسئلة (E:T)</th>
+                          <th className="p-3.5 whitespace-nowrap">الدرجة</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/60 font-semibold text-slate-300">
+                        {filteredAnswers.map((item, idx) => (
+                          <tr key={idx} className="hover:bg-slate-800/40 transition-colors">
+                            <td className="p-3.5 text-slate-400 font-mono text-[11px] whitespace-nowrap">
+                              {item.timestamp}
+                            </td>
+                            <td className="p-3.5 font-mono text-amber-400 font-bold whitespace-nowrap">
+                              {item.sheetNumber || '-'}
+                            </td>
+                            <td className="p-3.5 font-bold text-slate-100 whitespace-nowrap">
+                              {item.username}
+                            </td>
+                            <td className="p-3.5 text-indigo-300 font-bold whitespace-nowrap">
+                              {item.lessonTitle}
+                            </td>
+                            <td className="p-3.5">
+                              <div className="flex items-center gap-1.5 flex-wrap max-w-md">
+                                {Object.entries(item.answers || {}).map(([qIdx, ans]) => {
+                                  const ansStr = String(ans || '').trim();
+                                  const isCorrect = ansStr === 'صح';
+                                  const isWrong = ansStr === 'خطأ';
+                                  const isFreeText = Boolean(ansStr && !isCorrect && !isWrong);
+
+                                  return (
+                                    <span
+                                      key={qIdx}
+                                      title={`السؤال ${Number(qIdx) + 1}: ${ansStr}`}
+                                      className={`px-2 py-0.5 rounded-lg border text-[11px] font-bold whitespace-nowrap ${
+                                        isCorrect 
+                                          ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' 
+                                          : isWrong 
+                                          ? 'bg-rose-500/15 border-rose-500/30 text-rose-400' 
+                                          : isFreeText 
+                                          ? 'bg-indigo-500/15 border-indigo-500/30 text-indigo-300 max-w-[120px] truncate' 
+                                          : 'bg-slate-950 border-slate-800 text-slate-600'
+                                      }`}
+                                    >
+                                      س{Number(qIdx) + 1}: {ansStr || '—'}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                            <td className="p-3.5 whitespace-nowrap">
+                              {item.totalScore ? (
+                                <span className="px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono font-black">
+                                  {item.totalScore}
+                                </span>
+                              ) : (
+                                <span className="text-slate-600 font-mono">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )
+            )}
+          </div>
         </div>
       )}
 
@@ -1716,97 +1770,97 @@ export default function LiveClassManager({
         <div className="space-y-4">
           {/* Top Control Header Card */}
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold">
-                  <Users className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base sm:text-lg font-black text-slate-100">
-                    الطلاب المتصلون حالياً بالحصة المباشرة
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    {sessionState?.lessonTitle ? (
-                      <span>الحصة الحالية: <b className="text-amber-400">{sessionState.lessonTitle}</b></span>
-                    ) : (
-                      <span>في انتظار بدء المعلم عرض درس على شاشة البروجكتر</span>
-                    )}
-                  </p>
-                </div>
+            {/* Row 1: Title and Lesson Info */}
+            <div className="flex items-center gap-3 border-b border-slate-800/80 pb-3">
+              <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold shrink-0">
+                <Users className="w-6 h-6" />
               </div>
+              <div className="min-w-0">
+                <h3 className="text-base sm:text-lg font-black text-slate-100">
+                  الطلاب المتصلون حالياً بالحصة المباشرة
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {sessionState?.lessonTitle ? (
+                    <span>الحصة الحالية: <b className="text-amber-400">{sessionState.lessonTitle}</b></span>
+                  ) : (
+                    <span>في انتظار بدء المعلم عرض درس على شاشة البروجكتر</span>
+                  )}
+                </p>
+              </div>
+            </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                {/* START / END PROGRAM LIFECYCLE BUTTON */}
-                <button
-                  onClick={handleToggleProgram}
-                  disabled={isTogglingProgram}
-                  title={isProgramRunning ? 'إنهاء البرنامج وإخراج جميع المشتركين' : 'بدء البرنامج'}
-                  className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95 disabled:opacity-50 ${
-                    isProgramRunning
-                      ? 'bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 text-white shadow-rose-900/30'
-                      : 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white shadow-emerald-900/30'
-                  }`}
-                >
-                  <Power className={`w-4 h-4 ${isTogglingProgram ? 'animate-spin' : ''}`} />
-                  <span>
-                    {isTogglingProgram
-                      ? 'جارٍ التنفيذ...'
-                      : isProgramRunning
-                      ? 'إنهاء البرنامج وإخراج المشتركين 🛑'
-                      : 'بداية البرنامج 🚀'}
-                  </span>
-                </button>
+            {/* Row 2: Actions in exact order: 1. Start/End Button | 2. PIN Code Box | 3. Reset Memory Button with single icon */}
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              {/* 1. START / END PROGRAM LIFECYCLE BUTTON */}
+              <button
+                onClick={handleToggleProgram}
+                disabled={isTogglingProgram}
+                title={isProgramRunning ? 'إنهاء البرنامج وإخراج جميع المشتركين' : 'بدء البرنامج'}
+                className={`px-4 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95 disabled:opacity-50 ${
+                  isProgramRunning
+                    ? 'bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 text-white shadow-rose-900/30'
+                    : 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white shadow-emerald-900/30'
+                }`}
+              >
+                <Power className={`w-4 h-4 ${isTogglingProgram ? 'animate-spin' : ''}`} />
+                <span>
+                  {isTogglingProgram
+                    ? 'جارٍ التنفيذ...'
+                    : isProgramRunning
+                    ? 'إنهاء البرنامج وإخراج المشتركين 🛑'
+                    : 'بداية البرنامج 🚀'}
+                </span>
+              </button>
 
-                {/* Reset Session Memory Button */}
-                <button
-                  onClick={() => setShowResetConfirmModal(true)}
-                  disabled={isResettingSession}
-                  title="تصفير ومسح ذاكرة الجلسة والبدء من جديد"
-                  className="px-3.5 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 hover:text-rose-300 font-bold rounded-2xl text-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-4 h-4 ${isResettingSession ? 'animate-spin' : ''}`} />
-                  <span>تصفير الذاكرة 🔄</span>
-                </button>
-
-                {/* PIN Code Box */}
-                {sessionState?.sessionPin && (
-                  <div className="flex items-center gap-2 bg-slate-950 border border-amber-500/30 p-1.5 sm:p-2 rounded-2xl">
-                    <div className="px-2.5 text-right">
-                      <div className="text-[9px] text-amber-400 font-bold uppercase tracking-wider">رمز الحضور (PIN)</div>
-                      <div className="font-mono text-lg font-black text-amber-300 tracking-widest">{sessionState.sessionPin}</div>
-                    </div>
-                    <button
-                      onClick={handleCopyPin}
-                      title="نسخ رمز PIN"
-                      className="p-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 rounded-xl transition-all cursor-pointer"
-                    >
-                      {copiedPin ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                    </button>
-                    <button
-                      onClick={handleRegeneratePin}
-                      disabled={isRegeneratingPin}
-                      title="توليد رمز PIN جديد"
-                      className="p-1.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-amber-400 rounded-xl transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      <RefreshCw className={`w-4 h-4 ${isRegeneratingPin ? 'animate-spin' : ''}`} />
-                    </button>
-                    {/* Toggle PIN display in room screen (icon only, no text) */}
-                    <button
-                      type="button"
-                      onClick={() => handleTogglePinVisibility(!sessionState?.showPinInRoom)}
-                      disabled={isUpdatingPinVisibility}
-                      title={sessionState?.showPinInRoom ? 'إخفاء الرمز من شاشة العرض' : 'إظهار الرمز في شاشة العرض'}
-                      className={`p-1.5 rounded-xl transition-all cursor-pointer border ${
-                        sessionState?.showPinInRoom
-                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
-                          : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-800'
-                      }`}
-                    >
-                      {sessionState?.showPinInRoom ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                    </button>
+              {/* 2. PIN Code Box */}
+              {sessionState?.sessionPin && (
+                <div className="flex items-center gap-2 bg-slate-950 border border-amber-500/30 p-1.5 sm:p-2 rounded-2xl">
+                  <div className="px-2.5 text-right">
+                    <div className="text-[9px] text-amber-400 font-bold uppercase tracking-wider">رمز الحضور (PIN)</div>
+                    <div className="font-mono text-lg font-black text-amber-300 tracking-widest">{sessionState.sessionPin}</div>
                   </div>
-                )}
-              </div>
+                  <button
+                    onClick={handleCopyPin}
+                    title="نسخ رمز PIN"
+                    className="p-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 rounded-xl transition-all cursor-pointer"
+                  >
+                    {copiedPin ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                  <button
+                    onClick={handleRegeneratePin}
+                    disabled={isRegeneratingPin}
+                    title="توليد رمز PIN جديد"
+                    className="p-1.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-amber-400 rounded-xl transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-4 h-4 ${isRegeneratingPin ? 'animate-spin' : ''}`} />
+                  </button>
+                  {/* Toggle PIN display in room screen (icon only, no text) */}
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePinVisibility(!sessionState?.showPinInRoom)}
+                    disabled={isUpdatingPinVisibility}
+                    title={sessionState?.showPinInRoom ? 'إخفاء الرمز من شاشة العرض' : 'إظهار الرمز في شاشة العرض'}
+                    className={`p-1.5 rounded-xl transition-all cursor-pointer border ${
+                      sessionState?.showPinInRoom
+                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                        : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-800'
+                    }`}
+                  >
+                    {sessionState?.showPinInRoom ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                  </button>
+                </div>
+              )}
+
+              {/* 3. Reset Session Memory Button with single icon and clean text */}
+              <button
+                onClick={() => setShowResetConfirmModal(true)}
+                disabled={isResettingSession}
+                title="تصفير ومسح ذاكرة الجلسة والبدء من جديد"
+                className="px-3.5 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 hover:text-rose-300 font-bold rounded-2xl text-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isResettingSession ? 'animate-spin' : ''}`} />
+                <span>تصفير الذاكرة</span>
+              </button>
             </div>
 
             {/* Current Lesson Selector, Controls & Question Timings Card */}

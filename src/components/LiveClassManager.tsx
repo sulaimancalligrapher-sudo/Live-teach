@@ -24,7 +24,7 @@ import {
   initLiveSession, triggerLiveQuestion,
   replyToStudentMessage, deleteStudentMessage, clearAllStudentMessages, toggleShowChatInRoom,
   sendTeacherBroadcastMessage, clearSessionAnswersMemory, clearLiveVideoLessonAnswers,
-  clearLiveAnswersSheetT, clearSystemLiveAnswersHistoryT
+  clearLiveAnswersSheetT, clearSystemLiveAnswersHistoryT, recordLiveAnswersBatchDirect
 } from '../api';
 import LiveChatModal from './LiveChatModal';
 import { showAppAlert, showAppConfirm } from './AppDialog';
@@ -65,7 +65,7 @@ export default function LiveClassManager({
   onStartTeacherTheater,
   onBackToAdmin,
 }: LiveClassManagerProps) {
-  const [activeTab, setActiveTab] = useState<'lessons' | 'answers' | 'students' | 'qrcode'>('lessons');
+  const [activeTab, setActiveTab] = useState<'students' | 'lessons' | 'answers' | 'qrcode'>('students');
   const [lessons, setLessons] = useState<LiveLessonRow[]>([]);
   const [answers, setAnswers] = useState<LiveAnswerRecord[]>([]);
   const [sessionState, setSessionState] = useState<LiveSessionState | null>(null);
@@ -446,6 +446,7 @@ export default function LiveClassManager({
         question: q,
         timeLimit: activeLesson.settingTimeLimit || 30,
         showResult: activeLesson.settingShowResult || 'نعم',
+        channel: 'video',
       });
     } catch (e) {
       console.error('Failed to trigger question from admin:', e);
@@ -503,8 +504,18 @@ export default function LiveClassManager({
       }
     });
 
-    // Merge answers prioritizing videoChannel / videoAnswers
-    const videoAnswersSource = stateToUse?.videoChannel?.answers || stateToUse?.videoChannel?.allSessionAnswers || (stateToUse?.videoAnswers && stateToUse.videoAnswers[lessonTitle]) || (stateToUse?.mode === 'video' ? stateToUse?.allSessionAnswers : {}) || {};
+    // Extract video answers for this lesson strictly
+    let videoAnswersSource: Record<string, Record<number, any>> = {};
+    if (stateToUse?.videoAnswers) {
+      const match = Object.entries(stateToUse.videoAnswers).find(
+        ([t]) => normalizeArabicText(t) === normalizeArabicText(lessonTitle)
+      );
+      if (match && match[1]) {
+        videoAnswersSource = match[1];
+      }
+    } else if (stateToUse?.videoChannel?.answers) {
+      videoAnswersSource = stateToUse.videoChannel.answers;
+    }
 
     // Also include students from answers keys
     Object.keys(videoAnswersSource).forEach(rawKey => {
@@ -520,22 +531,7 @@ export default function LiveClassManager({
       }
     });
 
-    if (stateToUse?.allSessionAnswers && (!stateToUse.mode || stateToUse.mode === 'video')) {
-      Object.keys(stateToUse.allSessionAnswers).forEach(rawKey => {
-        let u = rawKey.includes('_') ? rawKey.split('_')[0] : rawKey;
-        let num = rawKey.includes('_') ? rawKey.split('_').slice(1).join('_') : '';
-        if (u) {
-          const norm = normalizeArabicText(u);
-          if (!studentMap.has(norm)) {
-            studentMap.set(norm, { username: u, sheetNumber: num });
-          } else if (!studentMap.get(norm)?.sheetNumber && num) {
-            studentMap.get(norm)!.sheetNumber = num;
-          }
-        }
-      });
-    }
-
-    // Merge all answers (videoChannel answers + allSessionAnswers + current active question answers if any)
+    // Merge video answers
     const mergedAnswers: Record<string, Record<number, any>> = {};
     if (videoAnswersSource) {
       Object.entries(videoAnswersSource).forEach(([k, ansObj]) => {
@@ -543,15 +539,9 @@ export default function LiveClassManager({
       });
     }
 
-    if (stateToUse?.allSessionAnswers && (!stateToUse.mode || stateToUse.mode === 'video')) {
-      Object.entries(stateToUse.allSessionAnswers).forEach(([k, ansObj]) => {
-        if (!mergedAnswers[k]) mergedAnswers[k] = {};
-        mergedAnswers[k] = { ...mergedAnswers[k], ...(ansObj || {}) };
-      });
-    }
-
-    const currentQAnswers = stateToUse?.videoChannel?.answersForCurrentQuestion || (stateToUse?.mode === 'video' ? stateToUse?.answersForCurrentQuestion : undefined);
-    const activeQIdx = stateToUse?.videoChannel?.currentQuestionIndex ?? (stateToUse?.mode === 'video' ? stateToUse?.currentQuestionIndex : null);
+    const isVideoActive = !stateToUse?.activeMode || stateToUse?.activeMode === 'video' || stateToUse?.mode === 'video' || (stateToUse as any)?.channel === 'video';
+    const currentQAnswers = isVideoActive ? (stateToUse?.videoChannel?.answersForCurrentQuestion || stateToUse?.answersForCurrentQuestion) : undefined;
+    const activeQIdx = isVideoActive ? (stateToUse?.videoChannel?.currentQuestionIndex ?? stateToUse?.currentQuestionIndex) : null;
 
     if (currentQAnswers && activeQIdx !== null && activeQIdx !== undefined) {
       const qIdx = activeQIdx;
@@ -877,6 +867,35 @@ export default function LiveClassManager({
         savedCount = saveRes.count;
       } catch (saveErr) {
         console.warn('Auto-saving before ending program encountered an issue:', saveErr);
+      }
+
+      // Dual-channel auto-save: If direct lecture answers were recorded earlier, save them to Answers-Live!
+      if (latestState?.directAnswers && Object.keys(latestState.directAnswers).length > 0) {
+        try {
+          const directRecordsToSave: any[] = [];
+          const nowTimestamp = new Date().toLocaleString('ar-SA');
+          Object.entries(latestState.directAnswers).forEach(([dLessonTitle, studentsMap]) => {
+            if (!studentsMap || Object.keys(studentsMap).length === 0) return;
+            Object.entries(studentsMap).forEach(([studentKey, ansMap]) => {
+              const u = studentKey.includes('_') ? studentKey.split('_')[0] : studentKey;
+              const num = studentKey.includes('_') ? studentKey.split('_').slice(1).join('_') : '';
+              directRecordsToSave.push({
+                timestamp: nowTimestamp,
+                sheetNumber: num,
+                username: u,
+                studentName: u,
+                lessonTitle: dLessonTitle,
+                answers: ansMap || {},
+              });
+            });
+          });
+          if (directRecordsToSave.length > 0) {
+            await recordLiveAnswersBatchDirect(directRecordsToSave);
+            console.log(`Dual-save: Auto-saved ${directRecordsToSave.length} direct answers to Answers-Live`);
+          }
+        } catch (dErr) {
+          console.warn('Dual-save direct answers error:', dErr);
+        }
       }
 
       // 3. End live program for all systems and close student access
@@ -1241,6 +1260,24 @@ export default function LiveClassManager({
         {/* Tab Switcher */}
         <div className="flex flex-wrap items-center gap-2 mt-6 border-t border-slate-800/80 pt-4">
           <button
+            onClick={() => setActiveTab('students')}
+            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer relative ${
+              activeTab === 'students'
+                ? 'bg-amber-500 text-slate-950 font-black shadow-lg shadow-amber-500/10'
+                : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Users className="w-4 h-4 text-emerald-400" />
+            <span>المتصلون</span>
+            <span className="px-1.5 py-0.5 rounded-full bg-slate-950/50 text-[10px] font-mono text-emerald-400 font-bold">
+              {sessionState?.connectedStudents?.length || 0}
+            </span>
+            {(sessionState?.connectedStudents?.length || 0) > 0 && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            )}
+          </button>
+
+          <button
             onClick={() => setActiveTab('lessons')}
             className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeTab === 'lessons'
@@ -1265,24 +1302,6 @@ export default function LiveClassManager({
           >
             <FileSpreadsheet className="w-4 h-4" />
             <span>اجابات</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('students')}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer relative ${
-              activeTab === 'students'
-                ? 'bg-amber-500 text-slate-950 font-black shadow-lg shadow-amber-500/10'
-                : 'bg-slate-900 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Users className="w-4 h-4 text-emerald-400" />
-            <span>المتصلون</span>
-            <span className="px-1.5 py-0.5 rounded-full bg-slate-950/50 text-[10px] font-mono text-emerald-400 font-bold">
-              {sessionState?.connectedStudents?.length || 0}
-            </span>
-            {(sessionState?.connectedStudents?.length || 0) > 0 && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            )}
           </button>
 
           <button

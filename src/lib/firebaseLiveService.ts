@@ -671,11 +671,12 @@ export async function triggerLiveQuestion(payload: {
   try {
     const targetChannel = payload.channel || (cachedState.mode === 'direct' ? 'direct' : 'video');
 
-    const update: Partial<LiveSessionState> = {
+    const update: Partial<LiveSessionState> & { channel?: 'video' | 'direct' } = {
       status: 'question_active',
       videoPlaying: false,
       mode: targetChannel,
       activeMode: targetChannel,
+      channel: targetChannel,
       currentQuestionIndex: payload.questionIndex,
       currentQuestion: payload.question,
       questionTriggeredAt: Date.now(),
@@ -811,7 +812,7 @@ export async function submitLiveAnswer(payload: {
     allAnswers[studentKey][payload.questionIndex] = formattedAnswer;
 
     // Scoped answers per lesson to avoid cross-lesson interference
-    const targetChannel = payload.channel || state.mode || 'video';
+    const targetChannel = payload.channel || (state.activeMode === 'direct' || state.mode === 'direct' ? 'direct' : 'video');
     const currentLesson = targetChannel === 'direct' 
       ? (state.directLessonTitle || state.lessonTitle || 'default') 
       : (state.videoLessonTitle || state.lessonTitle || 'default');
@@ -829,9 +830,14 @@ export async function submitLiveAnswer(payload: {
       videoAnswers[currentLesson][studentKey][payload.questionIndex] = formattedAnswer;
     }
 
+    // Scoped active channel answers - NEVER leak video and direct into each other!
+    const activeScopedAnswers = targetChannel === 'direct'
+      ? (directAnswers[currentLesson] || {})
+      : (videoAnswers[currentLesson] || {});
+
     await updateDoc(LIVE_DOC_REF, {
       answersForCurrentQuestion: currentAnswers,
-      allSessionAnswers: allAnswers,
+      allSessionAnswers: activeScopedAnswers,
       videoAnswers: videoAnswers,
       directAnswers: directAnswers,
       connectedStudents: updatedStudents,
@@ -857,7 +863,7 @@ export async function submitLiveAnswer(payload: {
     cachedState = { 
       ...state, 
       answersForCurrentQuestion: currentAnswers, 
-      allSessionAnswers: allAnswers,
+      allSessionAnswers: activeScopedAnswers,
       videoAnswers: videoAnswers,
       directAnswers: directAnswers,
       connectedStudents: updatedStudents,

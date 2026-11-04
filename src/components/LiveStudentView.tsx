@@ -598,13 +598,22 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
       const qIndex = sessionState.currentQuestionIndex ?? 0;
       const evalResult = currentQ ? evaluateLiveAnswer(currentQ, answerVal.trim()) : { isCorrect: null };
 
+      // Determine target channel strictly from current question or active mode
+      const targetChannel: 'video' | 'direct' = 
+        (sessionState as any)?.channel === 'direct' ||
+        sessionState?.activeMode === 'direct' || 
+        sessionState?.mode === 'direct' 
+          ? 'direct' 
+          : 'video';
+
       // Submit answer directly to live hub
       const res = await submitLiveAnswer({
         username: username.trim(),
         sheetNumber: sheetNumber.trim(),
         answer: answerVal.trim(),
         questionIndex: qIndex,
-        isCorrect: evalResult.isCorrect
+        isCorrect: evalResult.isCorrect,
+        channel: targetChannel,
       });
 
       if (res && res.success) {

@@ -257,7 +257,8 @@ export default function LiveTeacherRoom({
             questionIndex: idx,
             question: q,
             timeLimit: selectedLesson.settingTimeLimit || 30,
-            showResult: selectedLesson.settingShowResult || 'نعم'
+            showResult: selectedLesson.settingShowResult || 'نعم',
+            channel: 'video',
           }).then(res => {
             if (res.state) setSessionState(res.state);
           });

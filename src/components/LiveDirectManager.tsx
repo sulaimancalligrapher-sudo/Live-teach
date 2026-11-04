@@ -872,21 +872,12 @@ export default function LiveDirectManager({
     const currentTitle = selectedLessonTitle || sessionState?.directLessonTitle || (sessionState?.mode === 'direct' ? sessionState?.lessonTitle : '');
 
     // 1. Check scoped directAnswers for this specific lesson
-    if (currentTitle && sessionState?.directAnswers && sessionState.directAnswers[currentTitle]) {
-      const lessonMap = sessionState.directAnswers[currentTitle];
-      Object.entries(lessonMap).forEach(([studentKey, studentAnswers]) => {
-        if (studentAnswers && studentAnswers[qIdx] !== undefined && studentAnswers[qIdx] !== null && String(studentAnswers[qIdx]).trim() !== '') {
-          const u = studentKey.includes('_') ? studentKey.split('_')[0] : studentKey;
-          answeredStudents.add(normalizeArabicText(u));
-        }
-      });
-    }
-
-    // 2. Fallback to allSessionAnswers ONLY if sessionState is actively in 'direct' mode AND for this exact lesson
-    if (answeredStudents.size === 0 && sessionState?.mode === 'direct' && sessionState?.allSessionAnswers) {
-      const sessionTitle = sessionState.directLessonTitle || sessionState.lessonTitle;
-      if (!currentTitle || sessionTitle === currentTitle) {
-        Object.entries(sessionState.allSessionAnswers).forEach(([studentKey, studentAnswers]) => {
+    if (currentTitle && sessionState?.directAnswers) {
+      const match = Object.entries(sessionState.directAnswers).find(
+        ([t]) => normalizeArabicText(t) === normalizeArabicText(currentTitle)
+      );
+      if (match && match[1]) {
+        Object.entries(match[1]).forEach(([studentKey, studentAnswers]) => {
           if (studentAnswers && studentAnswers[qIdx] !== undefined && studentAnswers[qIdx] !== null && String(studentAnswers[qIdx]).trim() !== '') {
             const u = studentKey.includes('_') ? studentKey.split('_')[0] : studentKey;
             answeredStudents.add(normalizeArabicText(u));
@@ -895,8 +886,9 @@ export default function LiveDirectManager({
       }
     }
 
-    // 3. Current active question answers if currently direct mode and matching qIdx
-    if (sessionState?.mode === 'direct' && sessionState?.currentQuestionIndex === qIdx && sessionState?.answersForCurrentQuestion) {
+    // 2. Current active question answers ONLY if currently in direct mode and matching qIdx
+    const isDirectActive = sessionState?.activeMode === 'direct' || sessionState?.mode === 'direct' || (sessionState as any)?.channel === 'direct';
+    if (isDirectActive && sessionState?.currentQuestionIndex === qIdx && sessionState?.answersForCurrentQuestion) {
       Object.entries(sessionState.answersForCurrentQuestion).forEach(([studentKey, sub]) => {
         const ans = typeof sub === 'object' && sub !== null && 'answer' in sub ? sub.answer : sub;
         if (ans !== undefined && ans !== null && String(ans).trim() !== '') {
@@ -907,7 +899,7 @@ export default function LiveDirectManager({
     }
 
     return answeredStudents.size;
-  }, [selectedLessonTitle, sessionState?.directAnswers, sessionState?.allSessionAnswers, sessionState?.directLessonTitle, sessionState?.lessonTitle, sessionState?.mode, sessionState?.answersForCurrentQuestion, sessionState?.currentQuestionIndex]);
+  }, [selectedLessonTitle, sessionState?.directAnswers, sessionState?.directLessonTitle, sessionState?.lessonTitle, sessionState?.mode, sessionState?.activeMode, sessionState?.answersForCurrentQuestion, sessionState?.currentQuestionIndex]);
 
   const isQuestionAnswered = useCallback((qIdx: number): boolean => {
     return getQuestionAnswerCount(qIdx) > 0;
@@ -978,27 +970,23 @@ export default function LiveDirectManager({
     const allAnswers: Record<string, Record<number, string>> = {};
 
     // 0. Include scoped directAnswers for this specific lesson
-    if (sessionState.directAnswers && sessionState.directAnswers[title]) {
-      Object.entries(sessionState.directAnswers[title]).forEach(([studentKey, ansMap]) => {
-        allAnswers[studentKey] = { ...(ansMap || {}) };
-      });
-    }
-
-    // Also merge allSessionAnswers if in direct mode
-    if (sessionState.mode === 'direct' && sessionState.allSessionAnswers) {
-      Object.entries(sessionState.allSessionAnswers).forEach(([studentKey, ansMap]) => {
-        if (!allAnswers[studentKey]) {
-          allAnswers[studentKey] = {};
-        }
-        allAnswers[studentKey] = { ...(allAnswers[studentKey] || {}), ...(ansMap || {}) };
-      });
+    if (sessionState.directAnswers) {
+      const match = Object.entries(sessionState.directAnswers).find(
+        ([t]) => normalizeArabicText(t) === normalizeArabicText(title)
+      );
+      if (match && match[1]) {
+        Object.entries(match[1]).forEach(([studentKey, ansMap]) => {
+          allAnswers[studentKey] = { ...(ansMap || {}) };
+        });
+      }
     }
 
     const currentAnswers = sessionState.answersForCurrentQuestion || {};
     const currentQIdx = sessionState.currentQuestionIndex;
+    const isDirectActive = sessionState.activeMode === 'direct' || sessionState.mode === 'direct' || (sessionState as any)?.channel === 'direct';
 
-    // 1. Merge any answers from current active question into allAnswers
-    if (currentQIdx !== null && currentQIdx !== undefined && currentAnswers) {
+    // 1. Merge any answers from current active question into allAnswers ONLY if in direct mode
+    if (isDirectActive && currentQIdx !== null && currentQIdx !== undefined && currentAnswers) {
       Object.entries(currentAnswers).forEach(([studentKey, ansSub]) => {
         if (!allAnswers[studentKey]) {
           allAnswers[studentKey] = {};
@@ -1156,6 +1144,34 @@ export default function LiveDirectManager({
         }
       }
 
+      // Dual-channel auto-save: If video answers were recorded earlier, save them to Answers-T so nothing is lost!
+      if (sessionState?.videoAnswers && Object.keys(sessionState.videoAnswers).length > 0) {
+        try {
+          const videoRecordsToSave: any[] = [];
+          const nowTimestamp = new Date().toLocaleString('ar-SA');
+          Object.entries(sessionState.videoAnswers).forEach(([vLessonTitle, studentsMap]) => {
+            if (!studentsMap || Object.keys(studentsMap).length === 0) return;
+            Object.entries(studentsMap).forEach(([studentKey, ansMap]) => {
+              const u = studentKey.includes('_') ? studentKey.split('_')[0] : studentKey;
+              const num = studentKey.includes('_') ? studentKey.split('_').slice(1).join('_') : '';
+              videoRecordsToSave.push({
+                timestamp: nowTimestamp,
+                sheetNumber: num,
+                username: u,
+                lessonTitle: vLessonTitle,
+                answers: ansMap || {},
+              });
+            });
+          });
+          if (videoRecordsToSave.length > 0) {
+            await recordLiveAnswersBatchT(videoRecordsToSave);
+            console.log(`Dual-save: Auto-saved ${videoRecordsToSave.length} video answers to Answers-T`);
+          }
+        } catch (vErr) {
+          console.warn('Dual-save video answers error:', vErr);
+        }
+      }
+
       await endLiveProgram();
       await finishLiveSession();
       if (savedCount > 0) {
@@ -1239,6 +1255,7 @@ export default function LiveDirectManager({
         },
         timeLimit: timeToUse,
         showResult: 'نعم',
+        channel: 'direct',
       });
       showNotice(`تم طرح السؤال (${idx + 1}) لجميع الطلاب والشاشة فورياً 🚀`, 'success');
     } catch (e) {

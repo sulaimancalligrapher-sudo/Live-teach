@@ -23,7 +23,8 @@ import {
   finishLiveSession, revealLiveAnswer, resumeLiveVideo,
   initLiveSession, triggerLiveQuestion,
   replyToStudentMessage, deleteStudentMessage, clearAllStudentMessages, toggleShowChatInRoom,
-  sendTeacherBroadcastMessage, clearSessionAnswersMemory, clearLiveVideoLessonAnswers
+  sendTeacherBroadcastMessage, clearSessionAnswersMemory, clearLiveVideoLessonAnswers,
+  clearLiveAnswersSheetT, clearSystemLiveAnswersHistoryT
 } from '../api';
 import LiveChatModal from './LiveChatModal';
 import { showAppAlert, showAppConfirm } from './AppDialog';
@@ -1129,10 +1130,11 @@ export default function LiveClassManager({
   };
 
   const [isResettingVideoMemory, setIsResettingVideoMemory] = useState(false);
+  const [isClearingAnswersSheet, setIsClearingAnswersSheet] = useState(false);
 
   const handleResetVideoMemory = async () => {
     const confirmed = await showAppConfirm(
-      'هل أنت متأكد من تصفير ذاكرة إجابات الفيديو التفاعلي بالكامل؟ سيتم مسح الإجابات المعلقة في الذاكرة الحية والخادم لهذا الدرس فقط، ولن تتأثر الإجابات الموثقة في الشيت.',
+      'هل أنت متأكد من تصفير ذاكرة إجابات الفيديو التفاعلي بالكامل؟ سيتم مسح الإجابات المعلقة في الذاكرة الحية والخادم لهذا الدرس وتحديث السجل لمطابقة الشيت.',
       'تصفير ذاكرة إجابات الفيديو التفاعلي',
       'warning'
     );
@@ -1140,6 +1142,8 @@ export default function LiveClassManager({
 
     setIsResettingVideoMemory(true);
     try {
+      // Clear persistent local history as well so deleted sheet rows take effect immediately
+      clearSystemLiveAnswersHistoryT();
       const lessonTitleToClear = sessionState?.videoLessonTitle || selectedLessonTitle;
       const res = await clearLiveVideoLessonAnswers(lessonTitleToClear);
       if (res && res.success) {
@@ -1152,10 +1156,38 @@ export default function LiveClassManager({
         setProgramToast('تعذر تصفير الذاكرة: ' + ((res as any)?.message || 'خطأ غير معروف'));
       }
       setTimeout(() => setProgramToast(null), 3500);
+      await loadAnswers().catch(() => {});
     } catch (err: any) {
       showAppAlert('حدث خطأ أثناء تصفير الذاكرة: ' + (err?.message || ''), 'خطأ', 'danger');
     } finally {
       setIsResettingVideoMemory(false);
+    }
+  };
+
+  const handleClearAnswersSheet = async () => {
+    const confirmed = await showAppConfirm(
+      'هل أنت متأكد من مسح وتصفير جميع إجابات الطلاب المسجلة في ورقة Answers-T؟ سيتم حذف السجل بالكامل وإفراغ الورقة، ولا يمكن التراجع عن هذا الإجراء.',
+      'مسح سجل إجابات Answers-T بالكامل',
+      'danger'
+    );
+    if (!confirmed) return;
+
+    setIsClearingAnswersSheet(true);
+    try {
+      clearSystemLiveAnswersHistoryT();
+      setAnswers([]);
+      const res = await clearLiveAnswersSheetT();
+      if (res && res.success) {
+        setProgramToast(res.message || 'تم تفريغ ومسح سجل إجابات Answers-T بنجاح 🗑️');
+      } else {
+        setProgramToast('تم مسح السجل محلياً، يرجى مسح ورقة Answers-T في Google Sheets إذا لزم الأمر.');
+      }
+      setTimeout(() => setProgramToast(null), 3500);
+      await loadAnswers().catch(() => {});
+    } catch (err: any) {
+      showAppAlert('حدث خطأ أثناء مسح السجل: ' + (err?.message || ''), 'خطأ', 'danger');
+    } finally {
+      setIsClearingAnswersSheet(false);
     }
   };
 
@@ -1410,6 +1442,16 @@ export default function LiveClassManager({
               </button>
 
               <button
+                onClick={handleClearAnswersSheet}
+                disabled={isClearingAnswersSheet}
+                title="مسح وتصفير جميع الإجابات المسجلة في ورقة Answers-T بالكامل"
+                className="px-3.5 py-2 bg-rose-950/60 hover:bg-rose-900 border border-rose-500/50 text-rose-300 hover:text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+              >
+                <Trash2 className={`w-4 h-4 text-rose-400 ${isClearingAnswersSheet ? 'animate-spin' : ''}`} />
+                <span>{isClearingAnswersSheet ? 'جارٍ المسح...' : 'مسح سجل Answers-T 🗑️'}</span>
+              </button>
+
+              <button
                 onClick={loadAnswers}
                 disabled={loadingAnswers}
                 className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-slate-300 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer self-start sm:self-auto"
@@ -1455,7 +1497,7 @@ export default function LiveClassManager({
           )}
 
           {/* Active Live Session In-Memory Answers Card */}
-          {liveSessionAnswers.length > 0 && (
+          {liveSessionAnswers.length > 0 && liveSessionAnswers.some(st => st.hasAnyAnswer) && (
             <div className="p-4 sm:p-5 bg-gradient-to-r from-amber-500/10 via-slate-900 to-indigo-950/40 border-2 border-amber-500/40 rounded-3xl shadow-xl space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">

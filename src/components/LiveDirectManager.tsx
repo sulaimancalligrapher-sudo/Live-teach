@@ -104,6 +104,7 @@ import {
   clearSessionAnswersMemory,
   recordLiveAnswersBatchT,
   clearLiveDirectLessonAnswers,
+  clearLiveAnswersSheetDirect,
 } from '../api';
 import LiveChatModal from './LiveChatModal';
 import { NativePdfViewer } from './NativePdfViewer';
@@ -780,10 +781,38 @@ export default function LiveDirectManager({
         setSessionState(res.state);
       }
       showNotice(`تم تصفير ومسح ذاكرة إجابات موضوع "${selectedLessonTitle || 'الحصة'}" بالكامل بنجاح 🔄`, 'info');
+      await loadAnswers().catch(() => {});
     } catch {
       showNotice('فشل تصفير الجلسة', 'error');
     } finally {
       setIsResettingSession(false);
+    }
+  };
+
+  const [isClearingAnswersSheetDirect, setIsClearingAnswersSheetDirect] = useState(false);
+  const handleClearAnswersSheetDirect = async () => {
+    const ok = await showAppConfirm(
+      'هل أنت متأكد من مسح وتصفير جميع إجابات ورقة Answers-Live بالكامل؟ سيتم تفريغ الورقة وتصفير الجدول.',
+      'مسح سجل إجابات Answers-Live',
+      'danger',
+      'نعم، مسح السجل'
+    );
+    if (!ok) return;
+
+    setIsClearingAnswersSheetDirect(true);
+    try {
+      setAnswers([]);
+      const res = await clearLiveAnswersSheetDirect();
+      if (res && res.success) {
+        showNotice(res.message || 'تم تفريغ ومسح ورقة Answers-Live بنجاح 🗑️', 'success');
+      } else {
+        showNotice('تم مسح السجل محلياً بنجاح', 'info');
+      }
+      await loadAnswers().catch(() => {});
+    } catch {
+      showNotice('فشل مسح السجل', 'error');
+    } finally {
+      setIsClearingAnswersSheetDirect(false);
     }
   };
 
@@ -3019,6 +3048,17 @@ export default function LiveDirectManager({
               >
                 <Sparkles className={`w-3.5 h-3.5 ${isSettingUpSheets ? 'animate-spin text-amber-400' : ''}`} />
                 <span className="hidden sm:inline">تهيئة الأوراق بالشيت ⚡</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleClearAnswersSheetDirect}
+                disabled={isClearingAnswersSheetDirect}
+                className="px-3 py-2.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-500/50 text-rose-300 hover:text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+                title="مسح وتصفير جميع الإجابات المسجلة في ورقة Answers-Live بالكامل"
+              >
+                <Trash2 className={`w-3.5 h-3.5 text-rose-400 ${isClearingAnswersSheetDirect ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">{isClearingAnswersSheetDirect ? 'جارٍ المسح...' : 'مسح سجل Answers-Live 🗑️'}</span>
               </button>
 
               <button

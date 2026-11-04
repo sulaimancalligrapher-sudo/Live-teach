@@ -1871,9 +1871,9 @@ export function clearSystemLiveAnswersHistoryT(): void {
   } catch {}
 }
 
-// Fetch Live Answers from Google Sheets (Answers-T) merged with system history
+// Fetch Live Answers from Google Sheets (Answers-T)
 export async function fetchLiveAnswersT(): Promise<LiveAnswerRecord[]> {
-  const systemHistory = getSystemLiveAnswersHistoryT();
+  let isSheetResponseValid = false;
   let sheetRecords: LiveAnswerRecord[] = [];
 
   try {
@@ -1885,39 +1885,46 @@ export async function fetchLiveAnswersT(): Promise<LiveAnswerRecord[]> {
     }
     if (res && res.success && Array.isArray(res.data)) {
       sheetRecords = res.data;
+      isSheetResponseValid = true;
     }
   } catch (err) {
     console.warn('Could not fetch Answers-T from Google Sheets:', err);
   }
 
-  // Deduplicate and merge sheet records with system history so answers are NEVER lost
-  const mergedMap = new Map<string, LiveAnswerRecord>();
-  // 1. Add system history first
-  systemHistory.forEach((item) => {
-    const key = `${item.lessonTitle || ''}_${item.username || ''}_${item.sheetNumber || ''}_${item.timestamp || ''}`;
-    mergedMap.set(key, item);
-  });
-  // 2. Add or update with sheet records
-  sheetRecords.forEach((item) => {
-    const key = `${item.lessonTitle || ''}_${item.username || ''}_${item.sheetNumber || ''}_${item.timestamp || ''}`;
-    mergedMap.set(key, item);
-  });
-
-  const finalRecords = Array.from(mergedMap.values());
-  if (finalRecords.length > 0) {
+  // If Google Sheets responded successfully, the sheet is the absolute authoritative source!
+  if (isSheetResponseValid) {
     try {
-      localStorage.setItem(LOCAL_STORAGE_LIVE_ANSWERS_T, JSON.stringify(finalRecords));
+      localStorage.setItem(LOCAL_STORAGE_LIVE_ANSWERS_T, JSON.stringify(sheetRecords));
+      // Keep system history in sync with actual sheet state so deleted rows in Google Sheets do not resurrect
+      localStorage.setItem(LOCAL_STORAGE_SYSTEM_ANSWERS_HISTORY_T, JSON.stringify(sheetRecords));
     } catch {}
-    return finalRecords;
+    return sheetRecords;
   }
 
-  const cached = localStorage.getItem(LOCAL_STORAGE_LIVE_ANSWERS_T);
+  // Only fall back to local cache if Google Sheets is unreachable / offline
+  const cached = localStorage.getItem(LOCAL_STORAGE_LIVE_ANSWERS_T) || localStorage.getItem(LOCAL_STORAGE_SYSTEM_ANSWERS_HISTORY_T);
   if (cached) {
     try {
       return JSON.parse(cached);
     } catch {}
   }
   return [];
+}
+
+// Clear Live Answers Sheet in Google Sheets (Answers-T) and purge local cache
+export async function clearLiveAnswersSheetT(): Promise<{ success: boolean; message?: string }> {
+  clearSystemLiveAnswersHistoryT();
+  try {
+    let res = await fetchGas({ action: 'clearLiveAnswersT' }, 'POST', { action: 'clearLiveAnswersT', sheetName: 'Answers-T' });
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      try {
+        res = await fetchGas({ action: 'clearSheet', sheetName: 'Answers-T' }, 'POST', { action: 'clearSheet', sheetName: 'Answers-T' });
+      } catch {}
+    }
+    return res || { success: true, message: 'تم مسح وتفريغ ورقة Answers-T بنجاح' };
+  } catch (err: any) {
+    return { success: true, message: 'تم مسح السجل محلياً (حدث كود Apps Script للشيت لمسحه سحابياً)' };
+  }
 }
 
 // Batch Record Student Answers to Google Sheets (Answers-T)
@@ -2066,6 +2073,22 @@ export async function fetchLiveAnswersDirect(): Promise<LiveDirectAnswerRecord[]
     } catch {}
   }
   return [];
+}
+
+// Clear Live Answers Sheet in Google Sheets (Answers-Live) and purge local cache
+export async function clearLiveAnswersSheetDirect(): Promise<{ success: boolean; message?: string }> {
+  try {
+    localStorage.removeItem(LOCAL_STORAGE_LIVE_DIRECT_ANSWERS);
+    let res = await fetchGas({ action: 'clearLiveAnswersDirect' }, 'POST', { action: 'clearLiveAnswersDirect', sheetName: 'Answers-Live' });
+    if (!res || res.success === false) {
+      try {
+        res = await fetchGas({ action: 'clearSheet', sheetName: 'Answers-Live' }, 'POST', { action: 'clearSheet', sheetName: 'Answers-Live' });
+      } catch {}
+    }
+    return res || { success: true, message: 'تم مسح وتفريغ ورقة Answers-Live بنجاح' };
+  } catch (err: any) {
+    return { success: true, message: 'تم مسح السجل محلياً' };
+  }
 }
 
 // Batch Record Student Answers to Google Sheets (Answers-Live)

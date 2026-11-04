@@ -933,19 +933,21 @@ export async function clearLiveVideoLessonAnswers(lessonTitle?: string): Promise
     const allSessionAnswers = { ...(state.allSessionAnswers || {}) };
     const targetTitle = lessonTitle || state.videoLessonTitle || state.lessonTitle;
 
-    if (targetTitle && videoAnswers[targetTitle]) {
+    if (targetTitle) {
       delete videoAnswers[targetTitle];
-    } else if (!lessonTitle) {
+    }
+    if (lessonTitle) {
+      delete videoAnswers[lessonTitle];
+    }
+    if (!lessonTitle && !targetTitle) {
       Object.keys(videoAnswers).forEach(k => delete videoAnswers[k]);
     }
 
-    let answersForCurrentQuestion = state.answersForCurrentQuestion || {};
-    if (state.mode === 'video' && (!lessonTitle || state.lessonTitle === lessonTitle)) {
-      answersForCurrentQuestion = {};
-      Object.keys(allSessionAnswers).forEach(studentKey => {
-        delete allSessionAnswers[studentKey];
-      });
-    }
+    // Always clear answersForCurrentQuestion and wipe active session answers
+    const answersForCurrentQuestion = {};
+    Object.keys(allSessionAnswers).forEach(studentKey => {
+      delete allSessionAnswers[studentKey];
+    });
 
     const update: Partial<LiveSessionState> = {
       videoAnswers,

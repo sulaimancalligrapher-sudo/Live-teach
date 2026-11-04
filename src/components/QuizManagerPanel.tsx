@@ -439,25 +439,18 @@ export default function QuizManagerPanel({
   return (
     <div className="w-full bg-slate-900 border border-slate-800 rounded-3xl p-4 md:p-6 space-y-6 shadow-2xl text-slate-100 font-sans select-none">
       {/* Header bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pb-4 border-b border-slate-800">
+      <div className="flex flex-col gap-3.5 pb-4 border-b border-slate-800">
+        {/* Row 1: Title Only */}
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-400 to-orange-500 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-amber-500/20">
-            <Trophy className="w-6 h-6 animate-pulse" />
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 to-orange-500 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-amber-500/20 shrink-0">
+            <Trophy className="w-5 h-5 animate-pulse" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-full">
-                نظام التحدي والمسابقات التفاعلية ⚡
-              </span>
-              <span className="text-xs text-slate-400 font-mono">Questions-Qui & Answers-Qui</span>
-            </div>
-            <h2 className="text-xl md:text-2xl font-black text-slate-100 tracking-tight">
-              إدارة مسابقات كويز السريعة (Quiz Arena)
-            </h2>
-          </div>
+          <h2 className="text-base sm:text-lg font-black text-slate-100 tracking-tight">
+            إدارة مسابقات كويز السريعة
+          </h2>
         </div>
 
-        {/* Action button for display screen */}
+        {/* Row 2: Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
           {onOpenArenaDisplay && (
             <button
@@ -779,39 +772,54 @@ export default function QuizManagerPanel({
                 <Clock className="w-4 h-4 text-amber-400" />
                 <span>1. مؤقت المسابقة التنازلي:</span>
               </div>
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                {[
-                  { label: 'مفتوح', mins: 0 },
-                  { label: '1 د', mins: 1 },
-                  { label: '2 د', mins: 2 },
-                  { label: '3 د', mins: 3 },
-                  { label: '5 د', mins: 5 },
-                  { label: '10 د', mins: 10 },
-                ].map((item) => (
-                  <button
-                    key={item.mins}
-                    onClick={() => {
-                      setTimerMinutes(item.mins);
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTimerMinutes(0);
+                    if (isQuizActive) {
+                      updateLiveQuizSettings({
+                        timerDurationSeconds: 0,
+                        endTime: null,
+                      });
+                    }
+                  }}
+                  className={`py-2 px-3.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                    timerMinutes === 0
+                      ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md font-black'
+                      : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+                  }`}
+                >
+                  مفتوح بدون وقت ⏳
+                </button>
+
+                <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl">
+                  <span className="text-xs text-slate-400 font-bold">تحديد بالدقائق:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={120}
+                    value={timerMinutes === 0 ? '' : timerMinutes}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      const safeVal = isNaN(val) || val <= 0 ? 0 : val;
+                      setTimerMinutes(safeVal);
                       if (isQuizActive) {
                         updateLiveQuizSettings({
-                          timerDurationSeconds: item.mins * 60,
-                          endTime: item.mins > 0 ? Date.now() + (item.mins * 60 * 1000) : null,
+                          timerDurationSeconds: safeVal * 60,
+                          endTime: safeVal > 0 ? Date.now() + (safeVal * 60 * 1000) : null,
                         });
                       }
                     }}
-                    className={`py-2 px-2 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
-                      timerMinutes === item.mins
-                        ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md font-black'
-                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
+                    placeholder="مثال: 5"
+                    className="w-20 px-2 py-1 bg-slate-950 border border-slate-700 rounded-lg text-center text-xs font-bold font-mono text-amber-300 outline-none focus:border-amber-400"
+                  />
+                  <span className="text-xs text-slate-400">دقيقة</span>
+                </div>
               </div>
               <p className="text-[11px] text-slate-500">
                 {timerMinutes === 0
-                  ? 'الوقت مفتوح: يستمر حتى يقوم المعلم بالضغط على إنهاء المسابقة.'
+                  ? 'الوقت مفتوح: يستمر التحدي حتى يقوم المعلم بالضغط على إنهاء المسابقة.'
                   : `ينتهي التحدي تلقائياً بعد ${timerMinutes} دقيقة ويعلن منصة التتويج.`}
               </p>
             </div>
@@ -822,32 +830,25 @@ export default function QuizManagerPanel({
                 <Trophy className="w-4 h-4 text-amber-400" />
                 <span>2. عدد الفائزين في منصة التتويج:</span>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { label: 'أفضل 3 فائزين 🥇', count: 3 },
-                  { label: 'أفضل 5 فائزين ⭐', count: 5 },
-                  { label: 'أفضل 10 فائزين 🏆', count: 10 },
-                ].map((item) => (
-                  <button
-                    key={item.count}
-                    onClick={() => {
-                      setPodiumCount(item.count);
-                      if (isQuizActive) {
-                        updateLiveQuizSettings({ podiumCount: item.count });
-                      }
-                    }}
-                    className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
-                      podiumCount === item.count
-                        ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md font-black'
-                        : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                ))}
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={podiumCount}
+                  onChange={(e) => {
+                    const val = Math.max(1, parseInt(e.target.value, 10) || 1);
+                    setPodiumCount(val);
+                    if (isQuizActive) {
+                      updateLiveQuizSettings({ podiumCount: val });
+                    }
+                  }}
+                  className="w-28 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-center text-sm font-bold text-amber-300 outline-none focus:border-amber-400 font-mono shadow-inner"
+                />
+                <span className="text-xs text-slate-400 font-bold">فائزين في منصة التتويج والتكريم 🏆</span>
               </div>
               <p className="text-[11px] text-slate-500">
-                يحدد عدد المتأهلين الذين تبرز أسماؤهم وصورهم على منصة التكريم في نهاية التحدي.
+                يحدد عدد المتأهلين الذين تبرز أسماؤهم ومراكزهم على منصة التكريم في نهاية التحدي (الافتراضي 3).
               </p>
             </div>
 

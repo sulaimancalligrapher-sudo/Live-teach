@@ -120,8 +120,9 @@ export default function LiveDirectManager({
   onOpenDisplayScreen,
   onBackToAdmin,
 }: LiveDirectManagerProps) {
-  // Main tabs: 1- أسئلة الشيت | 2- سجل الإجابات | 3- إعدادات التدريس والتحكم المباشر | 4- أدوات التعليم | 5- تحدي كويز
-  const [activeTab, setActiveTab] = useState<'teaching' | 'tools' | 'questions' | 'answers' | 'quiz-challenge'>('teaching');
+  // Main tabs: 1- إعدادات التدريس والتحكم المباشر | 2- أدوات التعليم | 3- أسئلة الشيت | 4- سجل الإجابات
+  const [activeTab, setActiveTab] = useState<'teaching' | 'tools' | 'questions' | 'answers'>('teaching');
+  const [showSheetsAnswersTable, setShowSheetsAnswersTable] = useState(false);
 
   // Lessons and Answers
   const [lessons, setLessons] = useState<LiveDirectLessonRow[]>([]);
@@ -1120,6 +1121,33 @@ export default function LiveDirectManager({
     return buildDirectAnswerRecords(false);
   }, [sessionState, lessons, activeLesson, selectedLessonTitle]);
 
+  // Unified search filter for active RAM answers table
+  const filteredLiveDirectSessionAnswers = useMemo(() => {
+    if (!searchAnswers.trim()) return liveDirectSessionAnswers;
+    const q = searchAnswers.trim().toLowerCase();
+    return liveDirectSessionAnswers.filter(a =>
+      (a.studentName || a.username || '').toLowerCase().includes(q) ||
+      (a.sheetNumber || '').toLowerCase().includes(q) ||
+      (a.lessonTitle || '').toLowerCase().includes(q)
+    );
+  }, [liveDirectSessionAnswers, searchAnswers]);
+
+  // Delete lesson from list
+  const handleDeleteLesson = async (title: string) => {
+    const ok = await showAppConfirm(`هل أنت متأكد من حذف الموضوع "${title}" وكافة أسئلته؟`, 'حذف موضوع', 'danger', 'نعم، حذف');
+    if (!ok) return;
+    try {
+      const updated = lessons.filter(l => l.title !== title);
+      setLessons(updated);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('local_live_direct_questions_cache', JSON.stringify(updated));
+      }
+      showNotice(`تم حذف موضوع "${title}" بنجاح 🗑️`);
+    } catch (e: any) {
+      showNotice('فشل حذف الموضوع', 'error');
+    }
+  };
+
   const handleConfirmEndProgram = async () => {
     setShowEndConfirmModal(false);
     setIsTogglingProgram(true);
@@ -1288,7 +1316,7 @@ export default function LiveDirectManager({
       await returnToLiveExplanation({
         explanationText: activeLesson ? `موضوع الحصة: ${activeLesson.title}` : 'استمع وركز مع شرح الأستاذ 🎙️',
       });
-      showNotice('تمت العودة لوضع الشرح المباشر (الشاشة وهواتف الطلاب في وضع الاستماع) 🎙️', 'info');
+      showNotice('تمت العودة لوضع الشرح المباشر (الشاشة وهواتف الطلاب في وضع الاستماع) ������️', 'info');
 
       // Ensure question preview is set to the next question if previous question was completed
       if (activeLesson?.questions && activeLesson.questions.length > 0) {
@@ -1359,25 +1387,17 @@ export default function LiveDirectManager({
   return (
     <div className="space-y-6 text-slate-100" dir="rtl">
       {/* Top Banner / Header */}
-      <div className="bg-gradient-to-r from-amber-600/20 via-slate-900 to-indigo-900/30 border border-amber-500/30 rounded-3xl p-5 shadow-2xl flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center shadow-inner">
-            <Mic className="w-6 h-6 animate-pulse" />
+      {/* Top Banner / Header */}
+      <div className="bg-gradient-to-r from-amber-600/20 via-slate-900 to-indigo-900/30 border border-amber-500/30 rounded-3xl p-4 sm:p-5 shadow-2xl flex flex-col gap-3.5">
+        {/* Row 1: Title Only */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center shadow-inner shrink-0">
+            <Mic className="w-5 h-5 animate-pulse" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-lg font-black text-slate-100">قسم الحصص المباشرة والأسئلة الحية (Live) 🎙️</h2>
-              <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[11px] font-mono font-bold border border-amber-500/30">
-                Direct Lecture Mode
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 font-medium mt-1">
-              إلقاء وشرح مباشر بدون فيديو، مع إطلاق الأسئلة التفاعلية في أي لحظة تختارها، مربوط بأوراق الشيت Questions-Live & Answers-Live.
-            </p>
-          </div>
+          <h2 className="text-base sm:text-lg font-black text-slate-100">قسم الحصص المباشرة والأسئلة الحية (Live) 🎙️</h2>
         </div>
 
-        {/* Global Action Buttons */}
+        {/* Row 2: Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* Start / End Live Program Button */}
           <button
@@ -1534,18 +1554,6 @@ export default function LiveDirectManager({
             {answers.length}
           </span>
         </button>
-
-        <button
-          onClick={() => setActiveTab('quiz-challenge')}
-          className={`px-4 sm:px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer border shrink-0 ${
-            activeTab === 'quiz-challenge'
-              ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
-              : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800'
-          }`}
-        >
-          <Trophy className="w-4 h-4 text-amber-400" />
-          <span>تحدي كويز</span>
-        </button>
       </div>
 
       {/* ========================================================================= */}
@@ -1553,90 +1561,6 @@ export default function LiveDirectManager({
       {/* ========================================================================= */}
       {activeTab === 'teaching' && (
         <div className="space-y-4">
-          {/* Program Lifecycle Status Banner */}
-          {!isProgramRunning ? (
-            <div className="p-4 bg-gradient-to-r from-rose-950/70 via-slate-900 to-rose-950/70 border-2 border-rose-500/40 rounded-3xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-xl">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/30">
-                  <Power className="w-6 h-6 animate-pulse" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-black text-rose-200 flex items-center gap-2">
-                    <span>الحصة المباشرة متوقفة حالياً (مغلقة أمام دخول الطلاب)</span>
-                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping inline-block" />
-                  </h4>
-                  <p className="text-xs text-slate-300 mt-1">
-                    الطلاب لن يتمكنوا من الدخول برمز الحضور حتى تضغط على زر <b>بدء الحصة المباشرة 🚀</b> لتفعيل الجلسة وتوليد رمز الحضور (PIN).
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={handleToggleProgram}
-                disabled={isTogglingProgram}
-                className="w-full md:w-auto px-5 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/40 transition-all cursor-pointer active:scale-95 shrink-0"
-              >
-                <Power className={`w-4 h-4 ${isTogglingProgram ? 'animate-spin' : ''}`} />
-                <span>{isTogglingProgram ? 'جارٍ التنفيذ...' : 'بدء'}</span>
-              </button>
-            </div>
-          ) : (
-            <div className="p-4 bg-gradient-to-r from-emerald-950/70 via-slate-900 to-emerald-950/70 border-2 border-emerald-500/40 rounded-3xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-xl">
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
-                  <span className="w-4 h-4 rounded-full bg-emerald-400 animate-ping" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-black text-emerald-200">
-                      الحصة المباشرة نشطة والباب مفتوح للطلاب! 🟢
-                    </h4>
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold font-mono">
-                      LIVE ACTIVE
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-300 mt-1">
-                    بإمكان الطلاب الآن الانضمام فورياً عبر رمز PIN: <b className="font-mono text-amber-300 text-sm px-1.5 py-0.5 bg-slate-950 rounded border border-amber-500/30">{sessionState?.sessionPin}</b> أو عبر مسح رمز QR.
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 w-full md:w-auto justify-end flex-wrap">
-                <div className="flex items-center gap-1 bg-slate-900 border border-amber-500/30 p-1 rounded-xl">
-                  <button
-                    type="button"
-                    onClick={() => setShowQrModal(true)}
-                    className="px-2.5 py-1 text-amber-400 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer hover:text-amber-300"
-                    title="معاينة رمز QR"
-                  >
-                    <QrCode className="w-4 h-4" />
-                    <span>رمز QR</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleToggleQrVisibility(!sessionState?.showQrInRoom)}
-                    disabled={isUpdatingQrVisibility}
-                    title={sessionState?.showQrInRoom ? 'إخفاء رمز QR من شاشة العرض' : 'إظهار رمز QR في شاشة العرض'}
-                    className={`p-1.5 rounded-lg transition-all cursor-pointer border ${
-                      sessionState?.showQrInRoom
-                        ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
-                        : 'bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-800'
-                    }`}
-                  >
-                    {sessionState?.showQrInRoom ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleToggleProgram}
-                  disabled={isTogglingProgram}
-                  className="px-4 py-2 bg-rose-600/30 hover:bg-rose-600 border border-rose-500/40 text-rose-200 hover:text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-md"
-                >
-                  <Power className="w-4 h-4" />
-                  <span>إنهاء الحصة 🛑</span>
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Session Overview Card */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 space-y-4 shadow-xl">
@@ -1780,14 +1704,15 @@ export default function LiveDirectManager({
 
             {/* Quick Educational Tools & PDF Bar (شريط التحكم السريع في ملفات PDF للشرح) */}
             <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3 shadow-inner">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              {/* Row 1: Clear Title and Status */}
+              <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
                     <BookOpen className="w-4 h-4" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-black text-slate-200">أدوات التعليم و PDF:</span>
+                      <span className="text-xs font-black text-slate-200">أدوات التعليم و PDF</span>
                       {Boolean(sessionState?.showPdfInRoom) && sessionState?.pdfUrl ? (
                         <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
                           معروض حالياً بشاشة البروجكتر 🟢
@@ -1803,105 +1728,105 @@ export default function LiveDirectManager({
                     </p>
                   </div>
                 </div>
+              </div>
 
-                {/* Direct quick action buttons */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  {/* Select from PDF catalog dropdown */}
-                  <select
-                    value={sessionState?.pdfUrl || ''}
-                    onChange={(e) => {
-                      const selected = pdfLessons.find(p => (p.url && formatPdfEmbedUrl(p.url) === e.target.value) || p.url === e.target.value);
-                      if (selected) {
-                        handleSelectPdfLesson(selected);
-                      } else if (!e.target.value) {
-                        handleTogglePdfVisibility(false);
-                      }
-                    }}
-                    className="bg-slate-900 border border-slate-700 hover:border-emerald-400 text-slate-100 text-xs font-bold rounded-xl px-3 py-1.5 outline-none cursor-pointer focus:border-emerald-400 min-w-[200px]"
-                  >
-                    <option value="">-- اختر ملف PDF للشرح --</option>
-                    {pdfLessons.map((pdf) => {
-                      const val = pdf.storageType === 'file' ? (pdf.url || `local://${pdf.id}`) : formatPdfEmbedUrl(pdf.url || '');
-                      return (
-                        <option key={pdf.id} value={val}>
-                          {pdf.title} {pdf.storageType === 'file' ? '📁 (ملف محلي سريع)' : '🌐 (رابط)'}
-                        </option>
-                      );
-                    })}
-                  </select>
+              {/* Row 2: Action Buttons Underneath */}
+              <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-slate-850">
+                {/* Select from PDF catalog dropdown */}
+                <select
+                  value={sessionState?.pdfUrl || ''}
+                  onChange={(e) => {
+                    const selected = pdfLessons.find(p => (p.url && formatPdfEmbedUrl(p.url) === e.target.value) || p.url === e.target.value);
+                    if (selected) {
+                      handleSelectPdfLesson(selected);
+                    } else if (!e.target.value) {
+                      handleTogglePdfVisibility(false);
+                    }
+                  }}
+                  className="bg-slate-900 border border-slate-700 hover:border-emerald-400 text-slate-100 text-xs font-bold rounded-xl px-3 py-1.5 outline-none cursor-pointer focus:border-emerald-400 min-w-[200px]"
+                >
+                  <option value="">-- اختر ملف PDF للشرح --</option>
+                  {pdfLessons.map((pdf) => {
+                    const val = pdf.storageType === 'file' ? (pdf.url || `local://${pdf.id}`) : formatPdfEmbedUrl(pdf.url || '');
+                    return (
+                      <option key={pdf.id} value={val}>
+                        {pdf.title} {pdf.storageType === 'file' ? '📁 (ملف محلي سريع)' : '🌐 (رابط)'}
+                      </option>
+                    );
+                  })}
+                </select>
 
-                  {/* Toggle Show/Hide on Display Room */}
-                  {sessionState?.pdfUrl && (
-                    <button
-                      type="button"
-                      onClick={() => handleTogglePdfVisibility(!sessionState?.showPdfInRoom)}
-                      disabled={isUpdatingPdfVisibility}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border shadow-sm ${
-                        sessionState?.showPdfInRoom
-                          ? 'bg-emerald-600 text-white border-emerald-500'
-                          : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
-                      }`}
-                      title={sessionState?.showPdfInRoom ? 'إخفاء ملف الـ PDF من شاشة العرض' : 'إظهار ملف الـ PDF في شاشة العرض'}
-                    >
-                      {sessionState?.showPdfInRoom ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                      <span>{sessionState?.showPdfInRoom ? 'ظاهر بالشاشة' : 'مخفي عن الشاشة'}</span>
-                    </button>
-                  )}
-
-                  {/* Toggle Show/Hide on Student Screens (التحكم بظهور الـ PDF لدى الطلاب) */}
-                  {sessionState?.pdfUrl && (
-                    <button
-                      type="button"
-                      onClick={() => handleTogglePdfToStudents(!sessionState?.showPdfToStudents)}
-                      disabled={isUpdatingPdfToStudents}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border shadow-sm ${
-                        sessionState?.showPdfToStudents
-                          ? 'bg-sky-600 text-white border-sky-500 shadow-sky-600/20 ring-1 ring-sky-400'
-                          : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
-                      }`}
-                      title={sessionState?.showPdfToStudents ? 'إخفاء ملف الـ PDF من أجهزة هواتف الطلاب' : 'إظهار ومزامنة ملف الـ PDF في أجهزة هواتف الطلاب'}
-                    >
-                      {sessionState?.showPdfToStudents ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                      <span>{sessionState?.showPdfToStudents ? 'معروض للطلاب 📱' : 'مخفي عن الطلاب 📱'}</span>
-                    </button>
-                  )}
-
-                  {/* Page Navigator Stepper */}
-                  {Boolean(sessionState?.showPdfInRoom) && sessionState?.pdfUrl && (
-                    <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 p-1 rounded-xl">
-                      <button
-                        type="button"
-                        onClick={() => handlePdfPageChange(Math.max(1, (sessionState?.pdfPage || 1) - 1))}
-                        disabled={(sessionState?.pdfPage || 1) <= 1}
-                        className="px-2 py-1 text-slate-300 hover:text-white disabled:opacity-30 rounded hover:bg-slate-800 text-xs font-mono cursor-pointer"
-                        title="الصفحة السابقة"
-                      >
-                        ◀
-                      </button>
-                      <span className="text-[11px] font-mono font-bold text-amber-300 px-1">
-                        ص {sessionState?.pdfPage || 1}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => handlePdfPageChange((sessionState?.pdfPage || 1) + 1)}
-                        className="px-2 py-1 text-slate-300 hover:text-white rounded hover:bg-slate-800 text-xs font-mono cursor-pointer"
-                        title="الصفحة التالية"
-                      >
-                        ▶
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Jump to Tools Tab */}
+                {/* Toggle Show/Hide on Display Room */}
+                {sessionState?.pdfUrl && (
                   <button
                     type="button"
-                    onClick={() => setActiveTab('tools')}
-                    className="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                    onClick={() => handleTogglePdfVisibility(!sessionState?.showPdfInRoom)}
+                    disabled={isUpdatingPdfVisibility}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border shadow-sm ${
+                      sessionState?.showPdfInRoom
+                        ? 'bg-emerald-600 text-white border-emerald-500'
+                        : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                    }`}
+                    title={sessionState?.showPdfInRoom ? 'إخفاء ملف الـ PDF من شاشة العرض' : 'إظهار ملف الـ PDF في شاشة العرض'}
                   >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>إدارة المكتبة</span>
+                    {sessionState?.showPdfInRoom ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                    <span>{sessionState?.showPdfInRoom ? 'ظاهر بالشاشة' : 'مخفي عن الشاشة'}</span>
                   </button>
-                </div>
+                )}
+
+                {/* Toggle Show/Hide on Student Screens (التحكم بظهور الـ PDF لدى الطلاب) */}
+                {sessionState?.pdfUrl && (
+                  <button
+                    type="button"
+                    onClick={() => handleTogglePdfToStudents(!sessionState?.showPdfToStudents)}
+                    disabled={isUpdatingPdfToStudents}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border shadow-sm ${
+                      sessionState?.showPdfToStudents
+                        ? 'bg-sky-600 text-white border-sky-500 shadow-sky-600/20 ring-1 ring-sky-400'
+                        : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                    }`}
+                    title={sessionState?.showPdfToStudents ? 'إخفاء ملف الـ PDF من أجهزة هواتف الطلاب' : 'إظهار ومزامنة ملف الـ PDF في أجهزة هواتف الطلاب'}
+                  >
+                    {sessionState?.showPdfToStudents ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                    <span>{sessionState?.showPdfToStudents ? 'معروض للطلاب 📱' : 'مخفي عن الطلاب 📱'}</span>
+                  </button>
+                )}
+
+                {/* Page Navigator Stepper */}
+                {Boolean(sessionState?.showPdfInRoom) && sessionState?.pdfUrl && (
+                  <div className="flex items-center gap-1 bg-slate-900 border border-slate-700 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => handlePdfPageChange(Math.max(1, (sessionState?.pdfPage || 1) - 1))}
+                      disabled={(sessionState?.pdfPage || 1) <= 1}
+                      className="px-2 py-1 text-slate-300 hover:text-white disabled:opacity-30 rounded hover:bg-slate-800 text-xs font-mono cursor-pointer"
+                      title="الصفحة السابقة"
+                    >
+                      ◀
+                    </button>
+                    <span className="text-[11px] font-mono font-bold text-amber-300 px-1">
+                      ص {sessionState?.pdfPage || 1}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handlePdfPageChange((sessionState?.pdfPage || 1) + 1)}
+                      className="px-2 py-1 text-slate-300 hover:text-white rounded hover:bg-slate-800 text-xs font-mono cursor-pointer"
+                      title="الصفحة التالية"
+                    >
+                      ▶
+                    </button>
+                  </div>
+                )}
+
+                {/* Jump to Tools Tab */}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('tools')}
+                  className="px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>إدارة المكتبة</span>
+                </button>
               </div>
             </div>
 
@@ -2064,39 +1989,38 @@ export default function LiveDirectManager({
                 {activeLesson.questions[previewQuestionIndex] && (
                   <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-4">
                     {/* Top Header of Preview */}
-                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                      <div className="space-y-1.5 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="px-2.5 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 font-bold text-xs">
-                            معاينة السؤال {previewQuestionIndex + 1}
+                    <div className="space-y-3">
+                      {/* Row 1: The 3 Badges */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="px-2.5 py-0.5 rounded-lg bg-indigo-500/20 text-indigo-300 font-bold text-xs">
+                          معاينة السؤال {previewQuestionIndex + 1}
+                        </span>
+                        {isQuestionAnswered(previewQuestionIndex) && (
+                          <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold text-xs flex items-center gap-1 border border-emerald-500/40">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>تمت الإجابة ({getQuestionAnswerCount(previewQuestionIndex)} طالب)</span>
                           </span>
-                          {isQuestionAnswered(previewQuestionIndex) && (
-                            <span className="px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-bold text-xs flex items-center gap-1 border border-emerald-500/40">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>تمت الإجابة ({getQuestionAnswerCount(previewQuestionIndex)} طالب)</span>
-                            </span>
-                          )}
-                          {activeLesson.questions[previewQuestionIndex].isTextAnswer ? (
-                            <span className="px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 text-xs font-bold flex items-center gap-1">
-                              ✍️ إجابة كتابية / نصية
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 text-xs font-bold">
-                              🔘 خيارات متعددة ({(activeLesson.questions[previewQuestionIndex].options || []).length})
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Question Text */}
-                        {activeLesson.questions[previewQuestionIndex].question && (
-                          <h4 className="text-base font-bold text-slate-100 leading-relaxed pt-1">
-                            {activeLesson.questions[previewQuestionIndex].question}
-                          </h4>
+                        )}
+                        {activeLesson.questions[previewQuestionIndex].isTextAnswer ? (
+                          <span className="px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 text-xs font-bold flex items-center gap-1">
+                            ✍️ إجابة كتابية / نصية
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 text-xs font-bold">
+                            🔘 خيارات متعددة ({(activeLesson.questions[previewQuestionIndex].options || []).length})
+                          </span>
                         )}
                       </div>
 
-                      {/* Launch Controls */}
-                      <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+                      {/* Question Text */}
+                      {activeLesson.questions[previewQuestionIndex].question && (
+                        <h4 className="text-base font-bold text-slate-100 leading-relaxed pt-1">
+                          {activeLesson.questions[previewQuestionIndex].question}
+                        </h4>
+                      )}
+
+                      {/* Row 2: Launch Controls & Action Buttons */}
+                      <div className="flex items-center justify-between gap-3 flex-wrap pt-2 border-t border-slate-800">
                         {/* Teacher Live Timer Selector */}
                         <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 px-2.5 py-2 rounded-xl">
                           <Clock className="w-3.5 h-3.5 text-amber-400" />
@@ -2540,22 +2464,19 @@ export default function LiveDirectManager({
       {activeTab === 'tools' && (
         <div className="space-y-6">
           {/* Header Action Bar */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-sm border border-emerald-500/30">
-                  <BookOpen className="w-4 h-4" />
-                </span>
-                <h3 className="text-base font-black text-slate-100">
-                  مكتبة أدوات التعليم وعرض ملفات PDF 📚
-                </h3>
-              </div>
-              <p className="text-xs text-slate-400">
-                أضف روابط ملفات PDF (مباشرة أو عبر Google Drive)، واختر الدرس المطلوب ليظهر فورياً وبدقة عالية على شاشة العرض والبروجكتر للمسرح.
-              </p>
+          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xl flex flex-col gap-3.5">
+            {/* Row 1: Title Only */}
+            <div className="flex items-center gap-2.5">
+              <span className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-sm border border-emerald-500/30 shrink-0">
+                <BookOpen className="w-4 h-4" />
+              </span>
+              <h3 className="text-base font-black text-slate-100">
+                مكتبة أدوات التعليم وعرض ملفات PDF 📚
+              </h3>
             </div>
 
-            <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Row 2: Action Buttons */}
+            <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-slate-850">
               <button
                 type="button"
                 onClick={handleOpenAddPdfModal}
@@ -2953,67 +2874,35 @@ export default function LiveDirectManager({
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2.5">
               {filteredLessons.map((lesson, idx) => (
                 <div
                   key={idx}
-                  className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl hover:border-slate-700 transition-all flex flex-col justify-between space-y-4 group"
+                  className="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-2xl p-3.5 sm:p-4 shadow-lg transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group"
                 >
-                  <div className="space-y-2">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-2.5">
-                        <span className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs">
-                          {idx + 1}
-                        </span>
-                        <div>
-                          <h3 className="text-base font-black text-slate-100 group-hover:text-amber-400 transition-colors">
-                            {lesson.title}
-                          </h3>
-                          <div className="text-[11px] text-slate-500">
-                            حصة إلقاء وشرح مباشر مع أسئلة تفاعلية 🎙️
-                          </div>
-                        </div>
-                      </div>
-
-                      <span className="px-2.5 py-1 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-indigo-400 font-bold shrink-0">
-                        {lesson.questions?.length || 0} أسئلة
-                      </span>
-                    </div>
-
-                    {/* Preview first 3 questions */}
-                    <div className="space-y-1.5 pt-1">
-                      {lesson.questions?.slice(0, 3).map((q, qIdx) => (
-                        <div key={qIdx} className="text-xs text-slate-400 flex items-center justify-between gap-2 bg-slate-950/60 p-2 rounded-xl border border-slate-800/80">
-                          <div className="flex items-center gap-2 truncate">
-                            <span className="font-mono text-amber-400/80 shrink-0">س{qIdx + 1}:</span>
-                            <span className="truncate">{q.question || '(سؤال بالصورة)'}</span>
-                          </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            {q.image && (
-                              <span className="text-[10px] text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
-                                🖼️ صورة
-                              </span>
-                            )}
-                            {q.isTextAnswer && (
-                              <span className="text-[10px] text-indigo-300 bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20">
-                                ✍️ نص
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                  {/* Topic Title */}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs shrink-0 font-mono">
+                      {idx + 1}
+                    </span>
+                    <h3 className="text-sm font-black text-slate-100 group-hover:text-amber-400 transition-colors truncate">
+                      {lesson.title}
+                    </h3>
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                  {/* Actions & Count */}
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <span className="px-2.5 py-1 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-indigo-400 font-bold font-mono">
+                      {lesson.questions?.length || 0} أسئلة
+                    </span>
+
                     <button
                       type="button"
                       onClick={() => {
                         handleSelectLesson(lesson.title);
                         setActiveTab('teaching');
                       }}
-                      className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                      className="px-3.5 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer border border-amber-500/20"
                     >
                       <Radio className="w-3.5 h-3.5" />
                       <span>بدء التدريس المباشر 🎙️</span>
@@ -3025,10 +2914,19 @@ export default function LiveDirectManager({
                         setEditingLesson(lesson);
                         setIsEditorOpen(true);
                       }}
-                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer"
+                      className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-all cursor-pointer border border-slate-700"
+                      title="تعديل الموضوع والأسئلة"
                     >
                       <Edit className="w-3.5 h-3.5" />
-                      <span>تعديل</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteLesson(lesson.title)}
+                      className="p-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-xl transition-all cursor-pointer border border-rose-500/20"
+                      title="حذف الموضوع"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>
@@ -3039,72 +2937,70 @@ export default function LiveDirectManager({
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 3: ANSWERS LOG (Answers-Live) */}
+      {/* TAB 4: ANSWERS LOG (Answers-Live) */}
       {/* ========================================================================= */}
       {activeTab === 'answers' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="relative w-full sm:w-80">
-              <Search className="w-4 h-4 text-slate-500 absolute right-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={searchAnswers}
-                onChange={(e) => setSearchAnswers(e.target.value)}
-                placeholder="بحث باسم الطالب أو رقم الورقة أو موضوع الحصة..."
-                className="w-full pr-10 pl-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-slate-200 outline-none focus:border-amber-400"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
+          {/* Top Controls Box: Row 1 = 4 Buttons, Row 2 = Unified Search */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 sm:p-4 space-y-3 shadow-lg">
+            {/* Row 1: 4 Action Buttons */}
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 type="button"
                 onClick={handleSetupSheets}
                 disabled={isSettingUpSheets}
-                className="px-3 py-2.5 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer border border-amber-500/30"
+                className="px-3.5 py-2.5 bg-slate-950 hover:bg-slate-800 text-amber-400 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer border border-amber-500/30"
                 title="إنشاء وتأكيد ورقة Answers-Live في الشيت تلقائياً"
               >
                 <Sparkles className={`w-3.5 h-3.5 ${isSettingUpSheets ? 'animate-spin text-amber-400' : ''}`} />
-                <span className="hidden sm:inline">تهيئة الأوراق بالشيت ⚡</span>
+                <span>تهيئة الأوراق بالشيت ⚡</span>
               </button>
 
               <button
                 type="button"
                 onClick={handleClearAnswersSheetDirect}
                 disabled={isClearingAnswersSheetDirect}
-                className="px-3 py-2.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-500/50 text-rose-300 hover:text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
+                className="px-3.5 py-2.5 bg-rose-950/60 hover:bg-rose-900 border border-rose-500/50 text-rose-300 hover:text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50"
                 title="مسح وتصفير جميع الإجابات المسجلة في ورقة Answers-Live بالكامل"
               >
                 <Trash2 className={`w-3.5 h-3.5 text-rose-400 ${isClearingAnswersSheetDirect ? 'animate-spin' : ''}`} />
-                <span className="hidden sm:inline">{isClearingAnswersSheetDirect ? 'جارٍ المسح...' : 'مسح سجل Answers-Live 🗑️'}</span>
+                <span>{isClearingAnswersSheetDirect ? 'جارٍ المسح...' : 'مسح سجل Answers-Live 🗑️'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetSession}
+                disabled={isResettingSession}
+                className="px-3.5 py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+                title="تصفير ومسح ذاكرة إجابات موضوع الشرح المباشر الحالي من الخادم"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-rose-400 ${isResettingSession ? 'animate-spin' : ''}`} />
+                <span>تصفير ذاكرة الحصة 🔄</span>
               </button>
 
               <button
                 type="button"
                 onClick={loadAnswers}
                 disabled={loadingAnswers}
-                className="p-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl transition-all cursor-pointer border border-slate-800 flex items-center gap-2 text-xs font-bold"
+                className="px-3.5 py-2.5 bg-slate-950 hover:bg-slate-800 text-slate-300 rounded-xl transition-all cursor-pointer border border-slate-800 flex items-center gap-1.5 text-xs font-bold"
+                title="تحديث السجل من الشيت"
               >
-                <RefreshCw className={`w-4 h-4 ${loadingAnswers ? 'animate-spin text-amber-400' : ''}`} />
-                <span>تحديث السجل</span>
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingAnswers ? 'animate-spin text-amber-400' : ''}`} />
+                <span>تحديث السجل 🔄</span>
               </button>
             </div>
-          </div>
 
-          {/* Auto-Creation Notice Banner */}
-          <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-emerald-300">
-            <div className="flex items-center gap-2">
-              <FileSpreadsheet className="w-4 h-4 text-emerald-400 shrink-0" />
-              <span>
-                💡 <b>حفظ تلقائي للإجابات:</b> عند إنهاء أي حصة مباشرة Live، تُسجل إجابات الطلاب ونتائجهم تلقائياً في ورقة <b>Answers-Live</b> التي تُنشأ في ملف الشيت تلقائياً.
-              </span>
+            {/* Row 2: Unified Search Filter for Both Tables */}
+            <div className="relative w-full">
+              <Search className="w-4 h-4 text-slate-500 absolute right-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchAnswers}
+                onChange={(e) => setSearchAnswers(e.target.value)}
+                placeholder="بحث موحد (بالاسم، رقم المشترك، أو موضوع الحصة) في الذاكرة الحية وأوراق الشيت..."
+                className="w-full pr-10 pl-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-amber-400 transition-colors"
+              />
             </div>
-            <button
-              onClick={handleSetupSheets}
-              disabled={isSettingUpSheets}
-              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-[11px] shrink-0 transition-all cursor-pointer shadow-sm"
-            >
-              {isSettingUpSheets ? 'جاري الفحص...' : 'فحص وتهيئة الشيت ⚡'}
-            </button>
           </div>
 
           {/* Active Live Session In-Memory Answers Card */}
@@ -3112,7 +3008,7 @@ export default function LiveDirectManager({
             <div className="p-4 sm:p-5 bg-gradient-to-r from-amber-500/10 via-slate-900 to-indigo-950/40 border-2 border-amber-500/40 rounded-3xl shadow-xl space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold shrink-0">
                     <Sparkles className="w-5 h-5" />
                   </div>
                   <div>
@@ -3121,11 +3017,11 @@ export default function LiveDirectManager({
                         إجابات الحصة المباشرة الجارية (الذاكرة الحية)
                       </h4>
                       <span className="px-2 py-0.5 rounded-full bg-amber-400/20 border border-amber-400/30 text-amber-300 text-[10px] font-bold">
-                        {liveDirectSessionAnswers.length} طالب
+                        {filteredLiveDirectSessionAnswers.length} طالب
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-400 mt-0.5">
-                      موضوع الحصة: <b className="text-white">{sessionState?.directLessonTitle || selectedLessonTitle || 'حصة تدريبية'}</b> — تُحفظ تلقائياً في ورقة Answers-Live عند إنهاء الحصة أو فورياً عبر الزر:
+                      موضوع الحصة: <b className="text-white">{sessionState?.directLessonTitle || selectedLessonTitle || 'حصة تدريبية'}</b>
                     </p>
                   </div>
                 </div>
@@ -3139,17 +3035,6 @@ export default function LiveDirectManager({
                   >
                     <Save className={`w-4 h-4 ${isFinishingSession ? 'animate-spin' : ''}`} />
                     <span>{isFinishingSession ? 'جارٍ الحفظ في الشيت...' : 'حفظ فوري في ورقة Answers-Live 💾'}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleResetSession}
-                    disabled={isResettingSession}
-                    className="px-3.5 py-2 bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 disabled:opacity-50 whitespace-nowrap"
-                    title="تصفير ومسح ذاكرة إجابات موضوع الشرح المباشر الحالي من الخادم"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isResettingSession ? 'animate-spin' : ''}`} />
-                    <span>تصفير الذاكرة 🔄</span>
                   </button>
                 </div>
               </div>
@@ -3166,7 +3051,7 @@ export default function LiveDirectManager({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
-                    {liveDirectSessionAnswers.map((st, idx) => {
+                    {filteredLiveDirectSessionAnswers.map((st, idx) => {
                       const ansEntries = Object.entries(st.answers || {});
                       const hasAnswers = ansEntries.length > 0;
                       return (
@@ -3209,63 +3094,94 @@ export default function LiveDirectManager({
             </div>
           )}
 
-          {loadingAnswers ? (
-            <div className="p-12 text-center text-slate-500 bg-slate-900/50 rounded-3xl border border-slate-800">
-              <RefreshCw className="w-8 h-8 animate-spin mx-auto text-amber-500 mb-2" />
-              <p className="text-xs font-bold">جاري جلب إجابات ورقة Answers-Live...</p>
-            </div>
-          ) : filteredAnswers.length === 0 ? (
-            <div className="p-12 text-center bg-slate-900/50 rounded-3xl border border-dashed border-slate-800 space-y-2">
-              <FileSpreadsheet className="w-12 h-12 text-slate-600 mx-auto" />
-              <h3 className="text-base font-bold text-slate-300">لا توجد إجابات مسجلة بعد في ورقة Answers-Live</h3>
-              <p className="text-xs text-slate-500">
-                عند إنهاء أي حصة مباشرة وحفظ الإجابات، ستظهر درجات وتفاعل الطلاب هنا فورياً.
-              </p>
-            </div>
-          ) : (
-            <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-              <div className="overflow-x-auto">
-                <table className="w-full text-right text-xs">
-                  <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-bold">
-                    <tr>
-                      <th className="p-3.5">تاريخ الحصة</th>
-                      <th className="p-3.5">رقم المشترك</th>
-                      <th className="p-3.5">اسم المشترك</th>
-                      <th className="p-3.5">موضوع الحصة</th>
-                      <th className="p-3.5">عدد الإجابات</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/80">
-                    {filteredAnswers.map((row, i) => (
-                      <tr key={i} className="hover:bg-slate-850/50 transition-colors">
-                        <td className="p-3.5 text-slate-400 font-mono text-[11px]">{row.timestamp || '-'}</td>
-                        <td className="p-3.5 font-mono text-indigo-400 font-bold">#{row.sheetNumber || '-'}</td>
-                        <td className="p-3.5 font-bold text-slate-100">{row.username}</td>
-                        <td className="p-3.5 text-slate-300">{row.lessonTitle}</td>
-                        <td className="p-3.5 font-mono text-amber-400 font-bold">
-                          {Object.keys(row.answers || {}).length} إجابات
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+          {/* Table 2: Google Sheets Answers-Live Accordion */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+            {/* Accordion Toggle Header */}
+            <button
+              type="button"
+              onClick={() => setShowSheetsAnswersTable(prev => !prev)}
+              className="w-full p-4 sm:p-5 flex items-center justify-between gap-3 text-right hover:bg-slate-850/60 transition-all cursor-pointer border-b border-slate-800/80"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center justify-center shrink-0">
+                  <FileSpreadsheet className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-black text-slate-100">
+                      سجل النتائج في ورقة Google Sheets (Answers-Live)
+                    </h4>
+                    <span className="px-2 py-0.5 rounded-full bg-slate-950 text-indigo-400 border border-slate-800 text-[10px] font-mono font-bold">
+                      {filteredAnswers.length} سجل
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {showSheetsAnswersTable ? 'انقر لطي وإخفاء جدول الشيت' : 'انقر لعرض وفتح جدول النتائج المسجلة في الشيت'}
+                  </p>
+                </div>
               </div>
-            </div>
-          )}
+
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs font-bold text-amber-400 hidden sm:inline">
+                  {showSheetsAnswersTable ? 'طي الجدول' : 'عرض الجدول'}
+                </span>
+                <span className="p-2 rounded-xl bg-slate-950 text-slate-400 border border-slate-800">
+                  {showSheetsAnswersTable ? <ChevronLeft className="w-4 h-4 rotate-90 transition-transform" /> : <ChevronRight className="w-4 h-4 rotate-90 transition-transform" />}
+                </span>
+              </div>
+            </button>
+
+            {/* Accordion Collapsible Body */}
+            {showSheetsAnswersTable && (
+              <div>
+                {loadingAnswers ? (
+                  <div className="p-12 text-center text-slate-500 bg-slate-900/50">
+                    <RefreshCw className="w-8 h-8 animate-spin mx-auto text-amber-500 mb-2" />
+                    <p className="text-xs font-bold">جاري جلب إجابات ورقة Answers-Live...</p>
+                  </div>
+                ) : filteredAnswers.length === 0 ? (
+                  <div className="p-10 text-center bg-slate-900/50 space-y-2">
+                    <FileSpreadsheet className="w-10 h-10 text-slate-600 mx-auto" />
+                    <h3 className="text-sm font-bold text-slate-300">لا توجد إجابات مسجلة بعد في ورقة Answers-Live</h3>
+                    <p className="text-xs text-slate-500">
+                      عند إنهاء أي حصة وحفظ النتائج، ستظهر هنا فورياً.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-right text-xs">
+                      <thead className="bg-slate-950/80 border-b border-slate-800 text-slate-400 font-bold">
+                        <tr>
+                          <th className="p-3.5">تاريخ الحصة</th>
+                          <th className="p-3.5">رقم المشترك</th>
+                          <th className="p-3.5">اسم المشترك</th>
+                          <th className="p-3.5">موضوع الحصة</th>
+                          <th className="p-3.5">عدد الإجابات</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/80">
+                        {filteredAnswers.map((row, i) => (
+                          <tr key={i} className="hover:bg-slate-850/50 transition-colors">
+                            <td className="p-3.5 text-slate-400 font-mono text-[11px]">{row.timestamp || '-'}</td>
+                            <td className="p-3.5 font-mono text-indigo-400 font-bold">#{row.sheetNumber || '-'}</td>
+                            <td className="p-3.5 font-bold text-slate-100">{row.username}</td>
+                            <td className="p-3.5 text-slate-300">{row.lessonTitle}</td>
+                            <td className="p-3.5 font-mono text-amber-400 font-bold">
+                              {Object.keys(row.answers || {}).length} إجابات
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* TAB 5: LIVE CHALLENGE QUIZ (تحدي كويز - Questions-Qui & Answers-Qui) */}
-      {/* ========================================================================= */}
-      {activeTab === 'quiz-challenge' && (
-        <div className="py-2">
-          <QuizManagerPanel
-            sessionState={sessionState}
-            onOpenArenaDisplay={onOpenDisplayScreen}
-          />
-        </div>
-      )}
+
 
       {/* ========================================================================= */}
       {/* MODAL: ADD / EDIT LESSON FOR Questions-Live */}

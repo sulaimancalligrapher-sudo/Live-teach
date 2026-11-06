@@ -25,7 +25,7 @@ import {
   stopAllActiveBroadcasts
 } from '../api';
 import { showAppConfirm } from './AppDialog';
-
+import TranslationEditor from './TranslationEditor';
 
 interface AdminPanelProps {
   onClose: () => void;
@@ -33,7 +33,7 @@ interface AdminPanelProps {
   onOpenLiveDirectDisplay?: () => void;
   onOpenQuizArenaDisplay?: () => void;
   onOpenSmartDisplay?: () => void;
-  initialTab?: 'live' | 'live-direct' | 'quiz-challenge' | 'broadcast' | 'sheets-design';
+  initialTab?: 'live' | 'live-direct' | 'quiz-challenge' | 'broadcast' | 'translations' | 'sheets-design';
 }
 
 export default function AdminPanel({ 
@@ -44,7 +44,7 @@ export default function AdminPanel({
   onOpenSmartDisplay,
   initialTab = 'live'
 }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<'live' | 'live-direct' | 'quiz-challenge' | 'broadcast' | 'sheets-design'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'live' | 'live-direct' | 'quiz-challenge' | 'broadcast' | 'translations' | 'sheets-design'>(initialTab);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [currentPin, setCurrentPin] = useState<string>('1234');
   const [isUpdatingPin, setIsUpdatingPin] = useState(false);
@@ -274,7 +274,20 @@ export default function AdminPanel({
             <span>العرض</span>
           </button>
 
-          {/* Tab 5: Sheets & Design Settings (Icon only) */}
+          {/* Tab 5: Translations & Localization */}
+          <button
+            onClick={() => setActiveTab('translations')}
+            className={`px-3.5 sm:px-4 py-2.5 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'translations'
+                ? 'bg-slate-900 text-amber-400 border-amber-500 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/40'
+            }`}
+          >
+            <Globe className="w-4 h-4 text-amber-400" />
+            <span>الترجمة</span>
+          </button>
+
+          {/* Tab 6: Sheets & Design Settings (Icon only) */}
           <button
             onClick={() => setActiveTab('sheets-design')}
             title="الربط بالشيت وتصميم الصفحة والإعدادات"
@@ -613,6 +626,13 @@ export default function AdminPanel({
                 />
               </div>
 
+            </div>
+          )}
+
+          {/* TAB: TRANSLATION & LOCALIZATION (مركز إدارة الترجمة واللغات) */}
+          {activeTab === 'translations' && (
+            <div className="py-2">
+              <TranslationEditor onClose={() => setActiveTab('live')} />
             </div>
           )}
 

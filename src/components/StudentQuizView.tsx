@@ -549,12 +549,38 @@ export default function StudentQuizView({
             </div>
 
             <div className="space-y-2">
-              <h2 className="text-2xl md:text-3xl font-black text-slate-100">
-                تم الانتهاء من جميع الأسئلة بنجاح 🎉
+              <h2 className="text-2xl md:text-3xl font-black text-slate-100 flex items-center justify-center gap-2">
+                <Sparkles className="w-6 h-6 text-amber-400" />
+                <span>تم الانتهاء من جميع الأسئلة بنجاح</span>
               </h2>
               <p className="text-xs md:text-sm text-slate-400 max-w-md mx-auto">
                 أحسنت يا {studentName || username}! تم تسجيل كافة إجاباتك بنجاح في النظام.
               </p>
+            </div>
+
+            {/* Prominent Podium & Final Rank Card (Elevated to top) */}
+            <div className="p-5 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border-2 border-amber-500/40 rounded-3xl max-w-md mx-auto space-y-3 shadow-xl shadow-amber-500/10">
+              <div className="flex items-center justify-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                  <Trophy className="w-6 h-6" />
+                </div>
+                <div className="text-right">
+                  <div className="text-[11px] font-bold text-amber-400/80">الترتيب والمركز النهائي</div>
+                  <div className="text-lg sm:text-xl font-black text-amber-300">
+                    {studentProgress?.rank
+                      ? `المركز #${studentProgress.rank} في الترتيب`
+                      : quizState.quizStatus === 'ended'
+                      ? 'تم اعتماد الترتيب على الشاشة الكبرى'
+                      : 'جارٍ احتساب الترتيب النهائي...'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-2.5 bg-slate-950/60 rounded-xl border border-amber-500/20 text-[11px] text-slate-300">
+                {quizState.quizStatus === 'ended'
+                  ? 'تم إنهاء المسابقة واعتماد منصة التتويج والمراكز الأولى رسمياً على شاشة العرض.'
+                  : 'تابع شاشة العرض الكبرى الآن لمشاهدة منصة التتويج والمراكز الأولى فور إنهاء المعلم للمسابقة.'}
+              </div>
             </div>
 
             {/* Score & Answers Count Cards */}
@@ -630,23 +656,6 @@ export default function StudentQuizView({
                   );
                 })}
               </div>
-            </div>
-
-            {/* Waiting for Podium / Final Results Announcement */}
-            <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl max-w-md mx-auto space-y-2">
-              <div className="flex items-center justify-center gap-2 text-amber-400 font-bold text-xs">
-                <Trophy className="w-4 h-4 animate-bounce" />
-                <span>
-                  {quizState.quizStatus === 'ended' && studentProgress?.rank
-                    ? `أنت في المركز #${studentProgress.rank} في الترتيب النهائي!`
-                    : 'في انتظار إعلان النتيجة النهائية وترتيب الفائزين على شاشة العرض الرئيسية 🏆'}
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-400">
-                {quizState.quizStatus === 'ended'
-                  ? 'تم إنهاء التحدي واعتماد النتائج وتتويج الفائزين على شاشة العرض.'
-                  : 'تابع شاشة العرض الآن لمشاهدة منصة التتويج والمراكز الأولى فور إنهاء المسابقة.'}
-              </p>
             </div>
 
             {/* Option to Retry Wrong Answers if enabled and has wrong questions */}

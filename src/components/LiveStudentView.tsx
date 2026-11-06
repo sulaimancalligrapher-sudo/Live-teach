@@ -5,7 +5,7 @@ import {
   User, Hash, LogOut, ArrowRight, Volume2, HelpCircle, 
   Award, ShieldAlert, Wifi, WifiOff, Loader2,
   KeyRound, ShieldCheck, Camera, QrCode, X, MessageSquare, Hand, ThumbsUp, ThumbsDown,
-  Image as ImageIcon, Zap, BookOpen, FileText, ZoomIn, ZoomOut
+  Image as ImageIcon, Zap, BookOpen, FileText, ZoomIn, ZoomOut, RotateCcw
 } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { 
@@ -80,6 +80,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
     }
     return false;
   });
+  const [isSessionEndedWithGratitude, setIsSessionEndedWithGratitude] = useState(false);
   const joinTimeRef = useRef<number>(0);
 
   // Student local PDF viewing preferences (default 'contain' so horizontal slides fit completely without clipping)
@@ -118,14 +119,12 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
       (state) => {
         setConnected(true);
         if (state.status === 'program_ended' || state.status === 'finished') {
+          setIsSessionEndedWithGratitude(true);
           setIsJoined(false);
           setIsPinVerified(false);
           setSubmittedAnswer(null);
           setScanSuccessMsg(null);
           setScannerError(null);
-          setJoinError('تم إنهاء الحصة المباشرة بنجاح 🎓 شكراً لتفاعلكم!');
-          sessionStorage.removeItem('liveStudentUsername');
-          sessionStorage.removeItem('liveStudentSheet');
           sessionStorage.removeItem('liveStudentPin');
           sessionStorage.removeItem('hasAcceptedQuizChallenge');
           localStorage.removeItem('liveStudentPin');
@@ -697,6 +696,69 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
       setIsSendingMessage(false);
     }
   };
+
+  // Dedicated Thank You & Appreciation Screen when teacher ends session
+  if (isSessionEndedWithGratitude) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-4">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="w-full max-w-md bg-slate-900 border border-amber-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl text-center space-y-6 relative overflow-hidden"
+        >
+          {/* Top Rainbow Glow */}
+          <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-amber-500 via-rose-500 to-emerald-500" />
+
+          {/* Golden Icon */}
+          <div className="w-20 h-20 bg-amber-500/10 border-2 border-amber-500/30 text-amber-400 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-amber-500/10">
+            <Award className="w-10 h-10" />
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-xl sm:text-2xl font-black text-slate-100">
+              شكراً لحضوركم وتفاعلكم الرائع!
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-300 font-semibold">
+              أحسنت يا <span className="text-amber-400 font-bold">{username || 'بطل'}</span>
+              {sheetNumber ? ` (شيت #${sheetNumber})` : ''}
+            </p>
+          </div>
+
+          <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-2xl text-xs text-slate-300 leading-relaxed text-right space-y-2">
+            <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>تم إنهاء الحصة المباشرة وتوثيق مشاركتكم بنجاح</span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              قام المعلم بإنهاء الحصة الحالية وحفظ السجلات في النظام. نتمنى لكم دوام التفوق والنجاح، ونراكم في الحصة القادمة بإذن الله.
+            </p>
+          </div>
+
+          <div className="space-y-3 pt-2">
+            <button
+              onClick={() => {
+                setIsSessionEndedWithGratitude(false);
+                setJoinError(null);
+              }}
+              className="w-full py-3.5 px-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>تسجيل الدخول لحصة جديدة</span>
+            </button>
+
+            {onBackToMain && (
+              <button
+                onClick={onBackToMain}
+                className="w-full py-3 px-4 bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 cursor-pointer transition-all border border-slate-700"
+              >
+                <span>العودة للصفحة الرئيسية</span>
+              </button>
+            )}
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   // 1. Join Screen (if not logged in or PIN not verified)
   if (!isJoined || !isPinVerified) {

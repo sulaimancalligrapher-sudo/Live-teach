@@ -1188,50 +1188,69 @@ export default function QuizManagerPanel({
               </div>
             </div>
           ) : (
-            /* Quizzes List Cards */
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {quizzes.map((quiz, idx) => (
-                <div
-                  key={idx}
-                  className="p-5 bg-slate-950/60 border border-slate-800 rounded-3xl space-y-4 hover:border-slate-700 transition-all flex flex-col justify-between"
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-bold text-amber-400 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
-                        مسابقة #{idx + 1}
+            /* Quizzes List (قائمة مواضيع وأسئلة التحدي) */
+            <div className="space-y-2.5">
+              {quizzes.map((quiz, idx) => {
+                const isSelected = selectedQuizIdx === idx;
+                return (
+                  <div
+                    key={idx}
+                    className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 md:p-4 rounded-2xl border transition-all ${
+                      isSelected
+                        ? 'bg-amber-500/10 border-amber-500/40 shadow-sm'
+                        : 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700'
+                    }`}
+                  >
+                    {/* الموضوع وعدد الأسئلة */}
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <span className="w-8 h-8 rounded-xl bg-slate-900 border border-slate-800 text-amber-400 font-mono text-xs flex items-center justify-center font-bold shrink-0">
+                        {idx + 1}
                       </span>
-                      <span className="text-xs text-slate-400 font-mono">
-                        {quiz.questions?.length || 0} أسئلة
-                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="text-sm font-black text-slate-100 truncate">
+                            {quiz.title}
+                          </h4>
+                          {isSelected && (
+                            <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">
+                              المحدد حالياً
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-slate-400 font-mono mt-0.5">
+                          <span>{quiz.questions?.length || 0} أسئلة</span>
+                        </div>
+                      </div>
                     </div>
-                    <h4 className="text-base font-black text-slate-100">{quiz.title}</h4>
-                    {quiz.description && (
-                      <p className="text-xs text-slate-400 leading-relaxed">{quiz.description}</p>
-                    )}
-                  </div>
 
-                  <div className="flex items-center gap-2 pt-2 border-t border-slate-800/80">
-                    <button
-                      onClick={() => {
-                        setSelectedQuizIdx(idx);
-                        setActiveTab('control');
-                      }}
-                      className="flex-1 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 font-black rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer border border-amber-500/30"
-                    >
-                      <Play className="w-3.5 h-3.5 fill-amber-400" />
-                      <span>تحديد للإطلاق</span>
-                    </button>
+                    {/* الأزرار: تحديد الالتحاق + تعديل */}
+                    <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                      <button
+                        onClick={() => {
+                          setSelectedQuizIdx(idx);
+                          setActiveTab('control');
+                        }}
+                        className={`px-4 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                            : 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30'
+                        }`}
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current" />
+                        <span>تحديد الالتحاق</span>
+                      </button>
 
-                    <button
-                      onClick={() => setEditingQuiz(quiz)}
-                      className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl transition-all cursor-pointer"
-                      title="تعديل الأسئلة"
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </button>
+                      <button
+                        onClick={() => setEditingQuiz(quiz)}
+                        className="p-2 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl transition-all cursor-pointer border border-slate-800"
+                        title="تعديل الأسئلة"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

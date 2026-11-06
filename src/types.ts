@@ -277,6 +277,7 @@ export interface LiveSessionState {
   showSkipInRoom?: boolean; // Controls whether "تخطي" button appears on projector display screen
   showPlayPauseInRoom?: boolean; // Controls whether Play/Pause button appears on projector display screen
   videoPlaying?: boolean; // Controls Play/Pause state synced across room and admin
+  broadcastVolume?: number; // Master broadcast volume for video on big screen / streaming (0.0 to 1.0)
   showOptionCountsInRoom?: boolean; // Controls whether answer counts on options appear on projector display screen
   showStudentTextAnswersInRoom?: boolean; // Controls whether student text answers appear on projector display screen
   showChatInRoom?: boolean; // Controls whether chat window / badge appears on projector display screen

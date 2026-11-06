@@ -24,7 +24,7 @@ import LiveQuizArenaDisplay from './components/LiveQuizArenaDisplay';
 import SmartHubDisplayRoom from './components/SmartHubDisplayRoom';
 import StudentQuizView from './components/StudentQuizView';
 import LanguageSelector from './components/LanguageSelector';
-import SettingsPanel from './components/SettingsPanel';
+import StandaloneChatRoom from './components/StandaloneChatRoom';
 import { useLanguage } from './translations';
 
 export default function App() {
@@ -33,11 +33,13 @@ export default function App() {
   const [isConfigured, setIsConfigured] = useState(isApiConfigured());
   const [headerConfig, setHeaderConfig] = useState<HeaderConfig | null>(null);
 
-  // Page Routing Mode: 'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display'
-  const [pageMode, setPageMode] = useState<'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display'>(() => {
+  // Page Routing Mode: 'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'chat'
+  const [pageMode, setPageMode] = useState<'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'chat'>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const p = params.get('page');
+      const mode = params.get('mode');
+      if (p === 'chat' || mode === 'chat') return 'chat';
       if (p === 'admin') return 'admin';
       if (p === 'display' || p === 'smart-display') return 'display';
       if (p === 'live-teacher') return 'live-teacher';
@@ -187,6 +189,15 @@ export default function App() {
     setCopiedLink(id);
     setTimeout(() => setCopiedLink(null), 2500);
   };
+
+  // Route: Standalone Teacher Chat Window
+  if (pageMode === 'chat') {
+    return (
+      <StandaloneChatRoom
+        onBack={() => navigateToPage('admin')}
+      />
+    );
+  }
 
   // Route: Live Classroom Teacher Theater
   if (pageMode === 'live-teacher') {

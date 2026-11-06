@@ -581,7 +581,7 @@ async function startServer() {
 
     syncCurrentLiveSession();
     broadcastLiveState();
-    res.json({ success: true, message: `تم تصفير ذاكرة رام الخادم لقسم ${target} بنجاح 🔄`, state: currentLiveSession });
+    res.json({ success: true, message: `تم تصفير ذاكرة رام الخادم لقسم ${target} بنجاح`, state: currentLiveSession });
   });
 
   // Full Global Reset
@@ -868,6 +868,80 @@ async function startServer() {
     res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Range, Content-Type, Accept");
     res.status(204).end();
+  });
+
+  // AI Single Translation Endpoint using @google/genai
+  app.post("/api/translate-ai", async (req, res) => {
+    try {
+      const { text, targetLang } = req.body;
+      if (!text || typeof text !== 'string') {
+        return res.status(400).json({ success: false, error: "Text is required" });
+      }
+
+      const langName = targetLang === 'th' ? 'Thai' : 'English';
+      const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+
+      if (apiKey) {
+        try {
+          const { GoogleGenAI } = await import("@google/genai");
+          const ai = new GoogleGenAI({ apiKey });
+          const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `Translate the following educational UI string from Arabic to natural, idiomatic ${langName}. Return ONLY the direct translation text with no markdown, quotes, or conversational explanations:\n\n${text}`
+          });
+          const translated = (response.text || "").trim().replace(/^["']|["']$/g, '');
+          if (translated) {
+            return res.json({ success: true, translated });
+          }
+        } catch (apiErr: any) {
+          console.warn("Gemini translate error, using fallback:", apiErr.message);
+        }
+      }
+
+      return res.json({ success: true, translated: text });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // AI Batch Translation Endpoint
+  app.post("/api/translate-batch", async (req, res) => {
+    try {
+      const { items } = req.body;
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ success: false, error: "Items array required" });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+      if (apiKey) {
+        try {
+          const { GoogleGenAI } = await import("@google/genai");
+          const ai = new GoogleGenAI({ apiKey });
+          const prompt = `Translate each of the following Arabic educational UI phrases into Thai (th) and English (en).
+Return ONLY a valid JSON object matching this schema:
+{
+  "keyName": { "th": "Thai translation", "en": "English translation" }
+}
+
+Input items:
+${JSON.stringify(items.map(i => ({ key: i.key, ar: i.ar })))}
+`;
+          const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: prompt,
+            config: { responseMimeType: "application/json" }
+          });
+          const parsed = JSON.parse(response.text || "{}");
+          return res.json({ success: true, translations: parsed });
+        } catch (apiErr: any) {
+          console.warn("Gemini batch translation error:", apiErr.message);
+        }
+      }
+
+      return res.json({ success: true, translations: {} });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
   });
 
 

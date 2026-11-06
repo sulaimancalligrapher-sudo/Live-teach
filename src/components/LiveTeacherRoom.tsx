@@ -88,6 +88,14 @@ export default function LiveTeacherRoom({
   const [volume, setVolume] = useState(0.8);
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Sync master broadcast volume set by teacher from admin panel
+  useEffect(() => {
+    if (typeof sessionState?.broadcastVolume === 'number' && videoRef.current) {
+      videoRef.current.volume = sessionState.broadcastVolume;
+      setVolume(sessionState.broadcastVolume);
+    }
+  }, [sessionState?.broadcastVolume]);
   
   // UI Panels
   const [showQrModal, setShowQrModal] = useState(false);
@@ -1173,38 +1181,6 @@ export default function LiveTeacherRoom({
               <span className="text-slate-200">{formatSecondsToTime(currentTime)}</span>
               <span className="mx-1">/</span>
               <span>{formatSecondsToTime(duration)}</span>
-            </div>
-
-            {/* Volume control */}
-            <div className="hidden sm:flex items-center gap-2">
-              <button
-                onClick={() => {
-                  if (videoRef.current) {
-                    videoRef.current.muted = !isMuted;
-                    setIsMuted(!isMuted);
-                  }
-                }}
-                className="text-slate-400 hover:text-slate-200"
-              >
-                {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-              </button>
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.05}
-                value={isMuted ? 0 : volume}
-                onChange={(e) => {
-                  const v = parseFloat(e.target.value);
-                  setVolume(v);
-                  setIsMuted(false);
-                  if (videoRef.current) {
-                    videoRef.current.volume = v;
-                    videoRef.current.muted = false;
-                  }
-                }}
-                className="w-16 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
-              />
             </div>
           </div>
 

@@ -6,7 +6,7 @@ import {
   RefreshCw, Search, QrCode, Copy, Check, Sparkles, ChevronDown, 
   ChevronUp, ArrowLeft, AlertCircle, X, KeyRound, ShieldCheck, UserX,
   Power, ShieldAlert, DownloadCloud, History, ListVideo, Eye, EyeOff, FastForward, Pause,
-  MessageSquare
+  MessageSquare, Volume2, VolumeX, Headphones
 } from 'lucide-react';
 import { 
   LiveLessonRow, LiveQuestionItem, LiveAnswerRecord, LiveSessionState, evaluateLiveAnswer, normalizeArabicText 
@@ -18,7 +18,7 @@ import {
   formatSecondsToTime, parseTimeToSeconds, formatDriveImageUrl,
   subscribeToLiveSession, toggleShowLessonsListInRoom, toggleShowPinInRoom, toggleShowQrInRoom,
   toggleShowFinishLessonInRoom, toggleShowRevealInRoom, toggleShowResumeInRoom, toggleShowSkipInRoom,
-  toggleShowPlayPauseInRoom, toggleLiveVideoPlay,
+  toggleShowPlayPauseInRoom, toggleLiveVideoPlay, setLiveBroadcastVolume,
   toggleShowOptionCountsInRoom, toggleShowStudentTextAnswersInRoom,
   finishLiveSession, revealLiveAnswer, resumeLiveVideo,
   initLiveSession, triggerLiveQuestion,
@@ -199,6 +199,22 @@ export default function LiveClassManager({
       setCopiedPin(true);
       setTimeout(() => setCopiedPin(false), 2500);
     }
+  };
+
+  // Dual Volume Control: Master Broadcast Volume and Teacher Local Monitor Volume
+  const [masterBroadcastVolume, setMasterBroadcastVolume] = useState<number>(1.0);
+  const [teacherMonitorVolume, setTeacherMonitorVolume] = useState<number>(0.8);
+  const [isTeacherMuted, setIsTeacherMuted] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof sessionState?.broadcastVolume === 'number') {
+      setMasterBroadcastVolume(sessionState.broadcastVolume);
+    }
+  }, [sessionState?.broadcastVolume]);
+
+  const handleBroadcastVolumeChange = async (vol: number) => {
+    setMasterBroadcastVolume(vol);
+    await setLiveBroadcastVolume(vol);
   };
 
   const handleRemoveStudent = async (username: string, sheetNumber: string) => {
@@ -2177,6 +2193,62 @@ export default function LiveClassManager({
                     >
                       {sessionState?.showPlayPauseInRoom ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
                     </button>
+                  </div>
+
+                  {/* صندوق التحكم الصوتي المزدوج للبث الحي وسماعة المعلم */}
+                  <div className="flex flex-wrap items-center gap-3 bg-slate-900 border border-slate-800 p-1.5 rounded-xl shadow-sm">
+                    {/* 1. صوت البث الرئيسي (Master Broadcast Volume) */}
+                    <div className="flex items-center gap-1.5" title="مستوى صوت الفيديو في شاشة البروجكتر والبث المباشر">
+                      <Volume2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span className="text-[11px] font-bold text-slate-300">صوت البث:</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={masterBroadcastVolume}
+                        onChange={(e) => handleBroadcastVolumeChange(parseFloat(e.target.value))}
+                        className="w-16 sm:w-20 h-1.5 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                      />
+                      <span className="text-[10px] text-amber-400 font-mono font-bold w-7 text-left">
+                        {Math.round(masterBroadcastVolume * 100)}%
+                      </span>
+                    </div>
+
+                    <div className="h-4 w-px bg-slate-800 hidden sm:block" />
+
+                    {/* 2. صوت سماعة المعلم (Teacher Monitor Volume & Mute) */}
+                    <div className="flex items-center gap-1.5" title="مستوى صوت سماعة المعلم محلياً مع زر كتم لمنع الصدى">
+                      <button
+                        type="button"
+                        onClick={() => setIsTeacherMuted(!isTeacherMuted)}
+                        className={`p-1 rounded-lg transition-all cursor-pointer ${
+                          isTeacherMuted ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                        title={isTeacherMuted ? 'سماعة المعلم مكتومة (اضغط لإلغاء الكتم)' : 'كتم صوت سماعة المعلم لمنع الصدى أثناء الشرح'}
+                      >
+                        {isTeacherMuted ? <VolumeX className="w-3.5 h-3.5 text-rose-400" /> : <Headphones className="w-3.5 h-3.5 text-sky-400" />}
+                      </button>
+                      <span className="text-[11px] font-bold text-slate-300">سماعتي:</span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        disabled={isTeacherMuted}
+                        value={isTeacherMuted ? 0 : teacherMonitorVolume}
+                        onChange={(e) => {
+                          setTeacherMonitorVolume(parseFloat(e.target.value));
+                          setIsTeacherMuted(false);
+                        }}
+                        className={`w-14 sm:w-16 h-1.5 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-sky-400 ${
+                          isTeacherMuted ? 'opacity-40 cursor-not-allowed' : ''
+                        }`}
+                      />
+                      <span className="text-[10px] text-sky-400 font-mono font-bold w-6 text-left">
+                        {isTeacherMuted ? 'كتم' : `${Math.round(teacherMonitorVolume * 100)}%`}
+                      </span>
+                    </div>
                   </div>
                 </div>
 

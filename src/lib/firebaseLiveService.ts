@@ -1266,6 +1266,22 @@ export async function toggleShowPlayPauseInRoom(show: boolean): Promise<{ succes
   }
 }
 
+// Teacher sets Master Broadcast Volume for room / streaming display (0.0 to 1.0)
+export async function setLiveBroadcastVolume(volume: number): Promise<{ success: boolean; state?: LiveSessionState }> {
+  try {
+    const safeVol = Math.max(0, Math.min(1, volume));
+    await updateDoc(LIVE_DOC_REF, {
+      broadcastVolume: safeVol,
+      updatedAt: serverTimestamp(),
+    });
+    cachedState = { ...cachedState, broadcastVolume: safeVol };
+    return { success: true, state: cachedState };
+  } catch (error: any) {
+    console.error('Failed to update broadcastVolume:', error);
+    return { success: false };
+  }
+}
+
 // Teacher toggles Play/Pause state synced across room and admin
 export async function toggleLiveVideoPlay(playing: boolean): Promise<{ success: boolean; state?: LiveSessionState }> {
   try {

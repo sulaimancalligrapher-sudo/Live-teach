@@ -151,6 +151,33 @@ export default function LiveDirectManager({
   const [showChatModal, setShowChatModal] = useState(false);
   const [notice, setNotice] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
+  // Persistent Smart Floating Chat Notice (single banner that updates count, only dismisses on manual click)
+  const [floatingChatNotice, setFloatingChatNotice] = useState<{
+    visible: boolean;
+    count: number;
+    latestSender: string;
+    latestText: string;
+  }>({ visible: false, count: 0, latestSender: '', latestText: '' });
+
+  const lastKnownMsgCountRef = useRef(0);
+
+  useEffect(() => {
+    const msgs = sessionState?.messages || [];
+    if (msgs.length > lastKnownMsgCountRef.current) {
+      const newCount = msgs.length - lastKnownMsgCountRef.current;
+      const latestMsg = msgs[msgs.length - 1];
+      if (latestMsg && !latestMsg.senderName.includes('الأستاذ')) {
+        setFloatingChatNotice(prev => ({
+          visible: true,
+          count: prev.visible ? prev.count + newCount : newCount,
+          latestSender: latestMsg.senderName || 'طالب',
+          latestText: latestMsg.text || 'أرسل رسالة جديدة',
+        }));
+      }
+    }
+    lastKnownMsgCountRef.current = msgs.length;
+  }, [sessionState?.messages]);
+
   // Program active state
   const isProgramRunning = Boolean(sessionState?.isProgramActive);
 
@@ -781,7 +808,20 @@ export default function LiveDirectManager({
       if (res && res.state) {
         setSessionState(res.state);
       }
-      showNotice(`تم تصفير ومسح ذاكرة إجابات موضوع "${selectedLessonTitle || 'الحصة'}" بالكامل بنجاح `, 'info');
+      // Also clear all PDF annotations/drawings across all pages on RAM reset
+      try {
+        await updateLivePdfAnnotations({});
+        if (livePdfBroadcastChannelRef.current) {
+          livePdfBroadcastChannelRef.current.postMessage({
+            type: 'annotations',
+            annotations: {},
+            updatedAt: Date.now(),
+          });
+        }
+        setSessionState((prev) => prev ? { ...prev, pdfAnnotations: {} } : prev);
+      } catch {}
+
+      showNotice(`تم تصفير ومسح ذاكرة إجابات موضوع "${selectedLessonTitle || 'الحصة'}" ورسومات الـ PDF بالكامل بنجاح`, 'info');
       await loadAnswers().catch(() => {});
     } catch {
       showNotice('فشل تصفير الجلسة', 'error');
@@ -1671,7 +1711,7 @@ export default function LiveDirectManager({
                   </button>
                 </div>
 
-                {/* Chat Modal Button with Eye toggle (افتراضياً مخفي عن شاشة العرض) */}
+                  {/* Chat Modal Button with Eye toggle (افتراضياً مخفي عن شاشة العرض) */}
                 <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-800 p-1 rounded-xl shadow-sm">
                   <button
                     type="button"
@@ -1683,6 +1723,18 @@ export default function LiveDirectManager({
                     <span className="px-1.5 py-0.2 rounded-full bg-slate-800 text-[10px] font-mono">
                       {(sessionState?.messages || []).length}
                     </span>
+                  </button>
+                  {/* زر فتح المحادثة في نافذة أو شاشة مستقلة */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const chatUrl = `${window.location.origin}${window.location.pathname}?mode=chat`;
+                      window.open(chatUrl, '_blank', 'width=540,height=720,scrollbars=yes');
+                    }}
+                    title="فتح المحادثة في نافذة مستقلة برابط خاص"
+                    className="p-1 rounded-lg transition-all cursor-pointer border bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-indigo-300 border-slate-800"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
                   </button>
                   {/* أيقونة العين لإظهار/إخفاء المحادثة في شاشة العرض */}
                   <button
@@ -3739,6 +3791,72 @@ export default function LiveDirectManager({
         }}
         isTeacher={true}
       />
+
+      {/* Smart Single Persistent Floating Chat Notification (Manual close, updates counter) */}
+      <AnimatePresence>
+        {floatingChatNotice.visible && (
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 20, scale: 0.95 }}
+            className="fixed bottom-6 left-6 z-50 max-w-sm w-full bg-slate-900/95 border-2 border-indigo-500/50 shadow-2xl rounded-2xl p-4 backdrop-blur-md text-right space-y-2.5 font-sans"
+            dir="rtl"
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                <span className="text-xs font-black text-indigo-300 flex items-center gap-1.5">
+                  <MessageSquare className="w-4 h-4 text-indigo-400" />
+                  <span>
+                    {floatingChatNotice.count > 1
+                      ? `رسائل جديدة (${floatingChatNotice.count})`
+                      : 'رسالة جديدة من طالب'}
+                  </span>
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFloatingChatNotice(prev => ({ ...prev, visible: false, count: 0 }))}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-all cursor-pointer"
+                title="إغلاق الإشعار"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-200">
+              <span className="font-bold text-amber-400 ml-1.5">{floatingChatNotice.latestSender}:</span>
+              <span className="text-slate-300 line-clamp-2">{floatingChatNotice.latestText}</span>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowChatModal(true);
+                  setFloatingChatNotice(prev => ({ ...prev, visible: false, count: 0 }));
+                }}
+                className="flex-1 py-1.5 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer text-center"
+              >
+                عرض المحادثة
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const chatUrl = `${window.location.origin}${window.location.pathname}?mode=chat`;
+                  window.open(chatUrl, '_blank', 'width=540,height=720,scrollbars=yes');
+                  setFloatingChatNotice(prev => ({ ...prev, visible: false, count: 0 }));
+                }}
+                className="py-1.5 px-3 bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1"
+                title="فتح في نافذة مستقلة"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>نافذة مستقلة</span>
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

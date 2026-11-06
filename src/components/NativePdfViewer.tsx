@@ -20,6 +20,7 @@ import {
   Maximize2,
   Columns,
   RefreshCw,
+  RotateCcw,
   ExternalLink,
 } from 'lucide-react';
 
@@ -811,6 +812,23 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
     redrawAnnotations();
   };
 
+  const handleClearAllDrawings = () => {
+    lastLocalAnnotationsUpdateRef.current = Date.now();
+    const updated = {};
+    setAnnotations(updated);
+    if (onAnnotationsChange) {
+      onAnnotationsChange(updated);
+    }
+    if (broadcastChannelRef.current) {
+      broadcastChannelRef.current.postMessage({
+        type: 'annotations',
+        annotations: updated,
+        updatedAt: Date.now(),
+      });
+    }
+    redrawAnnotations();
+  };
+
   const handleToggleFitMode = (mode: 'contain' | 'width') => {
     setFitMode(mode);
     if (onFitModeChange) onFitModeChange(mode);
@@ -895,15 +913,26 @@ export const NativePdfViewer: React.FC<NativePdfViewerProps> = ({
             </div>
           )}
 
-          {/* Clear Page Drawings */}
+          {/* Clear Current Page Drawings */}
           <button
             type="button"
             onClick={handleClearPageDrawings}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/50 text-slate-300 hover:text-rose-300 text-xs font-semibold transition-all cursor-pointer border border-slate-700"
-            title="مسح رسومات هذه الصفحة"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-900/40 text-slate-300 hover:text-rose-300 text-xs font-semibold transition-all cursor-pointer border border-slate-700"
+            title="مسح رسومات هذه الصفحة الحالية فقط"
           >
             <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-            <span>مسح الرسومات</span>
+            <span>مسح الصفحة الحالية</span>
+          </button>
+
+          {/* Clear All Pages Drawings */}
+          <button
+            type="button"
+            onClick={handleClearAllDrawings}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-100 text-xs font-semibold transition-all cursor-pointer border border-rose-800/60"
+            title="مسح شامل لجميع الرسومات في كافة صفحات الملف"
+          >
+            <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+            <span>مسح شامل لكل الصفحات</span>
           </button>
 
           <div className="h-4 w-px bg-slate-700 mx-0.5"></div>

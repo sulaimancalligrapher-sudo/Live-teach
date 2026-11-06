@@ -2595,7 +2595,46 @@ export async function setupPdfLessonsSheetApi(): Promise<{ success: boolean; mes
   }
 }
 
-export { generatePinCode, clearLiveDirectLessonAnswers, clearLiveVideoLessonAnswers } from './lib/firebaseLiveService';
+export { generatePinCode, clearLiveDirectLessonAnswers, clearLiveVideoLessonAnswers, setLiveBroadcastVolume } from './lib/firebaseLiveService';
+
+// AI Translation Client Helpers
+export async function translateTextWithAi(text: string, targetLang: 'th' | 'en'): Promise<string> {
+  try {
+    const res = await fetch('/api/translate-ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, targetLang }),
+    });
+    const data = await res.json();
+    if (data.success && data.translated) {
+      return data.translated;
+    }
+    return text;
+  } catch (err) {
+    console.warn('AI translation client error:', err);
+    return text;
+  }
+}
+
+export async function translateBatchWithAi(
+  items: Array<{ key: string; ar: string }>
+): Promise<Record<string, { th: string; en: string }>> {
+  try {
+    const res = await fetch('/api/translate-batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items }),
+    });
+    const data = await res.json();
+    if (data.success && data.translations) {
+      return data.translations;
+    }
+    return {};
+  } catch (err) {
+    console.warn('AI batch translation client error:', err);
+    return {};
+  }
+}
 
 
 

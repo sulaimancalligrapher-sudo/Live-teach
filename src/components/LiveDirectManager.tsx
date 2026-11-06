@@ -275,7 +275,7 @@ export default function LiveDirectManager({
       const res = await toggleShowPdfInRoom(show);
       if (res.success && res.state) {
         setSessionState(res.state);
-        showNotice(show ? 'تم إظهار ملف الـ PDF في شاشة العرض 📚' : 'تم إخفاء ملف الـ PDF من شاشة العرض');
+        showNotice(show ? 'تم إظهار ملف الـ PDF في شاشة العرض ' : 'تم إخفاء ملف الـ PDF من شاشة العرض');
       }
     } catch (e) {
       showNotice('حدث خطأ أثناء تعديل ظهور ملف الـ PDF', 'error');
@@ -303,7 +303,7 @@ export default function LiveDirectManager({
       const res = await toggleShowPdfToStudents(show);
       if (res.success && res.state) {
         setSessionState(res.state);
-        showNotice(show ? 'تم إظهار ومزامنة ملف الـ PDF في أجهزة الطلاب 📱' : 'تم إخفاء ملف الـ PDF من أجهزة الطلاب 📱');
+        showNotice(show ? 'تم إظهار ومزامنة ملف الـ PDF في أجهزة الطلاب ' : 'تم إخفاء ملف الـ PDF من أجهزة الطلاب ');
       }
     } catch (e) {
       showNotice('حدث خطأ أثناء تعديل ظهور ملف الـ PDF للطلاب', 'error');
@@ -340,7 +340,7 @@ export default function LiveDirectManager({
       if (res.success && res.state) {
         setSessionState(res.state);
         setActivePdfPreviewPage(1);
-        showNotice(`تم تفعيل وعرض ملف "${lesson.title}" بشاشة البروجكتر 🚀`);
+        showNotice(`تم تفعيل وعرض ملف "${lesson.title}" بشاشة البروجكتر `);
       }
     } catch (e) {
       showNotice('تعذر تحديث ملف الـ PDF في الجلسة المباشرة', 'error');
@@ -423,7 +423,7 @@ export default function LiveDirectManager({
               }
             : p
         );
-        showNotice('تم تعديل بيانات ملف الـ PDF بنجاح ✏️');
+        showNotice('تم تعديل بيانات ملف الـ PDF بنجاح ');
       } else {
         // Adding new item
         let finalUrl = '';
@@ -459,7 +459,7 @@ export default function LiveDirectManager({
           addedAt: Date.now(),
         };
         updatedList = [newItem, ...pdfLessons];
-        showNotice('تمت إضافة ملف الـ PDF وتجهيزه للعرض الفوري بنجاح 📚');
+        showNotice('تمت إضافة ملف الـ PDF وتجهيزه للعرض الفوري بنجاح ');
       }
 
       setPdfLessons(updatedList);
@@ -542,7 +542,7 @@ export default function LiveDirectManager({
       const res = await fetchPdfLessonsFromSheet();
       if (res.success && res.data) {
         setPdfLessons(res.data);
-        if (showToast) showNotice('تمت مزامنة عروض الـ PDF من ورقة PDF-Lessons بنجاح! 📄');
+        if (showToast) showNotice('تمت مزامنة عروض الـ PDF من ورقة PDF-Lessons بنجاح! ');
       } else if (showToast) {
         showNotice(res.message || 'تعذر القراءة من الشيت، تم استخدام الملفات المحفوظة محلياً', 'info');
       }
@@ -559,7 +559,7 @@ export default function LiveDirectManager({
     try {
       const res = await setupPdfLessonsSheetApi();
       if (res.success) {
-        showNotice(res.message || 'تمت تهيئة ورقة PDF-Lessons بنجاح! 📄');
+        showNotice(res.message || 'تمت تهيئة ورقة PDF-Lessons بنجاح! ');
         await loadPdfLessons();
       } else {
         showNotice(res.message || 'فشلت التهيئة، تأكد من ربط الشيت', 'error');
@@ -707,7 +707,7 @@ export default function LiveDirectManager({
     if (!ok) return;
     try {
       await clearConnectedStudents();
-      showNotice('تم تصفير وتنظيف قائمة الطلاب المتصلين بنجاح 🔄');
+      showNotice('تم تصفير وتنظيف قائمة الطلاب المتصلين بنجاح ');
     } catch (e: any) {
       showNotice('فشل تصفير القائمة: ' + (e?.message || ''), 'error');
     }
@@ -781,7 +781,7 @@ export default function LiveDirectManager({
       if (res && res.state) {
         setSessionState(res.state);
       }
-      showNotice(`تم تصفير ومسح ذاكرة إجابات موضوع "${selectedLessonTitle || 'الحصة'}" بالكامل بنجاح 🔄`, 'info');
+      showNotice(`تم تصفير ومسح ذاكرة إجابات موضوع "${selectedLessonTitle || 'الحصة'}" بالكامل بنجاح `, 'info');
       await loadAnswers().catch(() => {});
     } catch {
       showNotice('فشل تصفير الجلسة', 'error');
@@ -805,7 +805,7 @@ export default function LiveDirectManager({
       setAnswers([]);
       const res = await clearLiveAnswersSheetDirect();
       if (res && res.success) {
-        showNotice(res.message || 'تم تفريغ ومسح ورقة Answers-Live بنجاح 🗑️', 'success');
+        showNotice(res.message || 'تم تفريغ ومسح ورقة Answers-Live بنجاح ', 'success');
       } else {
         showNotice('تم مسح السجل محلياً بنجاح', 'info');
       }
@@ -824,7 +824,7 @@ export default function LiveDirectManager({
     try {
       const res = await setupLiveDirectSheetsApi();
       if (res.success) {
-        showNotice(res.message || 'تم تهيئة وتأكيد أوراق Questions-Live و Answers-Live بنجاح في الشيت! ⚡', 'success');
+        showNotice(res.message || 'تم تهيئة وتأكيد أوراق Questions-Live و Answers-Live بنجاح في الشيت! ', 'success');
         loadLessons();
         loadAnswers();
       } else {
@@ -857,7 +857,7 @@ export default function LiveDirectManager({
             showResult: 'نعم',
           });
         }
-        showNotice(`تم بدء الحصة المباشرة بنجاح! رمز الحضور للطلاب هو (${res.pin}) 🚀`, 'success');
+        showNotice(`تم بدء الحصة المباشرة بنجاح! رمز الحضور للطلاب هو (${res.pin}) `, 'success');
       }
     } catch (e: any) {
       console.error('Failed to start live session:', e);
@@ -1142,7 +1142,7 @@ export default function LiveDirectManager({
       if (typeof window !== 'undefined') {
         localStorage.setItem('local_live_direct_questions_cache', JSON.stringify(updated));
       }
-      showNotice(`تم حذف موضوع "${title}" بنجاح 🗑️`);
+      showNotice(`تم حذف موضوع "${title}" بنجاح `);
     } catch (e: any) {
       showNotice('فشل حذف الموضوع', 'error');
     }
@@ -1162,7 +1162,7 @@ export default function LiveDirectManager({
           const res = await recordLiveAnswersBatchDirect(recordsToSave);
           if (res && res.success) {
             savedCount = res.count ?? recordsToSave.length;
-            showNotice(`تم توثيق إجابات ${savedCount} طالب في ورقة Answers-Live بنجاح 💾`, 'success');
+            showNotice(`تم توثيق إجابات ${savedCount} طالب في ورقة Answers-Live بنجاح `, 'success');
           } else {
             showNotice(`تنبيه: تعذر الحفظ في Google Sheets: ${res?.message || 'تحقق من الرابط في الإعدادات'}`, 'error');
           }
@@ -1203,9 +1203,9 @@ export default function LiveDirectManager({
       await endLiveProgram();
       await finishLiveSession();
       if (savedCount > 0) {
-        showNotice(`تم حفظ إجابات ${savedCount} طالب وإنهاء الحصة المباشرة وتحديث الشاشة بنجاح 🛑`, 'success');
+        showNotice(`تم حفظ إجابات ${savedCount} طالب وإنهاء الحصة المباشرة وتحديث الشاشة بنجاح `, 'success');
       } else {
-        showNotice('تم إنهاء الحصة المباشرة وإغلاق القاعة وتحديث الشاشة بنجاح 🛑', 'success');
+        showNotice('تم إنهاء الحصة المباشرة وإغلاق القاعة وتحديث الشاشة بنجاح ', 'success');
       }
       await loadAnswers().catch(() => {});
     } catch (e: any) {
@@ -1229,7 +1229,7 @@ export default function LiveDirectManager({
       const res = await recordLiveAnswersBatchDirect(recordsToSave);
       if (res && res.success) {
         const count = res.count ?? recordsToSave.length;
-        showNotice(`تم توثيق إجابات ${count} طالب في ورقة Answers-Live بنجاح دون إغلاق الحصة 💾`, 'success');
+        showNotice(`تم توثيق إجابات ${count} طالب في ورقة Answers-Live بنجاح دون إغلاق الحصة `, 'success');
         await loadAnswers();
       } else {
         showNotice(`تعذر الحفظ في الشيت: ${res?.message || 'خطأ غير معروف'}`, 'error');
@@ -1259,7 +1259,7 @@ export default function LiveDirectManager({
         timeLimit: 30,
         showResult: 'نعم',
       });
-      showNotice(`تم تفعيل موضوع الحصة: ${title} في وضع Live المباشر 🎙️ والقاعة مفتوحة للطلاب!`, 'success');
+      showNotice(`تم تفعيل موضوع الحصة: ${title} في وضع Live المباشر  والقاعة مفتوحة للطلاب!`, 'success');
     } catch (e) {
       console.error('Failed to init direct live session:', e);
     }
@@ -1285,7 +1285,7 @@ export default function LiveDirectManager({
         showResult: 'نعم',
         channel: 'direct',
       });
-      showNotice(`تم طرح السؤال (${idx + 1}) لجميع الطلاب والشاشة فورياً 🚀`, 'success');
+      showNotice(`تم طرح السؤال (${idx + 1}) لجميع الطلاب والشاشة فورياً `, 'success');
     } catch (e) {
       console.error('Failed to trigger live question:', e);
       showNotice('فشل طرح السؤال للطلاب', 'error');
@@ -1296,7 +1296,7 @@ export default function LiveDirectManager({
   const handleRevealAnswer = async () => {
     try {
       await revealLiveAnswer();
-      showNotice('تم كشف الإجابة الصحيحة للطلاب وعلى الشاشة 🌟', 'success');
+      showNotice('تم كشف الإجابة الصحيحة للطلاب وعلى الشاشة ', 'success');
 
       // Automatically advance question preview to the next question
       if (activeLesson?.questions && activeLesson.questions.length > 0) {
@@ -1314,9 +1314,9 @@ export default function LiveDirectManager({
   const handleReturnToExplanation = async () => {
     try {
       await returnToLiveExplanation({
-        explanationText: activeLesson ? `موضوع الحصة: ${activeLesson.title}` : 'استمع وركز مع شرح الأستاذ 🎙️',
+        explanationText: activeLesson ? `موضوع الحصة: ${activeLesson.title}` : 'استمع وركز مع شرح الأستاذ ',
       });
-      showNotice('تمت العودة لوضع الشرح المباشر (الشاشة وهواتف الطلاب في وضع الاستماع) ������️', 'info');
+      showNotice('تمت العودة لوضع الشرح المباشر (الشاشة وهواتف الطلاب في وضع الاستماع) ', 'info');
 
       // Ensure question preview is set to the next question if previous question was completed
       if (activeLesson?.questions && activeLesson.questions.length > 0) {
@@ -1374,7 +1374,7 @@ export default function LiveDirectManager({
       };
 
       const res = await saveLiveLessonDirect(sanitized);
-      showNotice(res.message || 'تم حفظ الأسئلة في ورقة Questions-Live بنجاح 💾', 'success');
+      showNotice(res.message || 'تم حفظ الأسئلة في ورقة Questions-Live بنجاح ', 'success');
       setIsEditorOpen(false);
       await loadLessons();
     } catch (err: any) {
@@ -1394,7 +1394,7 @@ export default function LiveDirectManager({
           <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center shadow-inner shrink-0">
             <Mic className="w-5 h-5 animate-pulse" />
           </div>
-          <h2 className="text-base sm:text-lg font-black text-slate-100">قسم الحصص المباشرة والأسئلة الحية (Live) 🎙️</h2>
+          <h2 className="text-base sm:text-lg font-black text-slate-100">قسم الحصص المباشرة والأسئلة الحية (Live) </h2>
         </div>
 
         {/* Row 2: Action Buttons */}
@@ -1465,7 +1465,7 @@ export default function LiveDirectManager({
             onClick={handleResetSession}
             disabled={isResettingSession}
             className="p-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-xl transition-all cursor-pointer border border-rose-500/20"
-            title="تصفير ذاكرة الحصة 🔄"
+            title="تصفير ذاكرة الحصة "
           >
             <RefreshCw className={`w-4 h-4 ${isResettingSession ? 'animate-spin' : ''}`} />
           </button>
@@ -1715,11 +1715,11 @@ export default function LiveDirectManager({
                       <span className="text-xs font-black text-slate-200">أدوات التعليم و PDF</span>
                       {Boolean(sessionState?.showPdfInRoom) && sessionState?.pdfUrl ? (
                         <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
-                          معروض حالياً بشاشة البروجكتر 🟢
+                          معروض حالياً بشاشة البروجكتر ●
                         </span>
                       ) : (
                         <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-medium">
-                          غير معروض بالشاشة ⚪
+                          غير معروض بالشاشة ○
                         </span>
                       )}
                     </div>
@@ -1750,7 +1750,7 @@ export default function LiveDirectManager({
                     const val = pdf.storageType === 'file' ? (pdf.url || `local://${pdf.id}`) : formatPdfEmbedUrl(pdf.url || '');
                     return (
                       <option key={pdf.id} value={val}>
-                        {pdf.title} {pdf.storageType === 'file' ? '📁 (ملف محلي سريع)' : '🌐 (رابط)'}
+                        {pdf.title} {pdf.storageType === 'file' ? ' (ملف محلي سريع)' : ' (رابط)'}
                       </option>
                     );
                   })}
@@ -1788,7 +1788,7 @@ export default function LiveDirectManager({
                     title={sessionState?.showPdfToStudents ? 'إخفاء ملف الـ PDF من أجهزة هواتف الطلاب' : 'إظهار ومزامنة ملف الـ PDF في أجهزة هواتف الطلاب'}
                   >
                     {sessionState?.showPdfToStudents ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                    <span>{sessionState?.showPdfToStudents ? 'معروض للطلاب 📱' : 'مخفي عن الطلاب 📱'}</span>
+                    <span>{sessionState?.showPdfToStudents ? 'معروض للطلاب ' : 'مخفي عن الطلاب '}</span>
                   </button>
                 )}
 
@@ -1854,8 +1854,8 @@ export default function LiveDirectManager({
                       {sessionState?.status === 'question_active'
                         ? `السؤال الحالي معروض للطلاب: س${(sessionState.currentQuestionIndex ?? 0) + 1}`
                         : sessionState?.status === 'revealed'
-                        ? 'تم كشف الإجابة الصحيحة للطلاب وعلى شاشة العرض ✨'
-                        : 'وضع الشرح المباشر نشط 🎙️ (شاشة العرض وهواتف الطلاب في وضع الاستماع ومتابعة الشرح)'}
+                        ? 'تم كشف الإجابة الصحيحة للطلاب وعلى شاشة العرض '
+                        : 'وضع الشرح المباشر نشط  (شاشة العرض وهواتف الطلاب في وضع الاستماع ومتابعة الشرح)'}
                     </h3>
                     <p className="text-xs text-slate-400 mt-0.5">
                       {sessionState?.status === 'question_active'
@@ -1874,7 +1874,7 @@ export default function LiveDirectManager({
                       className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
                     >
                       <Sparkles className="w-4 h-4" />
-                      <span>كشف الإجابة الصحيحة 🌟</span>
+                      <span>كشف الإجابة الصحيحة </span>
                     </button>
                   )}
 
@@ -1885,7 +1885,7 @@ export default function LiveDirectManager({
                       className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md transition-all cursor-pointer"
                     >
                       <Mic className="w-4 h-4" />
-                      <span>العودة لوضع الشرح 🎙️</span>
+                      <span>العودة لوضع الشرح </span>
                     </button>
                   )}
 
@@ -1919,7 +1919,7 @@ export default function LiveDirectManager({
                     title="تصفير ومسح ذاكرة إجابات موضوع الشرح المباشر الحالي من الخادم تماماً"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isResettingSession ? 'animate-spin' : ''}`} />
-                    <span>تصفير الذاكرة 🔄</span>
+                    <span>تصفير الذاكرة </span>
                   </button>
                 </div>
               </div>
@@ -1975,10 +1975,10 @@ export default function LiveDirectManager({
                           </span>
                         )}
                         {q.image && (
-                          <span className="text-[10px] bg-amber-400/20 text-amber-300 px-1 rounded">🖼️</span>
+                          <span className="text-[10px] bg-amber-400/20 text-amber-300 px-1 rounded"></span>
                         )}
                         {q.isTextAnswer && (
-                          <span className="text-[10px] bg-indigo-400/20 text-indigo-300 px-1 rounded">✍️</span>
+                          <span className="text-[10px] bg-indigo-400/20 text-indigo-300 px-1 rounded"></span>
                         )}
                       </button>
                     );
@@ -2003,11 +2003,11 @@ export default function LiveDirectManager({
                         )}
                         {activeLesson.questions[previewQuestionIndex].isTextAnswer ? (
                           <span className="px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 text-xs font-bold flex items-center gap-1">
-                            ✍️ إجابة كتابية / نصية
+                             إجابة كتابية / نصية
                           </span>
                         ) : (
                           <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 text-xs font-bold">
-                            🔘 خيارات متعددة ({(activeLesson.questions[previewQuestionIndex].options || []).length})
+                             خيارات متعددة ({(activeLesson.questions[previewQuestionIndex].options || []).length})
                           </span>
                         )}
                       </div>
@@ -2050,7 +2050,7 @@ export default function LiveDirectManager({
                               title="إعادة طرح السؤال للطلاب مرة أخرى"
                             >
                               <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
-                              <span>إعادة طرح السؤال 🔄</span>
+                              <span>إعادة طرح السؤال </span>
                             </button>
                             {previewQuestionIndex + 1 < activeLesson.questions.length && (
                               <button
@@ -2063,7 +2063,7 @@ export default function LiveDirectManager({
                                 className="px-5 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-500/20 transition-all cursor-pointer active:scale-95"
                               >
                                 <Play className="w-4 h-4 fill-slate-950" />
-                                <span>طرح السؤال التالي (س{previewQuestionIndex + 2}) 🚀</span>
+                                <span>طرح السؤال التالي (س{previewQuestionIndex + 2}) </span>
                               </button>
                             )}
                           </div>
@@ -2074,7 +2074,7 @@ export default function LiveDirectManager({
                             className="px-5 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer active:scale-95"
                           >
                             <Play className="w-4 h-4 fill-slate-950" />
-                            <span>طرح السؤال للطلاب الآن 🚀</span>
+                            <span>طرح السؤال للطلاب الآن </span>
                           </button>
                         )}
                       </div>
@@ -2276,9 +2276,9 @@ export default function LiveDirectManager({
                         </span>
                         <span className="text-xs font-bold text-amber-400">
                           {sessionState?.status === 'question_active' 
-                            ? '⚡ سؤال تفاعلي نشط معروض على الشاشة وأجهزة الطلاب' 
+                            ? ' سؤال تفاعلي نشط معروض على الشاشة وأجهزة الطلاب' 
                             : sessionState?.status === 'revealed'
-                            ? '🎯 تم كشف الإجابة النموذجية'
+                            ? ' تم كشف الإجابة النموذجية'
                             : 'متابعة إجابات وتفاعل الطلاب على الأسئلة الحية'}
                         </span>
                       </div>
@@ -2354,7 +2354,7 @@ export default function LiveDirectManager({
                     <div>
                       <h4 className="text-xs sm:text-sm font-bold text-slate-300">
                         {filterUnansweredOnly
-                          ? '🎉 جميع الطلاب المتصلين قاموا بالإجابة على السؤال الحالي!'
+                          ? ' جميع الطلاب المتصلين قاموا بالإجابة على السؤال الحالي!'
                           : studentSearch
                           ? 'لم يتم العثور على طالب يطابق البحث'
                           : 'لا يوجد طلاب متصلون حالياً بالحصة'}
@@ -2471,7 +2471,7 @@ export default function LiveDirectManager({
                 <BookOpen className="w-4 h-4" />
               </span>
               <h3 className="text-base font-black text-slate-100">
-                مكتبة أدوات التعليم وعرض ملفات PDF 📚
+                مكتبة أدوات التعليم وعرض ملفات PDF 
               </h3>
             </div>
 
@@ -2483,7 +2483,7 @@ export default function LiveDirectManager({
                 className="px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>إضافة درس / ملف PDF جديد ➕</span>
+                <span>إضافة درس / ملف PDF جديد +</span>
               </button>
 
               {sessionState?.pdfUrl && (
@@ -2515,7 +2515,7 @@ export default function LiveDirectManager({
                   title={sessionState?.showPdfToStudents ? 'إخفاء ملف الـ PDF عن أجهزة الطلاب' : 'إظهار ومزامنة ملف الـ PDF على أجهزة هواتف الطلاب'}
                 >
                   {sessionState?.showPdfToStudents ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                  <span>{sessionState?.showPdfToStudents ? 'مفعل لدى الطلاب 📱' : 'إظهار لدى الطلاب 📱'}</span>
+                  <span>{sessionState?.showPdfToStudents ? 'مفعل لدى الطلاب ' : 'إظهار لدى الطلاب '}</span>
                 </button>
               )}
 
@@ -2527,7 +2527,7 @@ export default function LiveDirectManager({
                 title="مزامنة ملفات PDF من ورقة PDF-Lessons في Google Sheets"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isSyncingPdfSheet ? 'animate-spin' : ''}`} />
-                <span>{isSyncingPdfSheet ? 'جارٍ المزامنة...' : 'مزامنة مع الشيت 🔄'}</span>
+                <span>{isSyncingPdfSheet ? 'جارٍ المزامنة...' : 'مزامنة مع الشيت '}</span>
               </button>
 
               <button
@@ -2538,7 +2538,7 @@ export default function LiveDirectManager({
                 title="إنشاء وتهيئة ورقة PDF-Lessons في Google Sheets تلقائياً"
               >
                 <FileSpreadsheet className={`w-3.5 h-3.5 ${isSettingUpPdfSheet ? 'animate-spin' : ''}`} />
-                <span>{isSettingUpPdfSheet ? 'جارٍ الإنشاء...' : 'تهيئة ورقة PDF بالشيت 📄'}</span>
+                <span>{isSettingUpPdfSheet ? 'جارٍ الإنشاء...' : 'تهيئة ورقة PDF بالشيت '}</span>
               </button>
             </div>
           </div>
@@ -2547,7 +2547,7 @@ export default function LiveDirectManager({
           <div className="p-4 bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900 border border-emerald-500/20 rounded-2xl flex items-start gap-3 text-xs text-emerald-200">
             <Sparkles className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
             <div className="space-y-1">
-              <h4 className="font-bold text-emerald-300">💡 كيف تضيف ملف من Google Drive بسهولة؟</h4>
+              <h4 className="font-bold text-emerald-300"> كيف تضيف ملف من Google Drive بسهولة؟</h4>
               <p className="text-slate-300 leading-relaxed text-[11px]">
                 افتح Google Drive واضغط بالزر الأيمن على ملف الـ PDF واختر <b>مشاركة (Share)</b> ثم اجعل الوصول <b>"أي شخص لديه الرابط يمكنه العرض"</b> وانسخ الرابط والصقه هنا. يقوم نظامنا تلقائياً بمعالجة الرابط وتحويله إلى عارض تفاعلي مدمج وسلس على شاشة البروجكتر.
               </p>
@@ -2572,7 +2572,7 @@ export default function LiveDirectManager({
                           ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                           : 'bg-slate-800 text-slate-400'
                       }`}>
-                        {sessionState.showPdfInRoom ? 'معروض للطلاب بالمسرح 🟢' : 'مخفي حالياً ⚪'}
+                        {sessionState.showPdfInRoom ? 'معروض للطلاب بالمسرح ●' : 'مخفي حالياً ○'}
                       </span>
                     </div>
                     <h4 className="text-sm font-black text-amber-300 mt-0.5">
@@ -2711,7 +2711,7 @@ export default function LiveDirectManager({
                           {/* Status Badge */}
                           {isShowing && (
                             <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-black shrink-0">
-                              معروض الآن 🟢
+                              معروض الآن ●
                             </span>
                           )}
                         </div>
@@ -2720,7 +2720,7 @@ export default function LiveDirectManager({
                         <div className="flex items-center gap-1.5 text-[11px] text-slate-400 font-mono truncate bg-slate-950/60 px-2.5 py-1 rounded-lg border border-slate-800/80">
                           {item.storageType === 'file' ? (
                             <span className="flex items-center gap-1 text-emerald-400 font-bold">
-                              <span>📁 ملف محلي مخزن (فائق السرعة)</span>
+                              <span> ملف محلي مخزن (فائق السرعة)</span>
                             </span>
                           ) : (
                             <>
@@ -2740,7 +2740,7 @@ export default function LiveDirectManager({
                             className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
                           >
                             <Play className="w-3 h-3 fill-white" />
-                            <span>عرض وتفعيل الآن 🚀</span>
+                            <span>عرض وتفعيل الآن </span>
                           </button>
 
                           {item.url && (
@@ -2810,7 +2810,7 @@ export default function LiveDirectManager({
                 title="إنشاء وتأكيد أوراق Live في ملف الشيت تلقائياً"
               >
                 <Sparkles className={`w-3.5 h-3.5 ${isSettingUpSheets ? 'animate-spin text-amber-400' : ''}`} />
-                <span className="hidden sm:inline">تهيئة الأوراق بالشيت ⚡</span>
+                <span className="hidden sm:inline">تهيئة الأوراق بالشيت </span>
               </button>
 
               <button
@@ -2839,7 +2839,7 @@ export default function LiveDirectManager({
             <div className="flex items-center gap-2">
               <FileSpreadsheet className="w-4 h-4 text-amber-400 shrink-0" />
               <span>
-                💡 <b>نظام تلقائي بالكامل:</b> ورقتي <b>Questions-Live</b> و <b>Answers-Live</b> تُنشأ وتُهيأ تلقائياً في ملف الشيت فور حفظ أول درس أو إجابة بدون الحاجة لإنشائها يدوياً.
+                 <b>نظام تلقائي بالكامل:</b> ورقتي <b>Questions-Live</b> و <b>Answers-Live</b> تُنشأ وتُهيأ تلقائياً في ملف الشيت فور حفظ أول درس أو إجابة بدون الحاجة لإنشائها يدوياً.
               </span>
             </div>
             <button
@@ -2847,7 +2847,7 @@ export default function LiveDirectManager({
               disabled={isSettingUpSheets}
               className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg text-[11px] shrink-0 transition-all cursor-pointer shadow-sm"
             >
-              {isSettingUpSheets ? 'جاري التهيئة...' : 'تأكيد الإنشاء بالشيت الآن ⚡'}
+              {isSettingUpSheets ? 'جاري التهيئة...' : 'تأكيد الإنشاء بالشيت الآن '}
             </button>
           </div>
 
@@ -2870,7 +2870,7 @@ export default function LiveDirectManager({
                 className="px-5 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs inline-flex items-center gap-2 cursor-pointer shadow-lg shadow-amber-500/10"
               >
                 <Plus className="w-4 h-4" />
-                <span>إضافة أول موضوع وأسئلة 🚀</span>
+                <span>إضافة أول موضوع وأسئلة </span>
               </button>
             </div>
           ) : (
@@ -2905,7 +2905,7 @@ export default function LiveDirectManager({
                       className="px-3.5 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-all cursor-pointer border border-amber-500/20"
                     >
                       <Radio className="w-3.5 h-3.5" />
-                      <span>بدء التدريس المباشر 🎙️</span>
+                      <span>بدء التدريس المباشر </span>
                     </button>
 
                     <button
@@ -2953,7 +2953,7 @@ export default function LiveDirectManager({
                 title="إنشاء وتأكيد ورقة Answers-Live في الشيت تلقائياً"
               >
                 <Sparkles className={`w-3.5 h-3.5 ${isSettingUpSheets ? 'animate-spin text-amber-400' : ''}`} />
-                <span>تهيئة الأوراق بالشيت ⚡</span>
+                <span>تهيئة الأوراق بالشيت </span>
               </button>
 
               <button
@@ -2964,7 +2964,7 @@ export default function LiveDirectManager({
                 title="مسح وتصفير جميع الإجابات المسجلة في ورقة Answers-Live بالكامل"
               >
                 <Trash2 className={`w-3.5 h-3.5 text-rose-400 ${isClearingAnswersSheetDirect ? 'animate-spin' : ''}`} />
-                <span>{isClearingAnswersSheetDirect ? 'جارٍ المسح...' : 'مسح سجل Answers-Live 🗑️'}</span>
+                <span>{isClearingAnswersSheetDirect ? 'جارٍ المسح...' : 'مسح سجل Answers-Live '}</span>
               </button>
 
               <button
@@ -2975,7 +2975,7 @@ export default function LiveDirectManager({
                 title="تصفير ومسح ذاكرة إجابات موضوع الشرح المباشر الحالي من الخادم"
               >
                 <RefreshCw className={`w-3.5 h-3.5 text-rose-400 ${isResettingSession ? 'animate-spin' : ''}`} />
-                <span>تصفير ذاكرة الحصة 🔄</span>
+                <span>تصفير ذاكرة الحصة </span>
               </button>
 
               <button
@@ -2986,7 +2986,7 @@ export default function LiveDirectManager({
                 title="تحديث السجل من الشيت"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${loadingAnswers ? 'animate-spin text-amber-400' : ''}`} />
-                <span>تحديث السجل 🔄</span>
+                <span>تحديث السجل </span>
               </button>
             </div>
 
@@ -3034,7 +3034,7 @@ export default function LiveDirectManager({
                     className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer active:scale-95 disabled:opacity-50 whitespace-nowrap"
                   >
                     <Save className={`w-4 h-4 ${isFinishingSession ? 'animate-spin' : ''}`} />
-                    <span>{isFinishingSession ? 'جارٍ الحفظ في الشيت...' : 'حفظ فوري في ورقة Answers-Live 💾'}</span>
+                    <span>{isFinishingSession ? 'جارٍ الحفظ في الشيت...' : 'حفظ فوري في ورقة Answers-Live '}</span>
                   </button>
                 </div>
               </div>
@@ -3400,7 +3400,7 @@ export default function LiveDirectManager({
                           </div>
                         ) : (
                           <div className="p-2.5 bg-indigo-950/30 border border-indigo-500/30 rounded-xl text-[11px] text-indigo-300">
-                            ✍️ سيكتب في الشيت كلمة <b>نص</b>، وسيقوم الطلاب بكتابة إجاباتهم يدوياً على أجهزتهم.
+                             سيكتب في الشيت كلمة <b>نص</b>، وسيقوم الطلاب بكتابة إجاباتهم يدوياً على أجهزتهم.
                           </div>
                         )}
                       </div>
@@ -3443,7 +3443,7 @@ export default function LiveDirectManager({
                   className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs flex items-center gap-1.5 shadow-md"
                 >
                   <Save className="w-4 h-4" />
-                  <span>{isSavingLesson ? 'جارٍ الحفظ في الشيت...' : 'حفظ في Questions-Live 💾'}</span>
+                  <span>{isSavingLesson ? 'جارٍ الحفظ في الشيت...' : 'حفظ في Questions-Live '}</span>
                 </button>
               </div>
             </motion.div>
@@ -3514,16 +3514,16 @@ export default function LiveDirectManager({
                 <div className="flex justify-between items-center pt-1 border-t border-slate-800/60">
                   <span className="text-slate-400">النتائج المسجلة للحفظ:</span>
                   <span className={`font-bold ${buildDirectAnswerRecords().length > 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
-                    {buildDirectAnswerRecords().length > 0 ? `${buildDirectAnswerRecords().length} طالب جاهز للتوثيق 💾` : 'لا توجد إجابات مسجلة'}
+                    {buildDirectAnswerRecords().length > 0 ? `${buildDirectAnswerRecords().length} طالب جاهز للتوثيق ` : 'لا توجد إجابات مسجلة'}
                   </span>
                 </div>
                 {buildDirectAnswerRecords().length > 0 ? (
                   <p className="text-[11px] text-emerald-400/90 font-medium bg-emerald-500/10 p-2 rounded-xl border border-emerald-500/20">
-                    ✅ سيتم توثيق إجابات {buildDirectAnswerRecords().length} طالب في ورقة <b>Answers-Live</b> تلقائياً عند التأكيد.
+                     سيتم توثيق إجابات {buildDirectAnswerRecords().length} طالب في ورقة <b>Answers-Live</b> تلقائياً عند التأكيد.
                   </p>
                 ) : (
                   <p className="text-[11px] text-amber-400/90 font-medium bg-amber-500/10 p-2 rounded-xl border border-amber-500/20">
-                    💡 لم يتم تسجيل أي إجابات طلاب حتى الآن (تأكد من إرسال الطلاب لإجاباتهم أثناء طرح السؤال).
+                     لم يتم تسجيل أي إجابات طلاب حتى الآن (تأكد من إرسال الطلاب لإجاباتهم أثناء طرح السؤال).
                   </p>
                 )}
               </div>
@@ -3543,7 +3543,7 @@ export default function LiveDirectManager({
                   className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white font-black rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-rose-900/30 cursor-pointer"
                 >
                   <Power className="w-4 h-4" />
-                  <span>تأكيد إنهاء الحصة 🛑</span>
+                  <span>تأكيد إنهاء الحصة </span>
                 </button>
               </div>
             </motion.div>
@@ -3568,7 +3568,7 @@ export default function LiveDirectManager({
                     <BookOpen className="w-4 h-4" />
                   </span>
                   <h3 className="text-base font-black text-slate-100">
-                    {editingPdfItem ? 'تعديل بيانات ملف الـ PDF ✏️' : 'إضافة ملف / درس PDF جديد ➕'}
+                    {editingPdfItem ? 'تعديل بيانات ملف الـ PDF ' : 'إضافة ملف / درس PDF جديد +'}
                   </h3>
                 </div>
                 <button
@@ -3592,7 +3592,7 @@ export default function LiveDirectManager({
                   }`}
                 >
                   <Upload className="w-4 h-4" />
-                  <span>رفع ملف PDF من جهازك (موصى به - فائق السرعة ⚡)</span>
+                  <span>رفع ملف PDF من جهازك (موصى به - فائق السرعة )</span>
                 </button>
                 <button
                   type="button"
@@ -3638,7 +3638,7 @@ export default function LiveDirectManager({
                       <label htmlFor="pdf-file-upload-input" className="cursor-pointer block space-y-2">
                         <Upload className="w-8 h-8 text-emerald-400 mx-auto animate-bounce" />
                         <div className="font-bold text-slate-200">
-                          {uploadedFile ? `✅ تم اختيار الملف: ${uploadedFile.name}` : 'اضغط هنا لاختيار ملف PDF من الكمبيوتر / الجوال'}
+                          {uploadedFile ? ` تم اختيار الملف: ${uploadedFile.name}` : 'اضغط هنا لاختيار ملف PDF من الكمبيوتر / الجوال'}
                         </div>
                         <p className="text-[11px] text-slate-500">
                           {uploadedFile ? `الحجم: ${(uploadedFile.size / (1024 * 1024)).toFixed(2)} ميجابايت` : 'يتم تخزين الملف فورياً داخل المتصفح (IndexedDB) ليعمل بـ 0 ثانية تأخير'}
@@ -3674,7 +3674,7 @@ export default function LiveDirectManager({
                       dir="ltr"
                     />
                     <p className="text-[11px] text-slate-400 mt-1">
-                      💡 يمكنك لصق رابط المشاركة المباشر من Google Drive كما هو، وسيقوم النظام بتشغيله تلقائياً.
+                       يمكنك لصق رابط المشاركة المباشر من Google Drive كما هو، وسيقوم النظام بتشغيله تلقائياً.
                     </p>
                   </div>
                 )}
@@ -3707,7 +3707,7 @@ export default function LiveDirectManager({
                   className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black rounded-xl text-xs flex items-center gap-1.5 shadow-md cursor-pointer"
                 >
                   <Save className="w-4 h-4" />
-                  <span>{editingPdfItem ? 'حفظ التعديلات' : 'إضافة للقائمة 📚'}</span>
+                  <span>{editingPdfItem ? 'حفظ التعديلات' : 'إضافة للقائمة '}</span>
                 </button>
               </div>
             </motion.div>

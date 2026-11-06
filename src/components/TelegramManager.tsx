@@ -127,7 +127,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
       setLastSyncedTime(nowStr);
 
       if (!silent) {
-        onNotify(`تمت المزامنة بنجاح! تم جلب ${totalStudentsCount || uniqueStudents.length} طالب من ورقة Settings، و ${linkedCount} طالب مربوط في التلغرام 🔄 (${nowStr})`, 'success');
+        onNotify(`تمت المزامنة بنجاح! تم جلب ${totalStudentsCount || uniqueStudents.length} طالب من ورقة Settings، و ${linkedCount} طالب مربوط في التلغرام  (${nowStr})`, 'success');
       }
     } catch (err: any) {
       if (!silent) {
@@ -151,7 +151,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
     try {
       const res = await setupTelegramSheetsInGas();
       if (res.success) {
-        onNotify(res.message || 'تم إنشاء وتهيئة أوراق التلغرام الأربعة في Google Sheets بنجاح! 📑', 'success');
+        onNotify(res.message || 'تم إنشاء وتهيئة أوراق التلغرام الأربعة في Google Sheets بنجاح! ', 'success');
         await handleSyncStudentsFromSheet();
       } else {
         onNotify(res.message || 'تعذر تهيئة الأوراق في Google Sheets.', 'error');
@@ -185,7 +185,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
     try {
       const res = await saveTelegramConfigToSheet(config);
       if (res.success) {
-        onNotify('تم حفظ وتحديث إعدادات التلغرام ومعرف الأستاذ في Google Sheets بنجاح! 💾✈️', 'success');
+        onNotify('تم حفظ وتحديث إعدادات التلغرام ومعرف الأستاذ في Google Sheets بنجاح! ️', 'success');
       } else {
         onNotify('تم الحفظ محلياً (تحذير: ' + (res.message || 'فشلت المزامنة مع الشيت') + ')', 'warning' as any);
       }
@@ -212,7 +212,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
           setConfig(updated);
           saveTelegramConfig(updated);
         }
-        onNotify(`البوت متصل بنجاح: @${res.data.username} 🤖`, 'success');
+        onNotify(`البوت متصل بنجاح: @${res.data.username} `, 'success');
       } else {
         onNotify('فشل التحقق من البوت: ' + (res.error || ''), 'error');
       }
@@ -234,20 +234,20 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
 
     setTestingTeacherMsg(true);
     try {
-      const testMsg = '📝 تجربة إرسال واجب الطالب (اسم تجريبي)\n📚 الموضوع: تمرين الخط\n📊 النتيجة الكلية: 100%';
+      const testMsg = ' تجربة إرسال واجب الطالب (اسم تجريبي)\n الموضوع: تمرين الخط\n النتيجة الكلية: 100%';
       const res = await sendTelegramMessageDirect({
         botToken: config.botToken.trim(),
         chatId: targetChatId,
         text: testMsg,
         buttons: [
-          { text: '🖼️ فتح صورة الواجب (تجريبي)', url: 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=600' },
-          { text: '🎙️ تشغيل الصوت (تجريبي)', url: 'https://www.google.com' }
+          { text: ' فتح صورة الواجب (تجريبي)', url: 'https://images.unsplash.com/photo-1544717305-2782549b5136?w=600' },
+          { text: ' تشغيل الصوت (تجريبي)', url: 'https://www.google.com' }
         ],
         parseMode: undefined as any
       });
 
       if (res.success) {
-        onNotify('تم إرسال الرسالة التجريبية مع الأزرار التفاعلية للأستاذ بنجاح! 📨✨', 'success');
+        onNotify('تم إرسال الرسالة التجريبية مع الأزرار التفاعلية للأستاذ بنجاح! ', 'success');
       } else {
         onNotify('فشل إرسال رسالة الأستاذ: ' + (res.error || 'تأكد من إرسال /start للبوت من حساب الأستاذ أولاً'), 'error');
       }
@@ -296,7 +296,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
     try {
       const res = await setTelegramWebhook(config.botToken, webAppUrl);
       if (res.success) {
-        onNotify('تم تفعيل Webhook بنجاح! الآن البوت سيرد تلقائياً عند ضغط الطالب Start 🚀', 'success');
+        onNotify('تم تفعيل Webhook بنجاح! الآن البوت سيرد تلقائياً عند ضغط الطالب Start ', 'success');
         const info = await getTelegramWebhookInfo(config.botToken);
         if (info.success) setWebhookInfo(info.data);
       } else {
@@ -327,7 +327,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
     try {
       const res = await deleteTelegramWebhook(config.botToken);
       if (res.success) {
-        onNotify('تم إيقاف Webhook فوراً ومسح كافة الرسائل المعلقة بنجاح 🛑🧹', 'success');
+        onNotify('تم إيقاف Webhook فوراً ومسح كافة الرسائل المعلقة بنجاح ', 'success');
         const info = await getTelegramWebhookInfo(config.botToken);
         if (info.success) setWebhookInfo(info.data);
       } else {
@@ -353,9 +353,9 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
       // 2. If webAppUrl exists, re-register webhook with clean queue
       if (webAppUrl && webAppUrl.startsWith('http')) {
         await setTelegramWebhook(config.botToken, webAppUrl);
-        onNotify('تم تفريغ طابور التلغرام ومسح الرسائل المتكررة بنجاح وإعادة تفعيل Webhook! 🧹✨', 'success');
+        onNotify('تم تفريغ طابور التلغرام ومسح الرسائل المتكررة بنجاح وإعادة تفعيل Webhook! ', 'success');
       } else {
-        onNotify('تم تفريغ طابور رسائل تلغرام المعلقة بنجاح! 🧹', 'success');
+        onNotify('تم تفريغ طابور رسائل تلغرام المعلقة بنجاح! ', 'success');
       }
       const info = await getTelegramWebhookInfo(config.botToken);
       if (info.success) setWebhookInfo(info.data);
@@ -371,7 +371,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
     try {
       const res = await saveTelegramTemplatesToSheet(templates);
       if (res.success) {
-        onNotify('تم حفظ قوالب رسائل التلغرام وتحديثها في Google Sheets بنجاح! 📝💾', 'success');
+        onNotify('تم حفظ قوالب رسائل التلغرام وتحديثها في Google Sheets بنجاح! ', 'success');
       } else {
         onNotify('تم الحفظ محلياً: ' + (res.message || ''), 'warning' as any);
       }
@@ -457,7 +457,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
 
         setBroadcastResult({
           success: true,
-          message: `تم إرسال الرسالة بنجاح إلى جميع الطلاب المرتبطين (${sentCount} طالب) 🎉`
+          message: `تم إرسال الرسالة بنجاح إلى جميع الطلاب المرتبطين (${sentCount} طالب) `
         });
         onNotify(`تم الإرسال لـ ${sentCount} طالب!`, 'success');
         return;
@@ -475,7 +475,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
       if (res.success) {
         setBroadcastResult({
           success: true,
-          message: 'تم إرسال الرسالة عبر تلغرام بنجاح! 🚀'
+          message: 'تم إرسال الرسالة عبر تلغرام بنجاح! '
         });
         onNotify('تم إرسال الرسالة بنجاح!', 'success');
       } else {
@@ -531,7 +531,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
           }`}
         >
           <MessageSquare className="w-4 h-4" />
-          <span>قوالب الرسائل واللغات 🇸🇦🇹🇭🇬🇧</span>
+          <span>قوالب الرسائل واللغات [AR][TH][EN]</span>
         </button>
 
         <button
@@ -555,7 +555,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
           }`}
         >
           <FileText className="w-4 h-4" />
-          <span>هيكل الشيت والكود البرمجي 📋</span>
+          <span>هيكل الشيت والكود البرمجي </span>
         </button>
       </div>
 
@@ -639,7 +639,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                       title="إرسال رسالة تجريبية نصية مبسطة لمعرف الأستاذ مباشرة"
                     >
                       {testingTeacherMsg ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}
-                      <span>تجربة إرسال رسالة الأستاذ 📨</span>
+                      <span>تجربة إرسال رسالة الأستاذ </span>
                     </button>
                   )}
                 </div>
@@ -739,7 +739,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                 className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-emerald-900/30 flex items-center gap-2 disabled:opacity-50 cursor-pointer shrink-0"
               >
                 {settingUpSheets ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                <span>{settingUpSheets ? 'جاري التهيئة...' : 'إنشاء وتهيئة أوراق التلغرام في الشيت 📑'}</span>
+                <span>{settingUpSheets ? 'جاري التهيئة...' : 'إنشاء وتهيئة أوراق التلغرام في الشيت '}</span>
               </button>
             </div>
 
@@ -762,7 +762,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                     className="px-4 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-sky-500/20 flex items-center gap-2 disabled:opacity-50 cursor-pointer"
                   >
                     {settingWebhook ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                    <span>تفعيل / تحديث Webhook 🚀</span>
+                    <span>تفعيل / تحديث Webhook </span>
                   </button>
                   <button
                     onClick={handleStopWebhook}
@@ -771,7 +771,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                     title="إيقاف Webhook فوراً ومسح طابور التلغرام لإيقاف الرسائل المتكررة تماماً"
                   >
                     <Trash2 className="w-4 h-4 text-rose-400" />
-                    <span>إيقاف الـ Webhook ومسح الطابور 🛑</span>
+                    <span>إيقاف الـ Webhook ومسح الطابور </span>
                   </button>
                   <button
                     onClick={handleCheckWebhook}
@@ -788,7 +788,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
               {webhookInfo && (
                 <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 text-[11px] font-mono text-slate-300 space-y-2">
                   <div className="flex items-center justify-between">
-                    <div><b>حالة Webhook في تلغرام:</b> {webhookInfo.url ? <span className="text-emerald-400">مفعل ✅</span> : <span className="text-amber-400">متوقف (تم مسحه بالكامل) 🛑</span>}</div>
+                    <div><b>حالة Webhook في تلغرام:</b> {webhookInfo.url ? <span className="text-emerald-400">مفعل </span> : <span className="text-amber-400">متوقف (تم مسحه بالكامل) </span>}</div>
                     {webhookInfo.pending_update_count !== undefined && (
                       <span className={`px-2 py-0.5 rounded text-[10px] ${webhookInfo.pending_update_count > 0 ? 'bg-amber-500/20 text-amber-300' : 'bg-slate-800 text-slate-400'}`}>
                         الرسائل المعلقة في الطابور: {webhookInfo.pending_update_count}
@@ -804,7 +804,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                       </div>
                       {getWebAppUrl() && webhookInfo.url !== getWebAppUrl() && (
                         <div className="p-2 bg-amber-500/15 border border-amber-500/30 text-amber-300 rounded-lg text-xs font-sans">
-                          ⚠️ <b>تنبيه:</b> رابط Webhook المسجل في تلغرام يختلف عن رابط الـ Web App الحالي في المنصة! اضغط زر <b>(تفعيل / تحديث Webhook 🚀)</b> لتوجيه البوت للرابط الصحيح.
+                           <b>تنبيه:</b> رابط Webhook المسجل في تلغرام يختلف عن رابط الـ Web App الحالي في المنصة! اضغط زر <b>(تفعيل / تحديث Webhook )</b> لتوجيه البوت للرابط الصحيح.
                         </div>
                       )}
                     </div>
@@ -818,7 +818,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                       </div>
                       {webhookInfo.last_error_message.includes('302') && (
                         <p className="text-[11px] text-rose-200/90 leading-relaxed pt-1 border-t border-rose-500/20">
-                          💡 <b>سبب الخطأ 302 وحله:</b> خادم Apps Script يطلب إذناً بالدخول أو تم نشره بصلاحية خاصة. لحله: في صفحة Google Apps Script اضغط <b>Deploy</b> ⬅️ <b>Manage deployments</b> ⬅️ اختر تعديل وتأكد أن <b>Who has access</b> مضبوط على <b>Anyone (أي شخص)</b>، ثم أنشئ نسحة نشر جديدة وضع رابطها في إعدادات المنصة.
+                           <b>سبب الخطأ 302 وحله:</b> خادم Apps Script يطلب إذناً بالدخول أو تم نشره بصلاحية خاصة. لحله: في صفحة Google Apps Script اضغط <b>Deploy</b> ⬅️ <b>Manage deployments</b> ⬅️ اختر تعديل وتأكد أن <b>Who has access</b> مضبوط على <b>Anyone (أي شخص)</b>، ثم أنشئ نسحة نشر جديدة وضع رابطها في إعدادات المنصة.
                         </p>
                       )}
                     </div>
@@ -909,7 +909,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                 className="px-6 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-60"
               >
                 {savingConfig ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                <span>{savingConfig ? 'جاري الحفظ والمزامنة السحابية...' : 'حفظ وتطبيق إعدادات التلغرام في الشيت 💾'}</span>
+                <span>{savingConfig ? 'جاري الحفظ والمزامنة السحابية...' : 'حفظ وتطبيق إعدادات التلغرام في الشيت '}</span>
               </button>
             </div>
           </div>
@@ -946,7 +946,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                         : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    👤 خاص الأستاذ
+                     خاص الأستاذ
                   </button>
 
                   <button
@@ -958,7 +958,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                         : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    👥 قروب الأساتذة
+                     قروب الأساتذة
                   </button>
 
                   <button
@@ -970,7 +970,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                         : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    🎓 طالب محدد
+                     طالب محدد
                   </button>
 
                   <button
@@ -982,7 +982,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                         : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    📢 جميع الطلاب
+                     جميع الطلاب
                   </button>
                 </div>
               </div>
@@ -1002,7 +1002,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                       const isLinked = !!linkedStudents[key]?.chatId;
                       return (
                         <option key={idx} value={key}>
-                          {s.name} (شيت #{s.sheet}) {isLinked ? '✅ مرتبط بالتليجرام' : '⚠️ غير مرتبط'}
+                          {s.name} (شيت #{s.sheet}) {isLinked ? ' مرتبط بالتليجرام' : ' غير مرتبط'}
                         </option>
                       );
                     })}
@@ -1030,7 +1030,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                     type="text"
                     value={broadcastBtnLabel}
                     onChange={e => setBroadcastBtnLabel(e.target.value)}
-                    placeholder="مثال: ������ فتح صفحة الدروس"
+                    placeholder="مثال:  فتح صفحة الدروس"
                     className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 text-slate-200 rounded-xl text-xs outline-none"
                   />
                 </div>
@@ -1055,7 +1055,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                   className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-extrabold text-xs rounded-xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
                 >
                   {sendingBroadcast ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  <span>إرسال الرسالة عبر التلغرام الآن 🚀</span>
+                  <span>إرسال الرسالة عبر التلغرام الآن </span>
                 </button>
               </div>
 
@@ -1128,7 +1128,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1 flex items-center gap-1.5">
-                      <span>🇸🇦 النص باللغة العربية (Arabic):</span>
+                      <span>[AR] النص باللغة العربية (Arabic):</span>
                     </label>
                     <textarea
                       rows={4}
@@ -1140,7 +1140,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
 
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1 flex items-center gap-1.5">
-                      <span>🇹🇭 النص باللغة التايلاندية (Thai):</span>
+                      <span>[TH] النص باللغة التايلاندية (Thai):</span>
                     </label>
                     <textarea
                       rows={4}
@@ -1152,7 +1152,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
 
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1 flex items-center gap-1.5">
-                      <span>🇬🇧 النص باللغة الإنجليزية (English):</span>
+                      <span>[EN] النص باللغة الإنجليزية (English):</span>
                     </label>
                     <textarea
                       rows={4}
@@ -1191,37 +1191,37 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
                     <div>
                       <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                        🇸🇦 نص الزر (بالعربية):
+                        [AR] نص الزر (بالعربية):
                       </label>
                       <input
                         type="text"
                         value={activeTemplate.buttonTextAr || ''}
                         onChange={e => updateTemplateField(activeTemplate.key, 'buttonTextAr', e.target.value)}
-                        placeholder="🔗 فتح ملف الواجب"
+                        placeholder=" فتح ملف الواجب"
                         className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 text-slate-200 rounded-xl text-xs outline-none"
                       />
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                        🇹🇭 نص الزر (بالتايلاندية):
+                        [TH] نص الزر (بالتايلاندية):
                       </label>
                       <input
                         type="text"
                         value={activeTemplate.buttonTextTh || ''}
                         onChange={e => updateTemplateField(activeTemplate.key, 'buttonTextTh', e.target.value)}
-                        placeholder="🔗 เปิดไฟล์การบ้าน"
+                        placeholder=" เปิดไฟล์การบ้าน"
                         className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 text-slate-200 rounded-xl text-xs outline-none"
                       />
                     </div>
                     <div>
                       <label className="block text-[10px] font-bold text-slate-400 mb-1">
-                        🇬🇧 نص الزر (بالإنجليزية):
+                        [EN] نص الزر (بالإنجليزية):
                       </label>
                       <input
                         type="text"
                         value={activeTemplate.buttonTextEn || ''}
                         onChange={e => updateTemplateField(activeTemplate.key, 'buttonTextEn', e.target.value)}
-                        placeholder="🔗 View Homework File"
+                        placeholder=" View Homework File"
                         className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 text-slate-200 rounded-xl text-xs outline-none"
                       />
                     </div>
@@ -1231,7 +1231,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                     <div className="flex items-center gap-2 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[11px] text-amber-200">
                       <span>معاينة الزر:</span>
                       <span className="px-3 py-1 bg-amber-500 text-slate-950 font-bold rounded-lg shadow-sm">
-                        {activeTemplate.buttonTextAr || activeTemplate.buttonTextEn || '🔗 فتح الرابط'}
+                        {activeTemplate.buttonTextAr || activeTemplate.buttonTextEn || ' فتح الرابط'}
                       </span>
                     </div>
                   )}
@@ -1244,7 +1244,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                     className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
                   >
                     {savingTemplates ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                    <span>{savingTemplates ? 'جاري الحفظ في الشيت...' : 'حفظ ومزامنة القوالب مع Google Sheets 💾'}</span>
+                    <span>{savingTemplates ? 'جاري الحفظ في الشيت...' : 'حفظ ومزامنة القوالب مع Google Sheets '}</span>
                   </button>
                 </div>
               </div>
@@ -1292,7 +1292,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                     className="px-3 py-1.5 bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${syncingSheetStudents || isAutoSyncing ? 'animate-spin' : ''}`} />
-                    <span>مزامنة فورية 🔄</span>
+                    <span>مزامنة فورية </span>
                   </button>
                   <input
                     type="text"
@@ -1337,7 +1337,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                             <td className="p-3 text-center">
                               {binding?.chatId ? (
                                 <span className="px-2.5 py-0.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 rounded-full font-bold text-[10px]">
-                                  مفعل ✅
+                                  مفعل 
                                 </span>
                               ) : (
                                 <span className="px-2.5 py-0.5 bg-slate-800 text-slate-400 rounded-full text-[10px]">
@@ -1453,7 +1453,7 @@ export default function TelegramManager({ answers, onNotify }: TelegramManagerPr
                 <li>افتح محادثة مع البوت الخاص بك واضغط <b>Start</b> أو أرسل كلمة ترحيبية.</li>
                 <li>اضغط على زر <b>جلب معرفات الدردشة الأخيرة</b> ليظهر لك معرفك <code>Chat ID</code> واضغط <b>تعيين كأستاذ</b>.</li>
                 <li>(اختياري للقروب): أضف البوت كعضو في قروب الأساتذة، ثم اضغط جلب المعرفات واختر <b>تعيين كقروب</b>.</li>
-                <li>لتجربة الإرسال: اذهب إلى تبويب <b>إرسال رسائل وتنبيهات</b>، اكتب نصاً واضغط إرسال وستصلك فوراً على هاتفك! 🚀</li>
+                <li>لتجربة الإرسال: اذهب إلى تبويب <b>إرسال رسائل وتنبيهات</b>، اكتب نصاً واضغط إرسال وستصلك فوراً على هاتفك! </li>
               </ol>
             </div>
           </div>

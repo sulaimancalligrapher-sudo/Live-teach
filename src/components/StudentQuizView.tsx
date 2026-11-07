@@ -11,6 +11,7 @@ import {
 } from '../types';
 import { submitStudentQuizAnswer, markStudentQuizFinished, setStudentQuizRetryMode, recordQuizAnswersBatchDirect } from '../api';
 import LanguageSelector from './LanguageSelector';
+import { useLanguage } from '../translations';
 
 interface StudentQuizViewProps {
   quizState: QuizActiveState;
@@ -53,6 +54,7 @@ export default function StudentQuizView({
   studentName,
   onExit,
 }: StudentQuizViewProps) {
+  const { t, language } = useLanguage();
   // Guaranteed unified student key
   const studentKey = getQuizStudentKey(username || studentName || 'طالب', sheetNumber);
   const studentProgress = quizState.participants?.[studentKey];

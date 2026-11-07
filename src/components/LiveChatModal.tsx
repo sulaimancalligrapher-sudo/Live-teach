@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { LiveStudentMessage, LiveConnectedStudent } from '../types';
 import { showAppConfirm } from './AppDialog';
+import { useLanguage } from '../translations';
 
 interface LiveChatModalProps {
   isOpen: boolean;
@@ -44,6 +45,7 @@ export default function LiveChatModal({
   onSendStudentMessage,
   onSendTeacherBroadcast,
 }: LiveChatModalProps) {
+  const { t } = useLanguage();
   const [selectedMessage, setSelectedMessage] = useState<LiveStudentMessage | null>(null);
   const [replyText, setReplyText] = useState('');
   const [replyType, setReplyType] = useState<'private' | 'public'>('private');
@@ -262,10 +264,10 @@ export default function LiveChatModal({
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm sm:text-base font-black text-slate-100">
-                  {isTeacher ? 'محادثة وتفاعل الطلاب المباشر' : 'محادثة مع الأستاذ 💬'}
+                  {isTeacher ? 'محادثة وتفاعل الطلاب المباشر' : t('live_chat_with_teacher', 'محادثة مع الأستاذ 💬')}
                 </h3>
                 <span className="px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 text-[11px] font-mono font-bold">
-                  {filteredMessages.length} رسالة
+                  {filteredMessages.length}
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 font-semibold hidden sm:block">
@@ -699,7 +701,7 @@ export default function LiveChatModal({
                   title="رفع اليد"
                 >
                   <Hand className="w-3.5 h-3.5 text-amber-400" />
-                  <span>رفع اليد ✋</span>
+                  <span>{t('live_chat_raise_hand', 'رفع اليد ✋')}</span>
                 </button>
                 <button
                   type="button"
@@ -709,7 +711,7 @@ export default function LiveChatModal({
                   title="موافق"
                 >
                   <ThumbsUp className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>موافق 👍</span>
+                  <span>{t('live_chat_agree', 'موافق 👍')}</span>
                 </button>
                 <button
                   type="button"
@@ -719,7 +721,7 @@ export default function LiveChatModal({
                   title="غير موافق"
                 >
                   <ThumbsDown className="w-3.5 h-3.5 text-rose-400" />
-                  <span>غير موافق 👎</span>
+                  <span>{t('live_chat_disagree', 'غير موافق 👎')}</span>
                 </button>
                 <button
                   type="button"
@@ -729,7 +731,7 @@ export default function LiveChatModal({
                   title="تشجيع وتصفيق"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>تصفيق 👏</span>
+                  <span>{t('live_chat_clap', 'تصفيق 👏')}</span>
                 </button>
               </div>
             </div>
@@ -753,7 +755,7 @@ export default function LiveChatModal({
                     handleStudentSubmit('question', studentInputText.trim());
                   }
                 }}
-                placeholder="اكتب سؤالك أو استفسارك للأستاذ هنا..."
+                placeholder={t('live_chat_input_placeholder', 'اكتب سؤالك أو استفسارك للأستاذ هنا...')}
                 className="flex-1 px-3.5 py-2 bg-slate-900 border border-slate-750 focus:border-indigo-400 rounded-xl text-slate-100 text-xs font-bold outline-none placeholder:text-slate-500"
               />
               <button
@@ -763,7 +765,7 @@ export default function LiveChatModal({
                 className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md disabled:opacity-40 cursor-pointer active:scale-95 transition-all shrink-0"
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>إرسال</span>
+                <span>{t('live_chat_send_btn', 'إرسال')}</span>
               </button>
             </div>
           </div>

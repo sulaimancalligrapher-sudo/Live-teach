@@ -800,7 +800,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
             className="w-full py-3.5 px-4 bg-gradient-to-r from-indigo-900/60 via-purple-900/50 to-indigo-900/60 hover:from-indigo-850 hover:to-purple-850 border border-indigo-500/40 hover:border-indigo-400 text-indigo-200 font-bold rounded-2xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-950/40 mb-4 active:scale-98"
           >
             <Camera className="w-4 h-4 text-indigo-400" />
-            <span>مسح رمز QR بالكاميرا (بيانات الطالب أو رمز الحضور) 📷</span>
+            <span>{t('live_student_scan_qr', 'مسح رمز QR بالكاميرا (بيانات الطالب أو رمز الحضور) 📷')}</span>
           </button>
 
           {/* رسالة نجاح مسح الكود */}
@@ -907,7 +907,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
                 <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                   <div className="flex items-center gap-2 text-indigo-400 font-bold text-sm">
                     <Camera className="w-4 h-4" />
-                    <span>مسح رمز QR بالكاميرا</span>
+                    <span>{t('live_student_scan_modal_title', 'مسح رمز QR بالكاميرا')}</span>
                   </div>
                   <button
                     type="button"
@@ -1411,27 +1411,31 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
               <div className="space-y-2 relative">
                 <span className="text-[11px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
                   {sessionState?.mode === 'direct'
-                    ? (sessionState?.status === 'playing' || sessionState?.status === 'direct_explanation' ? '🎙️ الأستاذ يشرح الآن' : 'في انتظار بدء الشرح المباشر')
-                    : (sessionState?.status === 'playing' ? '🔴 الفيديو يعمل على الشاشة الآن' : 'في انتظار بدء العرض')}
+                    ? (sessionState?.status === 'playing' || sessionState?.status === 'direct_explanation' 
+                        ? t('live_status_teacher_explaining', '🎙️ الأستاذ يشرح الآن') 
+                        : t('live_status_waiting_direct', 'في انتظار بدء الشرح المباشر'))
+                    : (sessionState?.status === 'playing' 
+                        ? t('live_status_video_playing', '🔴 الفيديو يعمل على الشاشة الآن') 
+                        : t('live_status_waiting_video', 'في انتظار بدء العرض'))}
                 </span>
                 <h3 className="text-lg sm:text-xl font-black text-slate-100">
-                  استمع وركز مع الأستاذ 👨‍🏫
+                  {t('live_listen_focus_title', 'استمع وركز مع الأستاذ 👨‍🏫')}
                 </h3>
                 <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed font-semibold">
                   {sessionState?.mode === 'direct'
-                    ? 'الأستاذ يلقي الشرح والملاحظات المباشرة. بمجرد أن يطرح الأستاذ سؤالاً تفاعلياً، ستظهر الخيارات هنا على جوالك فورياً لتجيب عنه مباشرة!'
-                    : 'الفيديو يُعرض أمامكم على الشاشة الكبيرة. عندما يصل الفيديو إلى سؤال تفاعلي، ستظهر الخيارات هنا على جوالك تلقائياً لتجيب عنها فوراً!'}
+                    ? t('live_direct_instruction_desc', 'الأستاذ يلقي الشرح والملاحظات المباشرة. بمجرد أن يطرح الأستاذ سؤالاً تفاعلياً، ستظهر الخيارات هنا على جوالك فورياً لتجيب عنه مباشرة!')
+                    : t('live_video_instruction_desc', 'الفيديو يُعرض أمامكم على الشاشة الكبيرة. عندما يصل الفيديو إلى سؤال تفاعلي، ستظهر الخيارات هنا على جوالك تلقائياً لتجيب عنها فوراً!')}
                 </p>
               </div>
 
               {/* Status footer pill */}
               <div className="inline-flex flex-wrap items-center justify-center gap-2 px-4 py-2 bg-slate-950 border border-slate-800/80 rounded-2xl text-[11px] text-slate-400 font-mono font-semibold">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span>أنت متصل بالقاعة وجاهز للإجابة 👍</span>
+                <span>{t('live_connected_ready', 'أنت متصل بالقاعة وجاهز للإجابة 👍')}</span>
                 {isPinVerified && (
                   <span className="text-emerald-400 font-bold flex items-center gap-1 border-r border-slate-800 pr-2 mr-1">
                     <ShieldCheck className="w-3.5 h-3.5" />
-                    <span>تم تأكيد الحضور</span>
+                    <span>{t('live_presence_confirmed', 'تم تأكيد الحضور')}</span>
                   </span>
                 )}
               </div>
@@ -1445,7 +1449,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
         <div className={`mx-auto flex items-center justify-between gap-3 transition-all duration-300 ${isShowingPdf ? 'max-w-6xl' : 'max-w-xl'}`}>
           <div className="text-xs text-slate-400 font-bold flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>متصل بالحصة التفاعلية</span>
+            <span>{t('live_footer_connected', 'متصل بالحصة التفاعلية')}</span>
           </div>
 
           {/* Single Unified Action: محادثة مع الأستاذ */}
@@ -1462,10 +1466,10 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
             }`}
           >
             <MessageSquare className="w-4 h-4" />
-            <span>محادثة مع الأستاذ 💬</span>
+            <span>{t('live_chat_with_teacher', 'محادثة مع الأستاذ 💬')}</span>
             {hasUnreadReplies && (
               <span className="px-1.5 py-0.2 rounded-full bg-slate-950 text-amber-300 text-[10px] font-mono font-bold animate-ping">
-                رد جديد!
+                {t('live_new_reply', 'رد جديد!')}
               </span>
             )}
           </button>

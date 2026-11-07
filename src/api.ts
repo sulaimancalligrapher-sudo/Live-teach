@@ -9,8 +9,8 @@ import {
 
 // Helper to get Web App URL from localStorage or environment variables
 export function getWebAppUrl(): string {
-  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbwSZUelstyypJWr_f4v4t_Eeu2LfBpNsIDcwxWza1ZXJMMBo9oUr1UO2VxnoCwQlfHZxg/exec';
-  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbwSZUelstyypJWr_f4v4t_Eeu2LfBpNsIDcwxWza1ZXJMMBo9oUr1UO2VxnoCwQlfHZxg/exec';
+  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzoO7NK1oE4RjYDZ-SD_SPzGDSGi8qNXk9LL16YqbszmhOEQVz6Yn7kPQPVEIQXKGR-XA/exec';
+  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbzoO7NK1oE4RjYDZ-SD_SPzGDSGi8qNXk9LL16YqbszmhOEQVz6Yn7kPQPVEIQXKGR-XA/exec';
 
   // 1. Check localStorage first (allows individual overrides / testing)
   const localUrl = localStorage.getItem('webAppUrl');
@@ -91,9 +91,12 @@ export async function loginStudent(username: string, sheetNumber: string, device
 }
 
 // 1b. Verify Student in Settings sheet (Column Z: Registration/Sheet, Column AA: Username, Column AB: Status)
+// Also records device ID and geolocation in Columns AE..AX
 export async function verifyStudentInSettings(
   username: string, 
-  sheetNumber?: string
+  sheetNumber?: string,
+  deviceId?: string,
+  coords?: { lat: number | null; lng: number | null }
 ): Promise<{ success: boolean; message?: string }> {
   if (!isApiConfigured()) {
     return { success: true };
@@ -101,41 +104,26 @@ export async function verifyStudentInSettings(
   const cleanUser = (username || '').trim();
   const cleanSheet = (sheetNumber || '').trim();
   if (!cleanUser) {
-    return { success: false, message: 'يرجى إدخال اسم الطالب' };
+    return { success: false, message: 'خطأ في الاسم ورقم التسجيل، يجب التواصل مع الإدارة' };
   }
 
-  try {
-    // 1. Try verifyStudent action (lightweight verification)
-    const res = await fetchGas({
-      action: 'verifyStudent',
-      username: cleanUser,
-      sheet_number: cleanSheet,
-      sheetNumber: cleanSheet,
-    });
-    if (res && typeof res.success === 'boolean') {
-      return {
-        success: res.success,
-        message: res.message
-      };
-    }
-  } catch (err1: any) {
-    const msg1 = err1?.message || '';
-    if (msg1.includes('غير صحيح') || msg1.includes('غير مسجل') || msg1.includes('منع') || msg1.includes('تعطيل')) {
-      return { success: false, message: msg1 };
-    }
-  }
+  const effectiveDeviceId = deviceId || (typeof localStorage !== 'undefined' ? localStorage.getItem('deviceId') : null) || 'dev_' + Date.now();
+  const latVal = coords?.lat ?? null;
+  const lngVal = coords?.lng ?? null;
 
   try {
-    // 2. Fallback to loginUser action
+    // 1. Call loginUser action which checks Settings and writes deviceId + location
     const resLogin = await fetchGas({
       action: 'loginUser',
       username: cleanUser,
       sheet_number: cleanSheet,
-      deviceId: 'live_check',
+      deviceId: effectiveDeviceId,
     }, 'POST', {
       username: cleanUser,
       sheet_number: cleanSheet,
-      deviceId: 'live_check',
+      deviceId: effectiveDeviceId,
+      lat: latVal,
+      lng: lngVal,
     });
     if (resLogin && typeof resLogin.success === 'boolean') {
       return {
@@ -143,9 +131,33 @@ export async function verifyStudentInSettings(
         message: resLogin.message
       };
     }
+  } catch (err1: any) {
+    const msg1 = err1?.message || '';
+    if (msg1.includes('غير صحيح') || msg1.includes('غير مسجل') || msg1.includes('منع') || msg1.includes('تعطيل') || msg1.includes('خطأ') || msg1.includes('خطاء')) {
+      return { success: false, message: msg1 };
+    }
+  }
+
+  try {
+    // 2. Fallback to verifyStudent action
+    const resVerify = await fetchGas({
+      action: 'verifyStudent',
+      username: cleanUser,
+      sheet_number: cleanSheet,
+      sheetNumber: cleanSheet,
+      deviceId: effectiveDeviceId,
+      lat: latVal ? String(latVal) : '',
+      lng: lngVal ? String(lngVal) : '',
+    });
+    if (resVerify && typeof resVerify.success === 'boolean') {
+      return {
+        success: resVerify.success,
+        message: resVerify.message
+      };
+    }
   } catch (err2: any) {
     const msg2 = err2?.message || '';
-    if (msg2.includes('غير صحيح') || msg2.includes('غير مسجل') || msg2.includes('منع') || msg2.includes('تعطيل')) {
+    if (msg2.includes('غير صحيح') || msg2.includes('غير مسجل') || msg2.includes('منع') || msg2.includes('تعطيل') || msg2.includes('خطأ') || msg2.includes('خطاء')) {
       return { success: false, message: msg2 };
     }
   }
@@ -1075,7 +1087,7 @@ export function parseMultiUrls(rawStr?: any): string[] {
 }
 
 export async function fetchStudentCorrections(username: string, sheetNumber: string): Promise<StudentCorrection[]> {
-  const correctionSheetId = localStorage.getItem('correctionSheetId') || '155gPdRszuGrjRBHx6jZ8vYovsougqH35HGIw4BhkxBs';
+  const correctionSheetId = localStorage.getItem('correctionSheetId') || '14x9TWKZ3LUjyhHiw9tWVua7r3mbt1WGsM-vQ0a06EL4';
   
   try {
     const res = await fetchGas({

@@ -547,7 +547,7 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
   // Join Classroom
   const handleJoin = async (nameToJoin: string, sheetToJoin: string, pinToJoin?: string) => {
     if (!nameToJoin.trim()) {
-      setJoinError('يرجى إدخال اسم الطالب');
+      setJoinError(t('login_error_missing', 'خطأ في الاسم ورقم التسجيل، يجب التواصل مع الإدارة'));
       return;
     }
     const cleanUser = nameToJoin.trim();
@@ -560,9 +560,46 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
     if (sessionState?.accessMode !== 'open') {
       setIsVerifyingRoster(true);
       try {
-        const verifyRes = await verifyStudentInSettings(cleanUser, cleanSheet);
+        // Retrieve or generate persistent deviceId for attendance tracking in Settings sheet (AE..AX)
+        let devId = '';
+        try {
+          devId = localStorage.getItem('deviceId') || '';
+          if (!devId) {
+            devId = 'dev_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+            localStorage.setItem('deviceId', devId);
+          }
+        } catch {
+          devId = 'dev_' + Date.now();
+        }
+
+        // Query geolocation coords (with quick fallback to not block student if denied or slow)
+        let coords: { lat: number | null; lng: number | null } = { lat: null, lng: null };
+        if (typeof navigator !== 'undefined' && navigator.geolocation) {
+          try {
+            coords = await new Promise((resolve) => {
+              const timer = setTimeout(() => resolve({ lat: null, lng: null }), 2500);
+              navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                  clearTimeout(timer);
+                  resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+                },
+                () => {
+                  clearTimeout(timer);
+                  resolve({ lat: null, lng: null });
+                },
+                { timeout: 2200, enableHighAccuracy: false, maximumAge: 300000 }
+              );
+            });
+          } catch {}
+        }
+
+        const verifyRes = await verifyStudentInSettings(cleanUser, cleanSheet, devId, coords);
         if (!verifyRes.success) {
-          setJoinError(verifyRes.message || t('student_not_in_settings_error', 'عذراً، هذا الاسم أو رقم التسجيل غير مسجل في ورقة Settings أو تم تعطيله. يرجى مراجعة المعلم.'));
+          const isBlocked = (verifyRes.message || '').includes('تعطيل') || (verifyRes.message || '').includes('منع');
+          const errorMsg = isBlocked 
+            ? t('student_account_disabled_error', 'تم تعطيل دخول هذا الحساب، يرجى التواصل مع الإدارة')
+            : t('student_not_in_settings_error', 'خطأ في الاسم ورقم التسجيل، يجب التواصل مع الإدارة');
+          setJoinError(errorMsg);
           setIsVerifyingRoster(false);
           return;
         }

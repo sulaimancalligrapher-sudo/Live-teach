@@ -47,6 +47,8 @@ import {
   RotateCcw,
   Globe,
   ShieldCheck,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import {
   LiveDirectLessonRow,
@@ -1469,28 +1471,29 @@ export default function LiveDirectManager({
             type="button"
             onClick={async () => {
               const nextMode = sessionState?.accessMode === 'open' ? 'restricted' : 'open';
+              setSessionState(prev => prev ? ({ ...prev, accessMode: nextMode }) : prev);
               await toggleLiveAccessMode(nextMode);
             }}
             className={`px-3.5 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95 border ${
               sessionState?.accessMode === 'open'
-                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border-blue-400/40 shadow-blue-900/30'
-                : 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white border-amber-400/40 shadow-amber-900/30'
+                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border-emerald-400/40 shadow-emerald-900/30'
+                : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white border-amber-400/40 shadow-amber-900/30'
             }`}
             title={
               sessionState?.accessMode === 'open'
-                ? 'وضع الدخول مفتوح للجميع بدون قيود. اضغط للتحويل إلى مقيد'
-                : 'وضع الدخول مقيد بالتحقق من الأسماء وأرقام التسجيل في ورقة Settings. اضغط للتحويل إلى مفتوح'
+                ? 'الدخول حالياً مفتوح للجميع بدون قيود. اضغط على "تحقيق" لتفعيل التحقق من ورقة Settings'
+                : 'التحقق مفعل حالياً من ورقة Settings. اضغط على "إلغاء التحقق" لجعل الدخول مفتوحاً بدون قيود'
             }
           >
             {sessionState?.accessMode === 'open' ? (
               <>
-                <Globe className="w-4 h-4 text-cyan-200" />
-                <span>دخول: مفتوح 🌐</span>
+                <Lock className="w-4 h-4 text-emerald-200" />
+                <span>تحقيق 🔒</span>
               </>
             ) : (
               <>
-                <ShieldCheck className="w-4 h-4 text-amber-200" />
-                <span>دخول: مقيد (Settings) 🔒</span>
+                <Unlock className="w-4 h-4 text-amber-200" />
+                <span>إلغاء التحقق 🔓</span>
               </>
             )}
           </button>

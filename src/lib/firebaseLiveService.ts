@@ -284,6 +284,7 @@ export async function endLiveProgram(): Promise<{ success: boolean; state?: Live
     const updatedState: Partial<LiveSessionState> = {
       isProgramActive: false,
       status: 'program_ended',
+      accessMode: 'restricted',
       videoPlaying: false,
       currentQuestion: null,
       currentQuestionIndex: null,
@@ -1038,6 +1039,7 @@ export async function finishLiveSession(): Promise<{ success: boolean; state?: L
   try {
     const update: Partial<LiveSessionState> = {
       status: 'finished',
+      accessMode: 'restricted',
       videoPlaying: false,
       currentQuestion: null,
       currentQuestionIndex: null,
@@ -1123,10 +1125,10 @@ export async function restoreLiveBackup(backupSession: any): Promise<{ success: 
 // Toggle student access mode between 'restricted' (verifies Settings sheet) and 'open' (free entry)
 export async function toggleLiveAccessMode(mode: 'restricted' | 'open'): Promise<{ success: boolean; state?: LiveSessionState }> {
   try {
-    await updateDoc(LIVE_DOC_REF, {
+    await setDoc(LIVE_DOC_REF, {
       accessMode: mode,
       updatedAt: serverTimestamp(),
-    });
+    }, { merge: true });
     cachedState = { ...cachedState, accessMode: mode };
     return { success: true, state: cachedState };
   } catch (error: any) {

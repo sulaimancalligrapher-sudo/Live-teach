@@ -268,6 +268,7 @@ export interface LiveSessionState {
   sessionId: string;
   sessionPin?: string;
   isProgramActive?: boolean;
+  accessMode?: 'restricted' | 'open'; // 'restricted' (default) = verifies student against Settings sheet, 'open' = unrestricted guest entry
   showLessonsListInRoom?: boolean; // Controls whether lessons list dropdown/button appears on projector display screen
   showPinInRoom?: boolean; // Controls whether attendance PIN badge appears on projector display screen
   showQrInRoom?: boolean; // Controls whether join QR code appears on projector display screen

@@ -1974,6 +1974,38 @@ export const DEFAULT_TRANSLATIONS: TranslationItem[] = [
     th: 'ส่งเสียงปรบมือและกำลังใจถึงคุณครูเรียบร้อยแล้ว 👏',
     en: 'Clapping and encouragement sent to the teacher 👏',
   },
+  {
+    key: 'student_not_in_settings_error',
+    category: 'login',
+    description: 'رسالة خطأ عند عدم تسجيل الطالب في ورقة Settings أو تعليق حسابه',
+    ar: 'عذراً، هذا الاسم أو رقم التسجيل غير مسجل في ورقة Settings أو تم تعطيله. يرجى مراجعة المعلم.',
+    th: 'ขออภัย ชื่อหรือหมายเลขทะเบียนนี้ไม่ได้ลงทะเบียนในระบบ หรือถูกระงับการใช้งาน โปรดติดต่อครูผู้สอน',
+    en: 'Sorry, this name or registration number is not registered in the system or has been disabled. Please check with your teacher.',
+  },
+  {
+    key: 'verifying_student_badge',
+    category: 'login',
+    description: 'شارة جاري التحقق من بيانات الطالب في ورقة Settings',
+    ar: 'جاري التحقق من بيانات الطالب في ورقة Settings...',
+    th: 'กำลังตรวจสอบข้อมูลนักเรียนในระบบ...',
+    en: 'Verifying student in Settings sheet...',
+  },
+  {
+    key: 'access_mode_restricted',
+    category: 'admin',
+    description: 'شارة نظام الدخول المقيد',
+    ar: 'دخول: مقيد (Settings) 🔒',
+    th: 'การเข้าถึง: จำกัด (Settings) 🔒',
+    en: 'Access: Restricted (Settings) 🔒',
+  },
+  {
+    key: 'access_mode_open',
+    category: 'admin',
+    description: 'شارة نظام الدخول المفتوح',
+    ar: 'دخول: مفتوح للجميع 🌐',
+    th: 'การเข้าถึง: เปิดอิสระ 🌐',
+    en: 'Access: Open to All 🌐',
+  },
 ];
 
 const LOCAL_STORAGE_LANG_KEY = 'app_language';

@@ -315,6 +315,8 @@ function doGet(e) {
       response = { link: getImageLink(e.parameter.comment, e.parameter.sheet_number, e.parameter.username, e.parameter.word) };
     } else if (action === 'getHeaderConfig' || action === 'getHeader') {
       response = getHeaderConfig();
+    } else if (action === 'verifyStudent' || action === 'checkStudent') {
+      response = verifyStudent(e.parameter.username, e.parameter.sheet_number || e.parameter.sheetNumber);
     } else if (action === 'getLiveQuestionsT') {
       response = getLiveQuestionsT();
     } else if (action === 'getLiveAnswersT') {
@@ -425,6 +427,8 @@ function doPost(e) {
       response = { success: true, message: 'تمت معالجة محاكاة التلغرام وحفظ الطالب في الشيت بنجاح' };
     } else if (action === 'loginUser') {
       response = loginUser(payload.username, payload.sheet_number, payload.deviceId, payload.lat, payload.lng);
+    } else if (action === 'verifyStudent' || action === 'checkStudent') {
+      response = verifyStudent(payload.username, payload.sheet_number || payload.sheetNumber);
     } else if (action === 'saveAnswer') {
       response = saveAnswer(payload);
     } else if (action === 'saveFullAudioScore') {
@@ -623,6 +627,49 @@ function getHeaderConfig() {
   };
 }
 
+function verifyStudent(username, sheet_number) {
+  try {
+    var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var settingsSheet = ss.getSheetByName('Settings');
+    if (!settingsSheet) return { success: false, message: 'ورقة الإعدادات Settings غير موجودة' };
+    var data = settingsSheet.getDataRange().getValues();
+    var userRow = -1;
+    var targetUser = username ? username.toString().trim() : '';
+    var targetSheet = sheet_number ? sheet_number.toString().trim() : '';
+    
+    for (var r = 1; r < data.length; r++) {
+      var colZ = data[r][25] ? data[r][25].toString().trim() : ''; // العمود Z (26): رقم التسجيل
+      var colAA = data[r][26] ? data[r][26].toString().trim() : ''; // العمود AA (27): اسم الطالب
+      
+      var isMatch = false;
+      if (targetSheet && colZ === targetSheet && colAA === targetUser) {
+        isMatch = true;
+      } else if (targetSheet && colAA === targetSheet && colZ === targetUser) {
+        isMatch = true;
+      } else if (!targetSheet && (colAA === targetUser || colZ === targetUser)) {
+        isMatch = true;
+      }
+      
+      if (isMatch) {
+        userRow = r + 1;
+        break;
+      }
+    }
+    
+    if (userRow === -1) {
+      return { success: false, message: 'اسم الطالب أو رقم التسجيل غير مسجل في ورقة Settings' };
+    }
+    // العمود AB (28): حالة السماح بالدخول
+    var status = data[userRow - 1][27] ? data[userRow - 1][27].toString().trim() : 'نعم';
+    if (status === 'لا') {
+      return { success: false, message: 'تم تعطيل دخول هذا الطالب من قبل المعلم' };
+    }
+    return { success: true, message: 'تم التحقق بنجاح من بيانات الطالب في ورقة Settings' };
+  } catch (e) {
+    return { success: false, message: 'خطأ في التحقق: ' + e.message };
+  }
+}
+
 function loginUser(username, sheet_number, deviceId, lat, lng) {
   try {
     var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -630,20 +677,34 @@ function loginUser(username, sheet_number, deviceId, lat, lng) {
     if (!settingsSheet) return { success: false, message: 'ورقة الإعدادات Settings غير موجودة' };
     var data = settingsSheet.getDataRange().getValues();
     var userRow = -1;
+    var targetUser = username ? username.toString().trim() : '';
+    var targetSheet = sheet_number ? sheet_number.toString().trim() : '';
+    
     for (var r = 1; r < data.length; r++) {
-      var user = data[r][25] ? data[r][25].toString().trim() : '';
-      var sheetNum = data[r][26] ? data[r][26].toString().trim() : '';
-      if (user === username && sheetNum === sheet_number) {
+      var colZ = data[r][25] ? data[r][25].toString().trim() : ''; // العمود Z (26): رقم التسجيل
+      var colAA = data[r][26] ? data[r][26].toString().trim() : ''; // العمود AA (27): اسم الطالب
+      
+      var isMatch = false;
+      if (targetSheet && colZ === targetSheet && colAA === targetUser) {
+        isMatch = true;
+      } else if (targetSheet && colAA === targetSheet && colZ === targetUser) {
+        isMatch = true;
+      } else if (!targetSheet && (colAA === targetUser || colZ === targetUser)) {
+        isMatch = true;
+      }
+      
+      if (isMatch) {
         userRow = r + 1;
         break;
       }
     }
     if (userRow === -1) {
-      return { success: false, message: 'اسم الطالب أو رقم الورقة غير صحيح' };
+      return { success: false, message: 'اسم الطالب أو رقم التسجيل غير مسجل في ورقة Settings' };
     }
+    // العمود AB (28): حالة السماح بالدخول
     var status = data[userRow - 1][27] ? data[userRow - 1][27].toString().trim() : 'نعم';
     if (status === 'لا') {
-      return { success: false, message: 'تم منع الدخول لهذا المستخدم' };
+      return { success: false, message: 'تم منع الدخول لهذا المستخدم (معطل من المعلم)' };
     }
     
     var deviceColumns = [

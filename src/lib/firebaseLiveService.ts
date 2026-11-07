@@ -27,6 +27,7 @@ export const defaultLiveSessionState: LiveSessionState = {
   sessionId: 'live-main',
   sessionPin: '1234',
   isProgramActive: false,
+  accessMode: 'restricted',
   showLessonsListInRoom: false,
   showPinInRoom: false,
   showQrInRoom: false,
@@ -102,6 +103,7 @@ export function subscribeToLiveSession(
           sessionId: data.sessionId || 'live-main',
           sessionPin: data.sessionPin || '1234',
           isProgramActive: Boolean(data.isProgramActive),
+          accessMode: (data.accessMode as 'restricted' | 'open') || 'restricted',
           showLessonsListInRoom: Boolean(data.showLessonsListInRoom),
           showPinInRoom: Boolean(data.showPinInRoom),
           showQrInRoom: Boolean(data.showQrInRoom),
@@ -1115,6 +1117,21 @@ export async function restoreLiveBackup(backupSession: any): Promise<{ success: 
   } catch (error: any) {
     console.error('Failed to restore backup:', error);
     throw error;
+  }
+}
+
+// Toggle student access mode between 'restricted' (verifies Settings sheet) and 'open' (free entry)
+export async function toggleLiveAccessMode(mode: 'restricted' | 'open'): Promise<{ success: boolean; state?: LiveSessionState }> {
+  try {
+    await updateDoc(LIVE_DOC_REF, {
+      accessMode: mode,
+      updatedAt: serverTimestamp(),
+    });
+    cachedState = { ...cachedState, accessMode: mode };
+    return { success: true, state: cachedState };
+  } catch (error: any) {
+    console.error('Failed to toggle accessMode in Firebase:', error);
+    return { success: false };
   }
 }
 

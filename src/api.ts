@@ -9,8 +9,8 @@ import {
 
 // Helper to get Web App URL from localStorage or environment variables
 export function getWebAppUrl(): string {
-  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbwakS_2H_RJGQSy6tUhWQ17S8gpoidY1fFc_Id234ubTFKuzA0k6_qa-DaeCGdbvYpwWg/exec';
-  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbwakS_2H_RJGQSy6tUhWQ17S8gpoidY1fFc_Id234ubTFKuzA0k6_qa-DaeCGdbvYpwWg/exec';
+  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbwSZUelstyypJWr_f4v4t_Eeu2LfBpNsIDcwxWza1ZXJMMBo9oUr1UO2VxnoCwQlfHZxg/exec';
+  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbwSZUelstyypJWr_f4v4t_Eeu2LfBpNsIDcwxWza1ZXJMMBo9oUr1UO2VxnoCwQlfHZxg/exec';
 
   // 1. Check localStorage first (allows individual overrides / testing)
   const localUrl = localStorage.getItem('webAppUrl');
@@ -88,6 +88,69 @@ export async function loginStudent(username: string, sheetNumber: string, device
     lat: coords.lat,
     lng: coords.lng,
   });
+}
+
+// 1b. Verify Student in Settings sheet (Column Z: Registration/Sheet, Column AA: Username, Column AB: Status)
+export async function verifyStudentInSettings(
+  username: string, 
+  sheetNumber?: string
+): Promise<{ success: boolean; message?: string }> {
+  if (!isApiConfigured()) {
+    return { success: true };
+  }
+  const cleanUser = (username || '').trim();
+  const cleanSheet = (sheetNumber || '').trim();
+  if (!cleanUser) {
+    return { success: false, message: 'يرجى إدخال اسم الطالب' };
+  }
+
+  try {
+    // 1. Try verifyStudent action (lightweight verification)
+    const res = await fetchGas({
+      action: 'verifyStudent',
+      username: cleanUser,
+      sheet_number: cleanSheet,
+      sheetNumber: cleanSheet,
+    });
+    if (res && typeof res.success === 'boolean') {
+      return {
+        success: res.success,
+        message: res.message
+      };
+    }
+  } catch (err1: any) {
+    const msg1 = err1?.message || '';
+    if (msg1.includes('غير صحيح') || msg1.includes('غير مسجل') || msg1.includes('منع') || msg1.includes('تعطيل')) {
+      return { success: false, message: msg1 };
+    }
+  }
+
+  try {
+    // 2. Fallback to loginUser action
+    const resLogin = await fetchGas({
+      action: 'loginUser',
+      username: cleanUser,
+      sheet_number: cleanSheet,
+      deviceId: 'live_check',
+    }, 'POST', {
+      username: cleanUser,
+      sheet_number: cleanSheet,
+      deviceId: 'live_check',
+    });
+    if (resLogin && typeof resLogin.success === 'boolean') {
+      return {
+        success: resLogin.success,
+        message: resLogin.message
+      };
+    }
+  } catch (err2: any) {
+    const msg2 = err2?.message || '';
+    if (msg2.includes('غير صحيح') || msg2.includes('غير مسجل') || msg2.includes('منع') || msg2.includes('تعطيل')) {
+      return { success: false, message: msg2 };
+    }
+  }
+
+  return { success: true };
 }
 
 // Helper to clean string & remove weird symbols / URL encoding
@@ -970,12 +1033,22 @@ export async function fetchHeaderConfig(): Promise<HeaderConfig> {
       parsed = parseHeaderResponse(res);
     }
 
-    if (parsed.title || parsed.logoUrl || (parsed.buttons && parsed.buttons.length > 0)) {
+    if (
+      parsed.title || 
+      parsed.subtitle || 
+      parsed.logoUrl || 
+      parsed.loginLogoUrl || 
+      (parsed.buttons && parsed.buttons.length > 0) || 
+      (parsed.socials && Object.values(parsed.socials).some(Boolean))
+    ) {
       localStorage.setItem('headerConfigCache', JSON.stringify(parsed));
+      return parsed;
+    } else if (res) {
+      // If valid empty response from sheet, return it clean without old cache
       return parsed;
     }
   } catch (e) {
-    console.warn('Could not fetch dynamic header config from GAS, using cached config if available:', e);
+    console.warn('Could not fetch dynamic header config from GAS:', e);
   }
 
   return fallbackConfig;
@@ -2411,6 +2484,7 @@ export {
   clearConnectedStudents,
   stopAllActiveBroadcasts,
   clearSessionAnswersMemory,
+  toggleLiveAccessMode,
 } from './lib/firebaseLiveService';
 
 export {

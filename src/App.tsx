@@ -260,6 +260,7 @@ export default function App() {
     return (
       <LiveStudentView
         onBackToMain={() => navigateToPage('student')}
+        headerConfig={headerConfig}
       />
     );
   }
@@ -271,7 +272,7 @@ export default function App() {
       <header className="bg-[#fefdfa]/90 dark:bg-slate-900/90 border-b border-amber-100/60 dark:border-slate-800 sticky top-0 z-40 backdrop-blur-md px-4 py-3 shadow-sm transition-colors duration-300">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
           
-          {/* Logo & Branding */}
+          {/* Logo & Branding - Strictly based on header sheet (no hardcoded fallbacks) */}
           <div className="flex items-center gap-3">
             {headerConfig?.logoUrl ? (
               <img
@@ -280,19 +281,21 @@ export default function App() {
                 className="w-10 h-10 rounded-2xl object-cover shadow-md border border-amber-200/60 dark:border-slate-700 bg-white dark:bg-slate-800"
                 onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
               />
-            ) : (
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 via-orange-400 to-amber-500 flex items-center justify-center text-slate-950 font-black shadow-md shadow-amber-500/20 text-lg">
-                ⚡
+            ) : null}
+            {(headerConfig?.title || headerConfig?.subtitle) ? (
+              <div>
+                {headerConfig.title && (
+                  <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-50 tracking-tight">
+                    {headerConfig.title}
+                  </h1>
+                )}
+                {headerConfig.subtitle && (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                    {headerConfig.subtitle}
+                  </p>
+                )}
               </div>
-            )}
-            <div>
-              <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-50 tracking-tight">
-                {headerConfig?.title || 'منظومة البث والتفاعل المباشر'}
-              </h1>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                الحصص التفاعلية • الشرح المباشر • ساحة تحدي كويز
-              </p>
-            </div>
+            ) : null}
           </div>
 
           {/* Quick Controls */}
@@ -346,13 +349,17 @@ export default function App() {
               منصة تفاعلية موحدة مع Google Sheets
             </span>
 
-            <h2 className="text-2xl sm:text-4xl font-black text-white leading-tight">
-              تفاعل مباشر، شرح حي، وتحديات كويز حماسية
-            </h2>
+            {headerConfig?.title ? (
+              <h2 className="text-2xl sm:text-4xl font-black text-white leading-tight">
+                {headerConfig.title}
+              </h2>
+            ) : null}
             
-            <p className="text-xs sm:text-sm text-slate-300 max-w-xl mx-auto leading-relaxed">
-              انضم إلى الحصة التفاعلية المباشرة أو الشرح الحي أو تحدي كويز عبر إدخال رمز الـ PIN أو اختيار القسم الذي ترغب به أدناه.
-            </p>
+            {headerConfig?.subtitle ? (
+              <p className="text-xs sm:text-sm text-slate-300 max-w-xl mx-auto leading-relaxed">
+                {headerConfig.subtitle}
+              </p>
+            ) : null}
 
             {/* FAST PIN BAR */}
             <form onSubmit={handleQuickPinJoin} className="pt-2 max-w-md mx-auto">

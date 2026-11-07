@@ -45,6 +45,8 @@ import {
   Upload,
   Trophy,
   RotateCcw,
+  Globe,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   LiveDirectLessonRow,
@@ -88,6 +90,7 @@ import {
   getSavedPdfLessons,
   savePdfLessons,
   fetchPdfLessonsFromSheet,
+  toggleLiveAccessMode,
   savePdfLessonToSheet,
   setupPdfLessonsSheetApi,
   formatPdfEmbedUrl,
@@ -1459,6 +1462,37 @@ export default function LiveDirectManager({
                 ? 'إنهاء'
                 : 'بدء'}
             </span>
+          </button>
+
+          {/* ACCESS MODE TOGGLE: RESTRICTED (SETTINGS) VS OPEN (FREE) */}
+          <button
+            type="button"
+            onClick={async () => {
+              const nextMode = sessionState?.accessMode === 'open' ? 'restricted' : 'open';
+              await toggleLiveAccessMode(nextMode);
+            }}
+            className={`px-3.5 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95 border ${
+              sessionState?.accessMode === 'open'
+                ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border-blue-400/40 shadow-blue-900/30'
+                : 'bg-gradient-to-r from-amber-600 to-amber-700 hover:from-amber-500 hover:to-amber-600 text-white border-amber-400/40 shadow-amber-900/30'
+            }`}
+            title={
+              sessionState?.accessMode === 'open'
+                ? 'وضع الدخول مفتوح للجميع بدون قيود. اضغط للتحويل إلى مقيد'
+                : 'وضع الدخول مقيد بالتحقق من الأسماء وأرقام التسجيل في ورقة Settings. اضغط للتحويل إلى مفتوح'
+            }
+          >
+            {sessionState?.accessMode === 'open' ? (
+              <>
+                <Globe className="w-4 h-4 text-cyan-200" />
+                <span>دخول: مفتوح 🌐</span>
+              </>
+            ) : (
+              <>
+                <ShieldCheck className="w-4 h-4 text-amber-200" />
+                <span>دخول: مقيد (Settings) 🔒</span>
+              </>
+            )}
           </button>
 
           {/* Display screen launch */}

@@ -5,16 +5,18 @@ import {
   User, Hash, LogOut, ArrowRight, Volume2, HelpCircle, 
   Award, ShieldAlert, Wifi, WifiOff, Loader2,
   KeyRound, ShieldCheck, Camera, QrCode, X, MessageSquare, Hand, ThumbsUp, ThumbsDown,
-  Image as ImageIcon, Zap, BookOpen, FileText, ZoomIn, ZoomOut, RotateCcw
+  Image as ImageIcon, Zap, BookOpen, FileText, ZoomIn, ZoomOut, RotateCcw,
+  Facebook, Instagram, Youtube
 } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { 
-  LiveSessionState, LiveQuestionItem, evaluateLiveAnswer, LiveStudentMessage, getQuizStudentKey
+  LiveSessionState, LiveQuestionItem, evaluateLiveAnswer, LiveStudentMessage, getQuizStudentKey,
+  HeaderConfig
 } from '../types';
 import { 
   getLiveSessionState, joinLiveSession, pingLiveSession, leaveLiveSession, submitLiveAnswer, 
   formatDriveImageUrl, subscribeToLiveSession, sendStudentMessage, replyToStudentMessage, deleteStudentMessage, clearAllStudentMessages, toggleShowChatInRoom,
-  joinQuizLobby
+  joinQuizLobby, verifyStudentInSettings, fetchHeaderConfig
 } from '../api';
 import LiveChatModal from './LiveChatModal';
 import StudentQuizView from './StudentQuizView';
@@ -24,6 +26,7 @@ import LanguageSelector from './LanguageSelector';
 
 interface LiveStudentViewProps {
   onBackToMain?: () => void;
+  headerConfig?: HeaderConfig | null;
 }
 
 const OPTION_COLORS = [
@@ -37,8 +40,21 @@ const OPTION_COLORS = [
 
 const OPTION_LETTERS = ['أ', 'ب', 'ج', 'د', 'هـ', 'و'];
 
-export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) {
+export default function LiveStudentView({ onBackToMain, headerConfig: propHeaderConfig }: LiveStudentViewProps) {
   const { t, language } = useLanguage();
+  const [headerConfig, setHeaderConfig] = useState<HeaderConfig | null>(propHeaderConfig || null);
+
+  useEffect(() => {
+    if (propHeaderConfig) {
+      setHeaderConfig(propHeaderConfig);
+    } else {
+      fetchHeaderConfig().then(cfg => {
+        if (cfg) setHeaderConfig(cfg);
+      }).catch(() => {});
+    }
+  }, [propHeaderConfig]);
+
+  const [isVerifyingRoster, setIsVerifyingRoster] = useState(false);
 
   // Student credentials - persisted across tabs and accidental closes
   const [username, setUsername] = useState(() => {
@@ -539,6 +555,24 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
     const cleanPin = (pinToJoin || '').trim();
 
     setJoinError(null);
+
+    // If access mode is restricted (default), verify student name & registration against Settings sheet
+    if (sessionState?.accessMode !== 'open') {
+      setIsVerifyingRoster(true);
+      try {
+        const verifyRes = await verifyStudentInSettings(cleanUser, cleanSheet);
+        if (!verifyRes.success) {
+          setJoinError(verifyRes.message || t('student_not_in_settings_error', 'عذراً، هذا الاسم أو رقم التسجيل غير مسجل في ورقة Settings أو تم تعطيله. يرجى مراجعة المعلم.'));
+          setIsVerifyingRoster(false);
+          return;
+        }
+      } catch (errVer: any) {
+        console.warn('Verification exception:', errVer);
+      } finally {
+        setIsVerifyingRoster(false);
+      }
+    }
+
     try {
       setUsername(cleanUser);
       setSheetNumber(cleanSheet);
@@ -774,14 +808,25 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
           </div>
 
           <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-3xl mx-auto flex items-center justify-center mb-3 shadow-inner">
-              <Tv className="w-8 h-8" />
-            </div>
+            {(headerConfig?.loginLogoUrl || headerConfig?.logoUrl) ? (
+              <div className="w-20 h-20 mx-auto mb-3 rounded-3xl overflow-hidden shadow-lg border border-slate-700/80 bg-slate-800/80 p-1 flex items-center justify-center">
+                <img
+                  src={headerConfig.loginLogoUrl || headerConfig.logoUrl}
+                  alt="Logo"
+                  className="w-full h-full object-contain rounded-2xl"
+                  onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                />
+              </div>
+            ) : (
+              <div className="w-16 h-16 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-3xl mx-auto flex items-center justify-center mb-3 shadow-inner">
+                <Tv className="w-8 h-8" />
+              </div>
+            )}
             <h2 className="text-xl sm:text-2xl font-black text-slate-100">
-              {t('live_student_portal', 'بوابة الطالب للحصة التفاعلية 📱')}
+              {headerConfig?.title || t('live_student_portal', 'بوابة الطالب للحصة التفاعلية 📱')}
             </h2>
             <p className="text-xs text-slate-400 mt-2 leading-relaxed font-semibold">
-              {t('live_student_instructions', 'سجل اسمك ورمز الحضور المعروض على الشاشة للإجابة على الأسئلة من جهازك مباشرة!')}
+              {headerConfig?.subtitle || t('live_student_instructions', 'سجل اسمك ورمز الحضور المعروض على الشاشة للإجابة على الأسئلة من جهازك مباشرة!')}
             </p>
           </div>
 
@@ -878,12 +923,77 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
 
             <button
               type="submit"
-              className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-600/20 active:scale-98 transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
+              disabled={isVerifyingRoster}
+              className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-600/20 active:scale-98 transition-all flex items-center justify-center gap-2 text-sm cursor-pointer disabled:opacity-50"
             >
-              <Sparkles className="w-5 h-5" />
-              <span>{t('student_join_btn', 'دخول الحصة التفاعلية 🚀')}</span>
+              {isVerifyingRoster ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>{t('verifying_student_badge', 'جاري التحقق من بيانات الطالب في ورقة Settings...')}</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-5 h-5" />
+                  <span>{t('student_join_btn', 'دخول الحصة التفاعلية 🚀')}</span>
+                </>
+              )}
             </button>
           </form>
+
+          {/* Social media links from header sheet cells E2 to H2 */}
+          {headerConfig?.socials && (
+            headerConfig.socials.facebook || 
+            headerConfig.socials.instagram || 
+            headerConfig.socials.youtube || 
+            headerConfig.socials.line
+          ) ? (
+            <div className="pt-4 border-t border-slate-800/80 mt-4 flex items-center justify-center gap-3 flex-wrap">
+              {headerConfig.socials.facebook && (
+                <a
+                  href={headerConfig.socials.facebook}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-9 h-9 rounded-2xl bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center transition-all shadow-sm"
+                  title="Facebook"
+                >
+                  <Facebook className="w-4 h-4" />
+                </a>
+              )}
+              {headerConfig.socials.instagram && (
+                <a
+                  href={headerConfig.socials.instagram}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-9 h-9 rounded-2xl bg-pink-600/10 hover:bg-pink-600/20 text-pink-400 border border-pink-500/30 flex items-center justify-center transition-all shadow-sm"
+                  title="Instagram"
+                >
+                  <Instagram className="w-4 h-4" />
+                </a>
+              )}
+              {headerConfig.socials.youtube && (
+                <a
+                  href={headerConfig.socials.youtube}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-9 h-9 rounded-2xl bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-500/30 flex items-center justify-center transition-all shadow-sm"
+                  title="YouTube"
+                >
+                  <Youtube className="w-4 h-4" />
+                </a>
+              )}
+              {headerConfig.socials.line && (
+                <a
+                  href={headerConfig.socials.line}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="h-9 px-3 rounded-2xl bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center gap-1 text-xs font-black font-mono transition-all shadow-sm"
+                  title="LINE"
+                >
+                  LINE
+                </a>
+              )}
+            </div>
+          ) : null}
         </motion.div>
 
         {/* QR Scanner Camera Modal */}
@@ -1486,9 +1596,64 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
         }}
       />
 
-      {/* Footer Info */}
-      <footer className="p-2.5 text-center text-[10px] text-slate-600 font-mono border-t border-slate-900">
-        نظام الحصص التفاعلية الحية • متزامن لحظياً عبر السحابة
+      {/* Footer Info & Social Links (From header sheet cells E2 to H2) */}
+      <footer className="p-3 text-center text-xs text-slate-500 font-sans border-t border-slate-900 bg-slate-950/80 space-y-2">
+        {headerConfig?.socials && (
+          headerConfig.socials.facebook || 
+          headerConfig.socials.instagram || 
+          headerConfig.socials.youtube || 
+          headerConfig.socials.line
+        ) ? (
+          <div className="flex items-center justify-center gap-3 flex-wrap">
+            {headerConfig.socials.facebook && (
+              <a
+                href={headerConfig.socials.facebook}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-8 h-8 rounded-full bg-blue-600/10 hover:bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center transition-all shadow-sm"
+                title="Facebook"
+              >
+                <Facebook className="w-4 h-4" />
+              </a>
+            )}
+            {headerConfig.socials.instagram && (
+              <a
+                href={headerConfig.socials.instagram}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-8 h-8 rounded-full bg-pink-600/10 hover:bg-pink-600/20 text-pink-400 border border-pink-500/30 flex items-center justify-center transition-all shadow-sm"
+                title="Instagram"
+              >
+                <Instagram className="w-4 h-4" />
+              </a>
+            )}
+            {headerConfig.socials.youtube && (
+              <a
+                href={headerConfig.socials.youtube}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-8 h-8 rounded-full bg-red-600/10 hover:bg-red-600/20 text-red-400 border border-red-500/30 flex items-center justify-center transition-all shadow-sm"
+                title="YouTube"
+              >
+                <Youtube className="w-4 h-4" />
+              </a>
+            )}
+            {headerConfig.socials.line && (
+              <a
+                href={headerConfig.socials.line}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-8 px-2.5 rounded-full bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center gap-1 text-[11px] font-bold font-mono transition-all shadow-sm"
+                title="LINE"
+              >
+                LINE
+              </a>
+            )}
+          </div>
+        ) : null}
+        <div className="text-[10px] text-slate-600 font-mono">
+          نظام الحصص التفاعلية الحية • متزامن لحظياً عبر السحابة
+        </div>
       </footer>
     </div>
   );

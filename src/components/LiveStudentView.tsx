@@ -38,7 +38,7 @@ const OPTION_COLORS = [
 const OPTION_LETTERS = ['أ', 'ب', 'ج', 'د', 'هـ', 'و'];
 
 export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   // Student credentials - persisted across tabs and accidental closes
   const [username, setUsername] = useState(() => {

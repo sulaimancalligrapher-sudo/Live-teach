@@ -683,11 +683,11 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
         text: text?.trim() || undefined,
       });
 
-      let label = 'تم إرسال رسالتك للأستاذ بنجاح! 📨';
-      if (type === 'hand') label = 'تم رفع يدك للأستاذ بنجاح ✋';
-      if (type === 'agree') label = 'تم تسجيل موافقتك بنجاح 👍';
-      if (type === 'disagree') label = 'تم تسجيل عدم موافقتك بنجاح 👎';
-      if (type === 'clap') label = 'تم إرسال تشجيع وتصفيق للأستاذ 👏';
+      let label = t('msg_sent_success', 'تم إرسال رسالتك للأستاذ بنجاح! 📨');
+      if (type === 'hand') label = t('msg_hand_success', 'تم رفع يدك للأستاذ بنجاح ✋');
+      if (type === 'agree') label = t('msg_agree_success', 'تم تسجيل موافقتك بنجاح 👍');
+      if (type === 'disagree') label = t('msg_disagree_success', 'تم تسجيل عدم موافقتك بنجاح 👎');
+      if (type === 'clap') label = t('msg_clap_success', 'تم إرسال تشجيع وتصفيق للأستاذ 👏');
 
       setMessageSuccessBanner(label);
       setTimeout(() => setMessageSuccessBanner(null), 4000);
@@ -705,10 +705,10 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="w-full max-w-md bg-slate-900 border border-amber-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl text-center space-y-6 relative overflow-hidden"
+          className="w-full max-w-md bg-slate-900 border border-amber-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl text-center space-y-6 relative"
         >
           {/* Top Rainbow Glow */}
-          <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-amber-500 via-rose-500 to-emerald-500" />
+          <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-amber-500 via-rose-500 to-emerald-500 rounded-t-3xl" />
 
           {/* Golden Icon */}
           <div className="w-20 h-20 bg-amber-500/10 border-2 border-amber-500/30 text-amber-400 rounded-3xl mx-auto flex items-center justify-center shadow-lg shadow-amber-500/10">
@@ -717,27 +717,28 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
 
           <div className="space-y-2">
             <h2 className="text-xl sm:text-2xl font-black text-slate-100">
-              شكراً لحضوركم وتفاعلكم الرائع!
+              {t('gratitude_card_title', 'شكراً لحضوركم وتفاعلكم الرائع!')}
             </h2>
             <p className="text-xs sm:text-sm text-slate-300 font-semibold">
-              أحسنت يا <span className="text-amber-400 font-bold">{username || 'بطل'}</span>
-              {sheetNumber ? ` (شيت #${sheetNumber})` : ''}
+              {t('gratitude_well_done', 'أحسنت يا')}{' '}
+              <span className="text-amber-400 font-bold">{username || t('gratitude_hero_fallback', 'بطل')}</span>
+              {sheetNumber ? ` (${t('gratitude_sheet_badge', 'شيت #')}${sheetNumber})` : ''}
             </p>
           </div>
 
-          <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-2xl text-xs text-slate-300 leading-relaxed text-right space-y-2">
+          <div className="p-4 bg-slate-950/70 border border-slate-800 rounded-2xl text-xs text-slate-300 leading-relaxed text-right space-y-2" dir="rtl">
             <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
-              <span>تم إنهاء الحصة المباشرة وتوثيق مشاركتكم بنجاح</span>
+              <span>{t('gratitude_ended_badge', 'تم إنهاء الحصة المباشرة وتوثيق مشاركتكم بنجاح')}</span>
             </div>
-            <p className="text-[11px] text-slate-400">
-              قام المعلم بإنهاء الحصة الحالية وحفظ السجلات في النظام. نتمنى لكم دوام التفوق والنجاح، ونراكم في الحصة القادمة بإذن الله.
+            <p className="text-[11px] text-slate-400 leading-relaxed">
+              {t('gratitude_teacher_note', 'قام المعلم بإنهاء الحصة الحالية وحفظ السجلات في النظام. نتمنى لكم دوام التفوق والنجاح، ونراكم في الحصة القادمة بإذن الله.')}
             </p>
           </div>
 
           <div className="space-y-3 pt-2">
             <div className="flex justify-end mb-1">
-              <LanguageSelector variant="dropdown" />
+              <LanguageSelector align="left" />
             </div>
             <button
               onClick={() => {
@@ -749,15 +750,6 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
               <RotateCcw className="w-4 h-4" />
               <span>{t('student_new_session_btn', 'تسجيل الدخول لحصة جديدة')}</span>
             </button>
-
-            {onBackToMain && (
-              <button
-                onClick={onBackToMain}
-                className="w-full py-3 px-4 bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 cursor-pointer transition-all border border-slate-700"
-              >
-                <span>{t('back_to_home', 'العودة للصفحة الرئيسية')}</span>
-              </button>
-            )}
           </div>
         </motion.div>
       </div>

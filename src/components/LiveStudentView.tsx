@@ -771,15 +771,14 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
         <motion.div 
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden"
+          className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl relative"
         >
           {/* Header Glow */}
-          <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-amber-500 via-indigo-500 to-emerald-500" />
+          <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-amber-500 via-indigo-500 to-emerald-500 rounded-t-3xl" />
 
-          {/* Language Selector for Student Page */}
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
-            <span className="text-[11px] font-bold text-slate-400">لغة الواجهة / Language:</span>
-            <LanguageSelector variant="full" />
+          {/* Single Language Dropdown Button */}
+          <div className="flex items-center justify-end mb-4">
+            <LanguageSelector align="left" />
           </div>
 
           <div className="text-center mb-6">

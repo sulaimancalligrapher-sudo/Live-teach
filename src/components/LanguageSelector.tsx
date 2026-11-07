@@ -1,22 +1,26 @@
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useLanguage, LANGUAGES, Language } from '../translations';
-import { Globe, Check } from 'lucide-react';
+import { ChevronDown, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface LanguageSelectorProps {
   variant?: 'compact' | 'full' | 'dropdown';
   className?: string;
+  align?: 'left' | 'right';
 }
 
-export default function LanguageSelector({ variant = 'dropdown', className = '' }: LanguageSelectorProps) {
+export default function LanguageSelector({ 
+  className = '',
+  align = 'right'
+}: LanguageSelectorProps) {
   const { language, setLanguage } = useLanguage();
-  const [isOpen, setIsOpen] = React.useState(false);
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const currentInfo = LANGUAGES[language];
+  const currentInfo = LANGUAGES[language] || LANGUAGES['ar'];
 
   // Close dropdown on click outside
-  React.useEffect(() => {
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
@@ -26,79 +30,60 @@ export default function LanguageSelector({ variant = 'dropdown', className = '' 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  if (variant === 'full') {
-    return (
-      <div className={`flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700/80 ${className}`}>
-        {(Object.keys(LANGUAGES) as Language[]).map((langKey) => {
-          const info = LANGUAGES[langKey];
-          const isActive = language === langKey;
-          return (
-            <button
-              key={langKey}
-              onClick={() => setLanguage(langKey)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                isActive
-                  ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-sm border border-amber-200 dark:border-slate-700'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-              }`}
-            >
-              <span className="text-sm">{info.flag}</span>
-              <span>{info.nativeName}</span>
-            </button>
-          );
-        })}
-      </div>
-    );
-  }
+  const handleSelectLanguage = (langKey: Language, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setLanguage(langKey);
+    setIsOpen(false);
+  };
+
+  const toggleDropdown = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsOpen(prev => !prev);
+  };
 
   return (
-    <div className={`relative ${className}`} ref={dropdownRef}>
+    <div className={`relative inline-block text-right ${className}`} ref={dropdownRef} dir="rtl">
+      {/* الزر الرئيسي الموحد لتبديل اللغة */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="px-3 py-2 bg-white dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl cursor-pointer transition-all active:scale-95 shadow-sm flex items-center gap-2 text-xs font-extrabold"
-        title="تغيير اللغة / Change Language / เปลี่ยนภาษา"
+        type="button"
+        onClick={toggleDropdown}
+        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-100 hover:text-amber-400 border border-slate-700 hover:border-amber-500/60 rounded-xl cursor-pointer transition-all active:scale-95 shadow-sm flex items-center gap-2 text-xs font-black select-none"
+        title="تغيير اللغة / Change Language"
       >
-        <Globe className="w-4 h-4 text-amber-500 animate-pulse" />
-        <span className="text-base">{currentInfo.flag}</span>
-        <span className="hidden sm:inline">{currentInfo.nativeName}</span>
+        <span className="text-base leading-none">{currentInfo.flag}</span>
+        <span className="font-extrabold text-xs">{currentInfo.nativeName}</span>
+        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-amber-400' : ''}`} />
       </button>
 
+      {/* القائمة المنسدلة بدون نصوص إرشادية طويلة */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: 8, scale: 0.95 }}
+            initial={{ opacity: 0, y: 6, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.95 }}
-            transition={{ duration: 0.15 }}
-            className="absolute left-0 sm:right-0 mt-2 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-50 p-1.5 overflow-hidden"
+            exit={{ opacity: 0, y: 6, scale: 0.96 }}
+            transition={{ duration: 0.12 }}
+            className={`absolute ${align === 'left' ? 'left-0' : 'right-0'} mt-1.5 w-36 bg-slate-900 border border-slate-700/90 rounded-2xl shadow-2xl z-[99999] p-1 overflow-hidden backdrop-blur-xl`}
           >
-            <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800/80 mb-1">
-              اختر لغة الواجهة / Select Language
-            </div>
             {(Object.keys(LANGUAGES) as Language[]).map((langKey) => {
               const info = LANGUAGES[langKey];
               const isActive = language === langKey;
               return (
                 <button
+                  type="button"
                   key={langKey}
-                  onClick={() => {
-                    setLanguage(langKey);
-                    setIsOpen(false);
-                  }}
-                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer my-0.5 ${
+                  onClick={(e) => handleSelectLanguage(langKey, e)}
+                  className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer my-0.5 select-none ${
                     isActive
-                      ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 font-extrabold'
-                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                   }`}
                 >
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-base">{info.flag}</span>
-                    <div className="text-right">
-                      <div className="text-xs font-extrabold">{info.nativeName}</div>
-                      <div className="text-[9px] text-slate-400 font-normal">{info.name}</div>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-base leading-none">{info.flag}</span>
+                    <span className="text-xs">{info.nativeName}</span>
                   </div>
-                  {isActive && <Check className="w-4 h-4 text-amber-500" />}
+                  {isActive && <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
                 </button>
               );
             })}

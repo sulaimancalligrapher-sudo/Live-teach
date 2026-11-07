@@ -96,6 +96,35 @@ export default function LiveTeacherRoom({
       setVolume(sessionState.broadcastVolume);
     }
   }, [sessionState?.broadcastVolume]);
+
+  // Zero-latency cross-tab sync via BroadcastChannel
+  useEffect(() => {
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        bc = new BroadcastChannel('live_video_control');
+        bc.onmessage = (event) => {
+          const data = event.data;
+          if (data?.type === 'VOLUME_CHANGE' && typeof data.volume === 'number' && videoRef.current) {
+            videoRef.current.volume = data.volume;
+            setVolume(data.volume);
+          } else if (data?.type === 'PLAY_PAUSE' && videoRef.current) {
+            if (data.playing) {
+              videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+            } else {
+              videoRef.current.pause();
+              setIsPlaying(false);
+            }
+          }
+        };
+      }
+    } catch {}
+    return () => {
+      try {
+        bc?.close();
+      } catch {}
+    };
+  }, []);
   
   // UI Panels
   const [showQrModal, setShowQrModal] = useState(false);

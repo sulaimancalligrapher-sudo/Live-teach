@@ -20,6 +20,7 @@ import LiveChatModal from './LiveChatModal';
 import StudentQuizView from './StudentQuizView';
 import { NativePdfViewer } from './NativePdfViewer';
 import { useLanguage } from '../translations';
+import LanguageSelector from './LanguageSelector';
 
 interface LiveStudentViewProps {
   onBackToMain?: () => void;
@@ -735,6 +736,9 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
           </div>
 
           <div className="space-y-3 pt-2">
+            <div className="flex justify-end mb-1">
+              <LanguageSelector variant="dropdown" />
+            </div>
             <button
               onClick={() => {
                 setIsSessionEndedWithGratitude(false);
@@ -743,7 +747,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
               className="w-full py-3.5 px-4 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer transition-all active:scale-98"
             >
               <RotateCcw className="w-4 h-4" />
-              <span>تسجيل الدخول لحصة جديدة</span>
+              <span>{t('student_new_session_btn', 'تسجيل الدخول لحصة جديدة')}</span>
             </button>
 
             {onBackToMain && (
@@ -751,7 +755,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
                 onClick={onBackToMain}
                 className="w-full py-3 px-4 bg-slate-800 hover:bg-slate-750 text-slate-300 hover:text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 cursor-pointer transition-all border border-slate-700"
               >
-                <span>العودة للصفحة الرئيسية</span>
+                <span>{t('back_to_home', 'العودة للصفحة الرئيسية')}</span>
               </button>
             )}
           </div>
@@ -772,15 +776,21 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
           {/* Header Glow */}
           <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-amber-500 via-indigo-500 to-emerald-500" />
 
+          {/* Language Selector for Student Page */}
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+            <span className="text-[11px] font-bold text-slate-400">لغة الواجهة / Language:</span>
+            <LanguageSelector variant="full" />
+          </div>
+
           <div className="text-center mb-6">
             <div className="w-16 h-16 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-3xl mx-auto flex items-center justify-center mb-3 shadow-inner">
               <Tv className="w-8 h-8" />
             </div>
             <h2 className="text-xl sm:text-2xl font-black text-slate-100">
-              بوابة الطالب للحصة التفاعلية 📱
+              {t('live_student_portal', 'بوابة الطالب للحصة التفاعلية 📱')}
             </h2>
             <p className="text-xs text-slate-400 mt-2 leading-relaxed font-semibold">
-              سجل اسمك ورمز الحضور المعروض على الشاشة للإجابة على الأسئلة من جهازك مباشرة!
+              {t('live_student_instructions', 'سجل اسمك ورمز الحضور المعروض على الشاشة للإجابة على الأسئلة من جهازك مباشرة!')}
             </p>
           </div>
 
@@ -815,7 +825,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
           <form onSubmit={(e) => { e.preventDefault(); handleJoin(username, sheetNumber, studentPin); }} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                اسم الطالب:
+                {t('student_name_label', 'اسم الطالب:')}
               </label>
               <div className="relative">
                 <input
@@ -823,7 +833,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="أدخل اسمك الكريم..."
+                  placeholder={t('student_name_placeholder', 'أدخل اسمك الكريم...')}
                   className="w-full px-4 py-3.5 bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-slate-100 rounded-2xl outline-none text-sm font-bold pr-11"
                 />
                 <User className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
@@ -832,14 +842,14 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
 
             <div>
               <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                رقم الطالب / الشيت (اختياري):
+                {t('student_sheet_label', 'رقم الشيت (اختياري - للربط المباشر مع سجل الدرجات):')}
               </label>
               <div className="relative">
                 <input
                   type="text"
                   value={sheetNumber}
                   onChange={(e) => setSheetNumber(e.target.value)}
-                  placeholder="مثال: 12 أو A1..."
+                  placeholder="12, A1..."
                   className="w-full px-4 py-3.5 bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-slate-100 rounded-2xl outline-none text-sm font-mono pr-11"
                 />
                 <Hash className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
@@ -849,10 +859,10 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-bold text-amber-300">
-                  رمز تسجيل حصة الحضور (PIN):
+                  {t('student_pin_label', 'رمز الحضور (PIN):')}
                 </label>
                 <span className="text-[10px] text-amber-400/80 font-bold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                  معروض على شاشة الفيديو
+                  PIN
                 </span>
               </div>
               <div className="relative">
@@ -861,7 +871,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
                   maxLength={6}
                   value={studentPin}
                   onChange={(e) => setStudentPin(e.target.value.replace(/\D/g, ''))}
-                  placeholder="أدخل الرمز المكوّن من 4 أرقام (مثال: 5824)..."
+                  placeholder={t('student_pin_placeholder', 'أدخل رمز الـ PIN المعروض على الشاشة...')}
                   className="w-full px-4 py-3.5 bg-slate-950 border-2 border-amber-500/40 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-amber-300 placeholder:text-slate-600 rounded-2xl outline-none text-base font-black font-mono tracking-widest text-center pr-11"
                 />
                 <KeyRound className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-amber-400" />
@@ -880,7 +890,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
               className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-600/20 active:scale-98 transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
             >
               <Sparkles className="w-5 h-5" />
-              <span>دخول الحصة المباشرة 🚀</span>
+              <span>{t('student_join_btn', 'دخول الحصة التفاعلية 🚀')}</span>
             </button>
           </form>
         </motion.div>
@@ -1004,6 +1014,7 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
           </div>
 
           <div className="flex items-center gap-2">
+            <LanguageSelector variant="dropdown" />
             <button
               onClick={async () => {
                 await leaveLiveSession(username, sheetNumber);
@@ -1015,11 +1026,11 @@ export default function LiveStudentView({ onBackToMain }: LiveStudentViewProps) 
                 setScanSuccessMsg(null);
                 setScannerError(null);
               }}
-              title="تسجيل خروج أو تغيير اسم الطالب"
+              title={t('switch_student_btn', 'تبديل الطالب')}
               className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold"
             >
               <LogOut className="w-4 h-4 text-rose-400" />
-              <span className="hidden sm:inline">تبديل الطالب</span>
+              <span className="hidden sm:inline">{t('switch_student_btn', 'تبديل الطالب')}</span>
             </button>
           </div>
         </div>

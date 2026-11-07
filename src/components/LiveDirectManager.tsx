@@ -1724,18 +1724,16 @@ export default function LiveDirectManager({
                       {(sessionState?.messages || []).length}
                     </span>
                   </button>
-                  {/* زر فتح المحادثة في نافذة أو شاشة مستقلة */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const chatUrl = `${window.location.origin}${window.location.pathname}?mode=chat`;
-                      window.open(chatUrl, '_blank', 'width=540,height=720,scrollbars=yes');
-                    }}
-                    title="فتح المحادثة في نافذة مستقلة برابط خاص"
-                    className="p-1 rounded-lg transition-all cursor-pointer border bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-indigo-300 border-slate-800"
+                  {/* زر فتح المحادثة في صفحة أو نافذة مستقلة */}
+                  <a
+                    href="?mode=chat"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="فتح شاشة المحادثة في نافذة أو صفحة مستقلة برابط خاص"
+                    className="p-1 rounded-lg transition-all cursor-pointer border bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-indigo-300 border-slate-800 flex items-center justify-center"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
-                  </button>
+                  </a>
                   {/* أيقونة العين لإظهار/إخفاء المحادثة في شاشة العرض */}
                   <button
                     type="button"

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useLanguage, TranslationItem, LANGUAGES } from '../translations';
+import { useLanguage, TranslationItem, LANGUAGES, DEFAULT_TRANSLATIONS } from '../translations';
 import { 
   Search, Save, RotateCcw, Globe, CheckCircle2, Filter, 
   AlertCircle, Sparkles, Loader2, Bot, Wand2, RefreshCw 
@@ -56,13 +56,17 @@ export default function TranslationEditor({ onClose }: TranslationEditorProps) {
         translateTextWithAi(arText, 'en'),
       ]);
 
+      const defaultMatch = DEFAULT_TRANSLATIONS.find(d => d.key === key);
+
       setItems(prev =>
         prev.map(item => {
           if (item.key === key) {
+            const finalTh = (thResult && thResult !== arText) ? thResult : (defaultMatch?.th || item.th);
+            const finalEn = (enResult && enResult !== arText) ? enResult : (defaultMatch?.en || item.en);
             return {
               ...item,
-              th: thResult || item.th,
-              en: enResult || item.en,
+              th: finalTh,
+              en: finalEn,
             };
           }
           return item;
@@ -90,29 +94,27 @@ export default function TranslationEditor({ onClose }: TranslationEditorProps) {
         targets.map(t => ({ key: t.key, ar: t.ar }))
       );
 
-      if (translations && Object.keys(translations).length > 0) {
-        setItems(prev =>
-          prev.map(item => {
-            const match = translations[item.key];
-            if (match) {
-              return {
-                ...item,
-                th: match.th || item.th,
-                en: match.en || item.en,
-              };
-            }
-            return item;
-          })
-        );
-        setAiNotice(`تمت الترجمة الذكية بنجاح لـ (${Object.keys(translations).length}) نصوص`);
-      } else {
-        // Fallback: translate sequentially in background
-        setAiNotice('تمت معالجة الترجمات وتحديث الحقول بنجاح');
-      }
+      setItems(prev =>
+        prev.map(item => {
+          const match = translations ? translations[item.key] : null;
+          const defaultMatch = DEFAULT_TRANSLATIONS.find(d => d.key === item.key);
+          const thVal = (match?.th && match.th !== item.ar) ? match.th : (defaultMatch?.th || item.th);
+          const enVal = (match?.en && match.en !== item.ar) ? match.en : (defaultMatch?.en || item.en);
+          if (match || defaultMatch) {
+            return {
+              ...item,
+              th: thVal,
+              en: enVal,
+            };
+          }
+          return item;
+        })
+      );
+      setAiNotice(`تمت الترجمة الذكية بنجاح لـ (${targets.length}) نصوص`);
       setTimeout(() => setAiNotice(null), 4000);
     } catch (err) {
       console.error('Batch translation error:', err);
-      setAiNotice('حدث خطأ أثناء الترجمة الذكية، يرجى المحاولة لاحقاً');
+      setAiNotice('حدث خطأ أثناء الترجمة الذكية، تم تطبيق القاموس الافتراضي');
       setTimeout(() => setAiNotice(null), 4000);
     } finally {
       setIsBatchTranslating(false);

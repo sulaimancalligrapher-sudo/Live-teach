@@ -10,6 +10,7 @@ import {
   formatQuizAnswerForRecord 
 } from '../types';
 import { submitStudentQuizAnswer, markStudentQuizFinished, setStudentQuizRetryMode, recordQuizAnswersBatchDirect } from '../api';
+import LanguageSelector from './LanguageSelector';
 
 interface StudentQuizViewProps {
   quizState: QuizActiveState;
@@ -479,6 +480,8 @@ export default function StudentQuizView({
               <span>المركز: #{studentProgress.rank}</span>
             </div>
           )}
+
+          <LanguageSelector variant="dropdown" />
         </div>
       </header>
 

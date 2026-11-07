@@ -357,13 +357,18 @@ export default function LiveClassManager({
   const handleToggleVideoPlayFromAdmin = async () => {
     setIsTogglingVideoPlay(true);
     try {
+      if (sessionState?.status === 'question_active' || sessionState?.status === 'revealed') {
+        await resumeLiveVideo();
+        return;
+      }
       const nextState = !sessionState?.videoPlaying;
-      if (!sessionState?.videoUrl && activeLesson?.videoUrl) {
+      const targetLesson = activeLesson || lessons[0];
+      if (!sessionState?.videoUrl && targetLesson?.videoUrl) {
         await initLiveSession({
-          lessonTitle: activeLesson.title,
-          videoUrl: activeLesson.videoUrl,
-          timeLimit: activeLesson.settingTimeLimit || 30,
-          showResult: activeLesson.settingShowResult || 'نعم',
+          lessonTitle: targetLesson.title,
+          videoUrl: targetLesson.videoUrl,
+          timeLimit: targetLesson.settingTimeLimit || 30,
+          showResult: targetLesson.settingShowResult || 'نعم',
         });
       }
       const res = await toggleLiveVideoPlay(nextState);
@@ -1986,6 +1991,17 @@ export default function LiveClassManager({
                     </span>
                   </button>
 
+                  {/* زر فتح المحادثة في صفحة أو نافذة مستقلة برابط خاص */}
+                  <a
+                    href="?mode=chat"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="فتح شاشة المحادثة في نافذة أو صفحة مستقلة برابط خاص"
+                    className="p-1.5 rounded-lg transition-all cursor-pointer border bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-indigo-300 border-slate-800 flex items-center justify-center"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </a>
+
                   {/* زر إظهار وإخفاء المحادثة في شاشة العرض (أيقونة العين فقط بدون نص) */}
                   <button
                     type="button"
@@ -2144,20 +2160,18 @@ export default function LiveClassManager({
                     </button>
                   </div>
 
-                  {/* زر تشغيل / إيقاف الفيديو (يعمل في البداية وبعد متابعة الفيديو، ويتعطل أثناء السؤال وكشف الإجابة) */}
+                  {/* زر تشغيل / إيقاف واستئناف الفيديو في شاشة العرض */}
                   <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 p-1.5 rounded-xl shadow-sm">
                     <button
                       type="button"
                       onClick={handleToggleVideoPlayFromAdmin}
                       disabled={
                         isTogglingVideoPlay || 
-                        (!sessionState?.videoUrl && !activeLesson?.videoUrl) || 
-                        sessionState?.status === 'question_active' || 
-                        sessionState?.status === 'revealed'
+                        (!sessionState?.videoUrl && !activeLesson?.videoUrl && lessons.length === 0)
                       }
                       title={
                         sessionState?.status === 'question_active' || sessionState?.status === 'revealed'
-                          ? 'يتوقف زر التشغيل مؤقتاً أثناء عرض السؤال أو كشف الإجابة (استخدم زر تخطي أو متابعة الفيديو)'
+                          ? 'متابعة واستئناف تشغيل الفيديو وتجاوز السؤال'
                           : sessionState?.videoPlaying 
                             ? 'إيقاف الفيديو مؤقتاً في شاشة العرض' 
                             : 'تشغيل الفيديو في شاشة العرض'

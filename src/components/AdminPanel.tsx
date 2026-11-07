@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, Tv, Mic, Trophy, Monitor, Settings, RefreshCw, 
   ExternalLink, Copy, CheckCircle2, ShieldCheck, 
   Sparkles, KeyRound, Globe, Users, ArrowUpRight, 
   FileSpreadsheet, Play, QrCode, Sliders, Palette, Square,
-  Video, Radio
+  Video, Radio, MessageSquare, Bell
 } from 'lucide-react';
 import { LiveLessonRow, HeaderConfig } from '../types';
 import LiveClassManager from './LiveClassManager';
@@ -22,7 +22,8 @@ import {
   setupLiveDirectSheetsApi,
   setupQuizDirectSheetsApi,
   setupPdfLessonsSheetApi,
-  stopAllActiveBroadcasts
+  stopAllActiveBroadcasts,
+  subscribeToLiveSession
 } from '../api';
 import { showAppConfirm } from './AppDialog';
 import TranslationEditor from './TranslationEditor';
@@ -56,6 +57,14 @@ export default function AdminPanel({
 
   const [allLiveLessons, setAllLiveLessons] = useState<LiveLessonRow[]>([]);
 
+  // Global Floating Smart Chat Notice
+  const [floatingChatNotice, setFloatingChatNotice] = useState<{
+    visible: boolean;
+    senderName: string;
+    text: string;
+  }>({ visible: false, senderName: '', text: '' });
+  const lastKnownMessagesCountRef = useRef<number>(0);
+
   useEffect(() => {
     getLiveSessionState().then(st => {
       if (st && st.sessionPin) setCurrentPin(st.sessionPin);
@@ -68,6 +77,46 @@ export default function AdminPanel({
     fetchLiveQuestionsT().then(data => {
       if (data && data.length > 0) setAllLiveLessons(data);
     }).catch(() => {});
+
+    const unsub = subscribeToLiveSession((state) => {
+      const msgs = state.messages || [];
+      if (lastKnownMessagesCountRef.current === 0) {
+        lastKnownMessagesCountRef.current = msgs.length;
+        return;
+      }
+      if (msgs.length > lastKnownMessagesCountRef.current) {
+        const newMsgs = msgs.slice(lastKnownMessagesCountRef.current);
+        const lastMsg = [...newMsgs].reverse()[0];
+        if (lastMsg) {
+          setFloatingChatNotice({
+            visible: true,
+            senderName: lastMsg.senderName || 'طالب',
+            text: lastMsg.text || (lastMsg.type === 'hand' ? 'رفع اليد ✋' : lastMsg.type === 'agree' ? 'موافق 👍' : lastMsg.type === 'disagree' ? 'غير موافق 👎' : lastMsg.type === 'clap' ? 'تصفيق 👏' : 'سؤال ❓'),
+          });
+          // Play notification chime
+          try {
+            const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+            if (AudioCtx) {
+              const ctx = new AudioCtx();
+              const osc = ctx.createOscillator();
+              const gain = ctx.createGain();
+              osc.type = 'sine';
+              osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+              osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15);
+              gain.gain.setValueAtTime(0.12, ctx.currentTime);
+              gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+              osc.connect(gain);
+              gain.connect(ctx.destination);
+              osc.start();
+              osc.stop(ctx.currentTime + 0.25);
+            }
+          } catch {}
+        }
+        lastKnownMessagesCountRef.current = msgs.length;
+      }
+    });
+
+    return () => unsub();
   }, []);
 
   const handleCopy = (text: string, id: string) => {
@@ -639,6 +688,62 @@ export default function AdminPanel({
         </div>
 
       </div>
+
+      {/* Global Floating Smart Chat Notice across all tabs */}
+      <AnimatePresence>
+        {floatingChatNotice.visible && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, scale: 0.9 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 50, scale: 0.9 }}
+            className="fixed bottom-6 left-6 z-[9999] max-w-sm w-full bg-slate-900/95 border-2 border-indigo-500/80 rounded-2xl p-4 shadow-2xl backdrop-blur-xl text-right text-white"
+            dir="rtl"
+          >
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500"></span>
+                </span>
+                <span className="text-xs font-black text-indigo-300">
+                  رسالة جديدة من الطالب ({floatingChatNotice.senderName})
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFloatingChatNotice(prev => ({ ...prev, visible: false }))}
+                className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-200 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800 line-clamp-2 mb-3">
+              "{floatingChatNotice.text}"
+            </p>
+
+            <div className="flex items-center gap-2">
+              <a
+                href="?mode=chat"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setFloatingChatNotice(prev => ({ ...prev, visible: false }))}
+                className="flex-1 py-1.5 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/30 cursor-pointer"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>فتح في صفحة مستقلة</span>
+              </a>
+              <button
+                type="button"
+                onClick={() => setFloatingChatNotice(prev => ({ ...prev, visible: false }))}
+                className="py-1.5 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                إغلاق
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

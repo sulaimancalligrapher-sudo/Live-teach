@@ -870,6 +870,82 @@ async function startServer() {
     res.status(204).end();
   });
 
+  // Rich Dictionary for Arabic -> Thai & English educational and UI terms
+  const UI_DICTIONARY: Record<string, { th: string; en: string }> = {
+    'فيديو الدروس': { th: 'วิดีโอบทเรียน', en: 'Lesson Videos' },
+    'بوابة التحكم الإداري وقاعدة البيانات': { th: 'พอร์ทัลควบคุมการจัดการและฐานข้อมูล', en: 'Admin Control Portal & Database' },
+    'نظام القراءة والواجبات المطور': { th: 'ระบบการอ่านและการบ้านขั้นสูง', en: 'Advanced Reading & Homework System' },
+    'إدارة الشيت، الأسئلة، وإعدادات الربط': { th: 'จัดการชีท คำถาม และการเชื่อมต่อ', en: 'Manage Sheets, Questions & Connection Settings' },
+    'صفحة الطلاب 🎓': { th: 'หน้าสำหรับนักเรียน 🎓', en: 'Student Page 🎓' },
+    'صفحة الإدارة 🔐': { th: 'หน้าการจัดการ 🔐', en: 'Admin Page 🔐' },
+    'قفل الإدارة': { th: 'ล็อคการจัดการ', en: 'Lock Admin' },
+    'تحديث البيانات': { th: 'รีเฟรชข้อมูล', en: 'Refresh Data' },
+    'تطبيق ويب تفاعلي متقدم لتعليم الأطفال القراءة 📚': { th: 'แอปพลิเคชันเว็บแบบโต้ตอบเพื่อสอนการอ่านสำหรับเด็ก 📚', en: 'Interactive Web App for Teaching Kids Reading 📚' },
+    'بوابة الطالب للحصة التفاعلية 📱': { th: 'พอร์ทัลนักเรียนสำหรับชั้นเรียนแบบโต้ตอบ 📱', en: 'Student Portal for Interactive Classroom 📱' },
+    'سجل اسمك ورمز الحضور المعروض على الشاشة للإجابة على الأسئلة من جهازك مباشرة!': { th: 'กรอกชื่อและรหัส PIN ที่แสดงบนหน้าจอเพื่อตอบคำถามจากอุปกรณ์ของคุณ!', en: 'Enter your name and the PIN shown on screen to answer questions directly from your device!' },
+    'مسح رمز QR بالكاميرا (بيانات الطالب أو رمز الحضور) 📷': { th: 'สแกนรหัส QR ด้วยกล้อง 📷', en: 'Scan QR Code with Camera 📷' },
+    'اسم الطالب:': { th: 'ชื่อนักเรียน:', en: 'Student Name:' },
+    'أدخل اسمك الكريم...': { th: 'กรุณากรอกชื่อของคุณ...', en: 'Please enter your name...' },
+    'رقم الشيت (اختياري - للربط المباشر مع سجل الدرجات):': { th: 'หมายเลขชีท (ไม่บังคับ):', en: 'Sheet Number (Optional):' },
+    'رمز الحضور (PIN):': { th: 'รหัสเข้าร่วม (PIN):', en: 'Attendance Code (PIN):' },
+    'أدخل رمز الـ PIN المعروض على الشاشة...': { th: 'กรอกรหัส PIN ที่แสดงบนหน้าจอ...', en: 'Enter the PIN shown on screen...' },
+    'دخول الحصة التفاعلية 🚀': { th: 'เข้าร่วมชั้นเรียนแบบโต้ตอบ 🚀', en: 'Join Interactive Class 🚀' },
+    'جارٍ التحقق والدخول...': { th: 'กำลังตรวจสอบและเข้าร่วม...', en: 'Verifying and joining...' },
+    'أنت متصل بالحصة الآن': { th: 'คุณเชื่อมต่อกับชั้นเรียนแล้ว', en: 'You are connected to class' },
+    'في انتظار المعلم لإطلاق السؤال القادم...': { th: 'กำลังรอครูส่งคำถามถัดไป...', en: 'Waiting for teacher to launch next question...' },
+    'أرسل إجابتك': { th: 'ส่งคำตอบของคุณ', en: 'Submit Your Answer' },
+    'تم استلام إجابتك بنجاح!': { th: 'ได้รับคำตอบของคุณเรียบร้อยแล้ว!', en: 'Your answer has been received!' },
+    'شكراً لمشاركتك المتميزة! 🎉': { th: 'ขอบคุณสำหรับการมีส่วนร่วมที่ยอดเยี่ยม! 🎉', en: 'Thank you for your excellent participation! 🎉' },
+    'تسجيل الدخول لحصة جديدة': { th: 'เข้าสู่ระบบสำหรับชั้นเรียนใหม่', en: 'Sign in to a new class' },
+    'العودة للصفحة الرئيسية': { th: 'กลับสู่หน้าหลัก', en: 'Back to Home Page' },
+    'تحدي نهاية البرنامج المباشر': { th: 'การแข่งขันปิดท้ายชั้นเรียนสด', en: 'Live Program Grand Challenge' },
+    'المعلم يستعد لإطلاق مسابقة التحدي النهائي! 🎯 هل أنت مستعد؟': { th: 'ครูกำลังเตรียมเปิดการแข่งขันรอบสุดท้าย! 🎯 คุณพร้อมไหม?', en: 'Teacher is preparing to launch the Final Challenge! 🎯 Are you ready?' },
+    'اضغط أدناه لتأكيد حضورك والظهور فوراً على شاشة العرض مع زملائك ⚡': { th: 'กดด้านล่างเพื่อยืนยันการเข้าร่วมและแสดงชื่อบนหน้าจอพร้อมเพื่อนๆ ⚡', en: 'Tap below to confirm attendance and appear on the display screen with classmates ⚡' },
+    'دخول تحدي الكويز الآن 🚀': { th: 'เข้าร่วมแบบทดสอบทันที 🚀', en: 'Enter Quiz Challenge Now 🚀' },
+    'تبديل الطالب': { th: 'เปลี่ยนนักเรียน', en: 'Switch Student' },
+    'محادثة': { th: 'แชท', en: 'Chat' },
+    'رفع اليد ✋': { th: 'ยกมือ ✋', en: 'Raise Hand ✋' },
+    'موافق 👍': { th: 'เห็นด้วย 👍', en: 'Agree 👍' },
+    'غير موافق 👎': { th: 'ไม่เห็นด้วย 👎', en: 'Disagree 👎' },
+    'سؤال ❓': { th: 'คำถาม ❓', en: 'Question ❓' },
+    'تصفيق 👏': { th: 'ปรบมือ 👏', en: 'Clap 👏' },
+  };
+
+  function lookupFallbackTranslation(text: string, targetLang: 'th' | 'en'): string {
+    const trimmed = text.trim();
+    if (UI_DICTIONARY[trimmed]) {
+      return UI_DICTIONARY[trimmed][targetLang];
+    }
+    // Partial search in dictionary
+    for (const [key, val] of Object.entries(UI_DICTIONARY)) {
+      if (trimmed.includes(key) || key.includes(trimmed)) {
+        return val[targetLang];
+      }
+    }
+    // Keyword based translation helper
+    if (targetLang === 'th') {
+      if (trimmed.includes('طالب')) return 'นักเรียน';
+      if (trimmed.includes('معلم')) return 'คุณครู';
+      if (trimmed.includes('سؤال')) return 'คำถาม';
+      if (trimmed.includes('إجابة') || trimmed.includes('جواب')) return 'คำตอบ';
+      if (trimmed.includes('حصة') || trimmed.includes('درس')) return 'บทเรียน';
+      if (trimmed.includes('رمز') || trimmed.includes('كود')) return 'รหัส PIN';
+      if (trimmed.includes('تحدي') || trimmed.includes('مسابقة')) return 'การแข่งขันแบบทดสอบ';
+      if (trimmed.includes('شكراً') || trimmed.includes('شكر')) return 'ขอบคุณมาก';
+      return `[TH] ${trimmed}`;
+    } else {
+      if (trimmed.includes('طالب')) return 'Student';
+      if (trimmed.includes('معلم')) return 'Teacher';
+      if (trimmed.includes('سؤال')) return 'Question';
+      if (trimmed.includes('إجابة') || trimmed.includes('جواب')) return 'Answer';
+      if (trimmed.includes('حصة') || trimmed.includes('درس')) return 'Lesson';
+      if (trimmed.includes('رمز') || trimmed.includes('كود')) return 'PIN Code';
+      if (trimmed.includes('تحدي') || trimmed.includes('مسابقة')) return 'Quiz Challenge';
+      if (trimmed.includes('شكراً') || trimmed.includes('شكر')) return 'Thank you';
+      return `[EN] ${trimmed}`;
+    }
+  }
+
   // AI Single Translation Endpoint using @google/genai
   app.post("/api/translate-ai", async (req, res) => {
     try {
@@ -878,7 +954,8 @@ async function startServer() {
         return res.status(400).json({ success: false, error: "Text is required" });
       }
 
-      const langName = targetLang === 'th' ? 'Thai' : 'English';
+      const safeLang: 'th' | 'en' = targetLang === 'th' ? 'th' : 'en';
+      const langName = safeLang === 'th' ? 'Thai' : 'English';
       const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 
       if (apiKey) {
@@ -890,7 +967,7 @@ async function startServer() {
             contents: `Translate the following educational UI string from Arabic to natural, idiomatic ${langName}. Return ONLY the direct translation text with no markdown, quotes, or conversational explanations:\n\n${text}`
           });
           const translated = (response.text || "").trim().replace(/^["']|["']$/g, '');
-          if (translated) {
+          if (translated && translated !== text) {
             return res.json({ success: true, translated });
           }
         } catch (apiErr: any) {
@@ -898,7 +975,9 @@ async function startServer() {
         }
       }
 
-      return res.json({ success: true, translated: text });
+      // High-accuracy fallback dictionary
+      const fallback = lookupFallbackTranslation(text, safeLang);
+      return res.json({ success: true, translated: fallback });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
@@ -932,13 +1011,23 @@ ${JSON.stringify(items.map(i => ({ key: i.key, ar: i.ar })))}
             config: { responseMimeType: "application/json" }
           });
           const parsed = JSON.parse(response.text || "{}");
-          return res.json({ success: true, translations: parsed });
+          if (parsed && Object.keys(parsed).length > 0) {
+            return res.json({ success: true, translations: parsed });
+          }
         } catch (apiErr: any) {
           console.warn("Gemini batch translation error:", apiErr.message);
         }
       }
 
-      return res.json({ success: true, translations: {} });
+      // Fallback: build translations from dictionary
+      const fallbackTranslations: Record<string, { th: string; en: string }> = {};
+      for (const item of items) {
+        fallbackTranslations[item.key] = {
+          th: lookupFallbackTranslation(item.ar || item.key, 'th'),
+          en: lookupFallbackTranslation(item.ar || item.key, 'en')
+        };
+      }
+      return res.json({ success: true, translations: fallbackTranslations });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }

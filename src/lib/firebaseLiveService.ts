@@ -59,6 +59,7 @@ export const defaultLiveSessionState: LiveSessionState = {
   questionTriggeredAt: null,
   timeLimit: 30,
   showResult: 'نعم',
+  broadcastVolume: 1.0,
   connectedStudents: [],
   answersForCurrentQuestion: {},
   allSessionAnswers: {},
@@ -110,6 +111,7 @@ export function subscribeToLiveSession(
           showSkipInRoom: Boolean(data.showSkipInRoom),
           showPlayPauseInRoom: Boolean(data.showPlayPauseInRoom),
           videoPlaying: Boolean(data.videoPlaying),
+          broadcastVolume: typeof data.broadcastVolume === 'number' ? data.broadcastVolume : 1.0,
           showOptionCountsInRoom: Boolean(data.showOptionCountsInRoom),
           showStudentTextAnswersInRoom: Boolean(data.showStudentTextAnswersInRoom),
           showChatInRoom: Boolean(data.showChatInRoom),
@@ -1270,6 +1272,15 @@ export async function toggleShowPlayPauseInRoom(show: boolean): Promise<{ succes
 export async function setLiveBroadcastVolume(volume: number): Promise<{ success: boolean; state?: LiveSessionState }> {
   try {
     const safeVol = Math.max(0, Math.min(1, volume));
+    // Instant cross-tab broadcast
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('live_video_control');
+        bc.postMessage({ type: 'VOLUME_CHANGE', volume: safeVol });
+        bc.close();
+      }
+    } catch {}
+
     await updateDoc(LIVE_DOC_REF, {
       broadcastVolume: safeVol,
       updatedAt: serverTimestamp(),
@@ -1285,6 +1296,15 @@ export async function setLiveBroadcastVolume(volume: number): Promise<{ success:
 // Teacher toggles Play/Pause state synced across room and admin
 export async function toggleLiveVideoPlay(playing: boolean): Promise<{ success: boolean; state?: LiveSessionState }> {
   try {
+    // Instant cross-tab broadcast
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const bc = new BroadcastChannel('live_video_control');
+        bc.postMessage({ type: 'PLAY_PAUSE', playing });
+        bc.close();
+      }
+    } catch {}
+
     const update: any = {
       videoPlaying: playing,
       mode: 'video',

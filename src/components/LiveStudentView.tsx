@@ -129,13 +129,13 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
 
   // Firebase real-time subscription for live updates
   useEffect(() => {
-    if (!isJoined || !isPinVerified) return;
-
     setConnected(true);
     const unsubscribe = subscribeToLiveSession(
       (state) => {
         setConnected(true);
-        if (state.status === 'program_ended' || state.status === 'finished') {
+        setSessionState(state);
+
+        if (isJoined && (state.status === 'program_ended' || state.status === 'finished')) {
           setIsSessionEndedWithGratitude(true);
           setIsJoined(false);
           setIsPinVerified(false);
@@ -149,7 +149,7 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
         }
 
         // Check if teacher regenerated or changed the PIN
-        if (state.sessionPin && studentPin.trim() && state.sessionPin.trim() !== studentPin.trim()) {
+        if (isJoined && state.sessionPin && studentPin.trim() && state.sessionPin.trim() !== studentPin.trim()) {
           setIsJoined(false);
           setIsPinVerified(false);
           setScanSuccessMsg(null);
@@ -165,8 +165,6 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
           try { sessionStorage.removeItem('hasAcceptedQuizChallenge'); } catch {}
           setHasAcceptedQuizChallenge(false);
         }
-
-        setSessionState(state);
       },
       (err) => {
         console.warn('Live subscription error:', err);
@@ -175,18 +173,23 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
     );
 
     // Ping session periodically to keep student active in teacher's list
-    const pingTimer = setInterval(() => {
-      pingLiveSession(username, sheetNumber);
-    }, 10000);
+    let pingTimer: any = null;
+    if (isJoined && isPinVerified) {
+      pingTimer = setInterval(() => {
+        pingLiveSession(username, sheetNumber);
+      }, 10000);
+    }
 
     const handleBeforeUnload = () => {
-      leaveLiveSession(username, sheetNumber);
+      if (isJoined && isPinVerified) {
+        leaveLiveSession(username, sheetNumber);
+      }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
-      unsubscribe();
-      clearInterval(pingTimer);
+      if (unsubscribe) unsubscribe();
+      if (pingTimer) clearInterval(pingTimer);
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
   }, [isJoined, isPinVerified, username, sheetNumber, studentPin]);
@@ -556,8 +559,20 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
 
     setJoinError(null);
 
+    // Check access mode: fetch fresh state from Firebase if not yet cached
+    let currentAccessMode = sessionState?.accessMode;
+    if (!currentAccessMode) {
+      try {
+        const freshState = await getLiveSessionState();
+        if (freshState) {
+          setSessionState(freshState);
+          currentAccessMode = freshState.accessMode;
+        }
+      } catch {}
+    }
+
     // If access mode is restricted (default), verify student name & registration against Settings sheet
-    if (sessionState?.accessMode !== 'open') {
+    if (currentAccessMode !== 'open') {
       setIsVerifyingRoster(true);
       try {
         // Retrieve or generate persistent deviceId for attendance tracking in Settings sheet (AE..AX)
@@ -846,24 +861,20 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
 
           <div className="text-center mb-6">
             {(headerConfig?.loginLogoUrl || headerConfig?.logoUrl) ? (
-              <div className="w-20 h-20 mx-auto mb-3 rounded-3xl overflow-hidden shadow-lg border border-slate-700/80 bg-slate-800/80 p-1 flex items-center justify-center">
+              <div className="mb-4 flex items-center justify-center">
                 <img
                   src={headerConfig.loginLogoUrl || headerConfig.logoUrl}
                   alt="Logo"
-                  className="w-full h-full object-contain rounded-2xl"
+                  className="max-h-24 max-w-[200px] object-contain transition-all"
                   onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
                 />
               </div>
-            ) : (
-              <div className="w-16 h-16 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 rounded-3xl mx-auto flex items-center justify-center mb-3 shadow-inner">
-                <Tv className="w-8 h-8" />
-              </div>
-            )}
+            ) : null}
             <h2 className="text-xl sm:text-2xl font-black text-slate-100">
-              {headerConfig?.title || t('live_student_portal', 'بوابة الطالب للحصة التفاعلية 📱')}
+              {t('login_title', 'تسجيل دخول الطالب 👤')}
             </h2>
             <p className="text-xs text-slate-400 mt-2 leading-relaxed font-semibold">
-              {headerConfig?.subtitle || t('live_student_instructions', 'سجل اسمك ورمز الحضور المعروض على الشاشة للإجابة على الأسئلة من جهازك مباشرة!')}
+              {t('login_subtitle', 'أدخل اسمك ورقم الشيت الخاص بك لمتابعة دروس القراءة والواجبات.')}
             </p>
           </div>
 
@@ -1129,30 +1140,19 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
       <header className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 sticky top-0 z-20">
         <div className={`mx-auto flex items-center justify-between transition-all duration-300 ${isShowingPdf ? 'max-w-6xl' : 'max-w-xl'}`}>
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-sm">
-              <Tv className="w-4.5 h-4.5" />
-            </div>
             <div>
               <div className="text-xs font-black text-slate-200 flex items-center gap-1.5">
                 <span>{sessionState?.lessonTitle || 'الحصة التفاعلية المباشرة'}</span>
                 <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
               </div>
-              <div className="text-[11px] text-slate-400 font-semibold flex items-center gap-1.5">
-                <span>الطالب:</span>
-                <span className="text-indigo-400 font-bold">{username}</span>
-                {sheetNumber && <span className="text-slate-500 font-mono">({sheetNumber})</span>}
-                {isPinVerified && (
-                  <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold flex items-center gap-0.5">
-                    <ShieldCheck className="w-2.5 h-2.5" />
-                    <span>حضور مؤكد</span>
-                  </span>
-                )}
+              <div className="text-xs font-bold text-indigo-400">
+                {username}
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <LanguageSelector variant="dropdown" />
+            <LanguageSelector iconOnly={true} align="left" />
             <button
               onClick={async () => {
                 await leaveLiveSession(username, sheetNumber);

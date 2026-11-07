@@ -157,12 +157,14 @@ export async function verifyStudentInSettings(
     }
   } catch (err2: any) {
     const msg2 = err2?.message || '';
-    if (msg2.includes('غير صحيح') || msg2.includes('غير مسجل') || msg2.includes('منع') || msg2.includes('تعطيل') || msg2.includes('خطأ') || msg2.includes('خطاء')) {
-      return { success: false, message: msg2 };
+    if (msg2.includes('تعطيل') || msg2.includes('منع')) {
+      return { success: false, message: 'تم تعطيل دخول هذا الحساب، يرجى التواصل مع الإدارة' };
     }
+    return { success: false, message: 'خطأ في الاسم ورقم التسجيل، يجب التواصل مع الإدارة' };
   }
 
-  return { success: true };
+  // Strict enforcement: in restricted mode, if student is not found or verified, fail
+  return { success: false, message: 'خطأ في الاسم ورقم التسجيل، يجب التواصل مع الإدارة' };
 }
 
 // Helper to clean string & remove weird symbols / URL encoding

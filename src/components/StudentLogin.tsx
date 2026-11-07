@@ -52,9 +52,8 @@ export default function StudentLogin({
   const [qrSuccessMsg, setQrSuccessMsg] = useState<string | null>(null);
   const html5QrcodeRef = useRef<Html5Qrcode | null>(null);
 
-  // Default fallback logo given by user
-  const defaultDriveLogo = 'https://lh3.googleusercontent.com/d/15i8enIJFkPI0ZjBca0wfq4fHkFIwIY0y';
-  const logoUrlToDisplay = formatDriveImageUrl(headerConfig?.loginLogoUrl) || formatDriveImageUrl(headerConfig?.logoUrl) || defaultDriveLogo;
+  // Logo strictly from header sheet (loginLogoUrl or logoUrl) without hardcoded fallback
+  const logoUrlToDisplay = formatDriveImageUrl(headerConfig?.loginLogoUrl) || formatDriveImageUrl(headerConfig?.logoUrl) || '';
 
   // Cleanup scanner on unmount
   useEffect(() => {
@@ -372,16 +371,13 @@ export default function StudentLogin({
                 src={logoUrlToDisplay}
                 alt="شعار"
                 referrerPolicy="no-referrer"
-                className="max-h-24 max-w-[200px] object-contain rounded-2xl shadow-sm border border-amber-100/50 dark:border-slate-800 p-1.5 bg-white dark:bg-slate-950 transition-all hover:scale-105"
+                className="max-h-24 max-w-[200px] object-contain transition-all"
                 onError={(e) => {
-                  // Fallback to emoji if image fails to load
                   (e.target as HTMLElement).style.display = 'none';
                 }}
               />
             </div>
-          ) : (
-            <span className="text-5xl">🎓</span>
-          )}
+          ) : null}
           <h1 className="text-2xl font-extrabold text-indigo-600 dark:text-indigo-400 mt-2">{t('login_title')}</h1>
           <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold mt-1">{t('login_subtitle')}</p>
         </div>

@@ -7,11 +7,13 @@ interface LanguageSelectorProps {
   variant?: 'compact' | 'full' | 'dropdown';
   className?: string;
   align?: 'left' | 'right';
+  iconOnly?: boolean;
 }
 
 export default function LanguageSelector({ 
   className = '',
-  align = 'right'
+  align = 'right',
+  iconOnly = false
 }: LanguageSelectorProps) {
   const { language, setLanguage } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
@@ -51,12 +53,15 @@ export default function LanguageSelector({
       <button
         type="button"
         onClick={toggleDropdown}
-        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-100 hover:text-amber-400 border border-slate-700 hover:border-amber-500/60 rounded-xl cursor-pointer transition-all active:scale-95 shadow-sm flex items-center gap-2 text-xs font-black select-none z-10 relative"
+        className={iconOnly
+          ? "w-9 h-9 bg-slate-800/90 hover:bg-slate-700 text-slate-100 hover:text-amber-400 border border-slate-700/80 hover:border-amber-500/60 rounded-xl cursor-pointer transition-all active:scale-95 shadow-sm flex items-center justify-center text-sm font-black select-none z-10 relative"
+          : "px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-slate-100 hover:text-amber-400 border border-slate-700 hover:border-amber-500/60 rounded-xl cursor-pointer transition-all active:scale-95 shadow-sm flex items-center gap-2 text-xs font-black select-none z-10 relative"
+        }
         title="تغيير اللغة / Change Language"
       >
         <span className="text-base leading-none">{currentInfo.flag}</span>
-        <span className="font-extrabold text-xs">{currentInfo.nativeName}</span>
-        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-amber-400' : ''}`} />
+        {!iconOnly && <span className="font-extrabold text-xs">{currentInfo.nativeName}</span>}
+        {!iconOnly && <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-amber-400' : ''}`} />}
       </button>
 
       {/* القائمة المنسدلة بدون نصوص إرشادية طويلة */}

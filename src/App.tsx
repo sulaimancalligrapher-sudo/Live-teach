@@ -328,9 +328,6 @@ export default function App() {
             >
               {darkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-700" />}
             </button>
-
-            {/* Language Selector */}
-            <LanguageSelector />
           </div>
 
         </div>
@@ -344,11 +341,6 @@ export default function App() {
           <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(245,158,11,0.15),rgba(255,255,255,0))] pointer-events-none" />
           
           <div className="relative z-10 max-w-3xl mx-auto text-center space-y-4">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-400/10 text-amber-300 border border-amber-400/30">
-              <Sparkles className="w-3.5 h-3.5" />
-              منصة تفاعلية موحدة مع Google Sheets
-            </span>
-
             {headerConfig?.title ? (
               <h2 className="text-2xl sm:text-4xl font-black text-white leading-tight">
                 {headerConfig.title}
@@ -392,27 +384,22 @@ export default function App() {
               )}
             </form>
 
-            {/* Logged in Student Quick Profile Pill */}
+            {/* Admin / Teacher Profile Status Pill */}
             <div className="pt-2 flex items-center justify-center gap-2 text-xs text-slate-400">
-              {studentName ? (
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-xl bg-slate-800/60 border border-slate-700/60">
-                  <span className="text-slate-400">الطالب الحالي:</span>
-                  <span className="font-bold text-amber-300">{studentName}</span>
-                  {studentNumber && <span className="font-mono text-slate-400">({studentNumber})</span>}
-                  <button
-                    onClick={() => setIsEditingStudent(true)}
-                    className="text-slate-400 hover:text-white underline text-[11px] cursor-pointer mr-1"
-                  >
-                    تغيير
-                  </button>
+              {isAdminUnlocked ? (
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-800/80 border border-amber-500/40 text-amber-300 font-bold shadow-sm">
+                  <ShieldCheck className="w-4 h-4 text-amber-400" />
+                  <span className="text-slate-300">المسؤول / الإداري:</span>
+                  <span className="text-white font-black">إدارة النظام المركزية</span>
                 </div>
               ) : (
                 <button
-                  onClick={() => setIsEditingStudent(true)}
-                  className="inline-flex items-center gap-1.5 text-amber-300 hover:text-amber-200 underline text-xs cursor-pointer"
+                  type="button"
+                  onClick={() => setShowAdminPassModal(true)}
+                  className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-800/70 hover:bg-slate-800 border border-slate-700 hover:border-amber-500/50 text-slate-300 hover:text-amber-300 font-bold transition cursor-pointer text-xs"
                 >
-                  <Users className="w-3.5 h-3.5" />
-                  تسجيل اسمك ورقمك المدرسي لحفظ درجاتك بالشيت
+                  <Lock className="w-3.5 h-3.5 text-amber-400" />
+                  <span>دخول الإدارة والمعلم</span>
                 </button>
               )}
             </div>

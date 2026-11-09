@@ -23,6 +23,7 @@ import StudentQuizView from './StudentQuizView';
 import { NativePdfViewer } from './NativePdfViewer';
 import { useLanguage } from '../translations';
 import LanguageSelector from './LanguageSelector';
+import LiveFloatingStreamPlayer from './LiveFloatingStreamPlayer';
 
 interface LiveStudentViewProps {
   onBackToMain?: () => void;
@@ -1253,6 +1254,12 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Live Audio / Video Stream Player (VDO.Ninja WebRTC Integration) */}
+        <LiveFloatingStreamPlayer
+          streamState={sessionState?.streamState}
+          isQuestionActive={Boolean(isQuestionActive)}
+        />
 
         {/* Step 1: Floating Challenge Invitation Banner for students in "شرح مباشر" */}
         <AnimatePresence>

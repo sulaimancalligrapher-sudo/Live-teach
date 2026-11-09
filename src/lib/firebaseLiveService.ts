@@ -18,15 +18,26 @@ import {
   QuizActiveState,
   QuizQuestionItem,
   QuizStudentProgress,
-  QuizStudentAnswerDetail
+  QuizStudentAnswerDetail,
+  LiveStreamConfig
 } from '../types';
 
 const LIVE_DOC_REF = doc(db, 'live_sessions', 'main');
+
+export const defaultLiveStreamConfig: LiveStreamConfig = {
+  isActive: false,
+  streamId: 'room_live_teacher',
+  password: '',
+  mode: 'video',
+  useMeshcast: true,
+  startedAt: 0,
+};
 
 export const defaultLiveSessionState: LiveSessionState = {
   sessionId: 'live-main',
   sessionPin: '1234',
   isProgramActive: false,
+  streamState: defaultLiveStreamConfig,
   accessMode: 'restricted',
   showLessonsListInRoom: false,
   showPinInRoom: false,
@@ -148,6 +159,14 @@ export function subscribeToLiveSession(
           videoAnswers: data.videoAnswers || {},
           directAnswers: data.directAnswers || {},
           quizState: data.quizState || null,
+          streamState: data.streamState ? {
+            isActive: Boolean(data.streamState.isActive),
+            streamId: data.streamState.streamId || 'room_live_teacher',
+            password: data.streamState.password || '',
+            mode: data.streamState.mode === 'audio' ? 'audio' : 'video',
+            useMeshcast: data.streamState.useMeshcast !== false,
+            startedAt: data.streamState.startedAt || 0,
+          } : defaultLiveStreamConfig,
         };
         cachedState = state;
         onUpdate(state);
@@ -231,6 +250,14 @@ export async function getLiveSessionState(): Promise<LiveSessionState | null> {
         videoAnswers: data.videoAnswers || {},
         directAnswers: data.directAnswers || {},
         quizState: data.quizState || null,
+        streamState: data.streamState ? {
+          isActive: Boolean(data.streamState.isActive),
+          streamId: data.streamState.streamId || 'room_live_teacher',
+          password: data.streamState.password || '',
+          mode: data.streamState.mode === 'audio' ? 'audio' : 'video',
+          useMeshcast: data.streamState.useMeshcast !== false,
+          startedAt: data.streamState.startedAt || 0,
+        } : defaultLiveStreamConfig,
       };
       cachedState = state;
       return state;
@@ -289,6 +316,10 @@ export async function endLiveProgram(): Promise<{ success: boolean; state?: Live
       currentQuestion: null,
       currentQuestionIndex: null,
       questionTriggeredAt: null,
+      streamState: {
+        ...(cachedState.streamState || defaultLiveStreamConfig),
+        isActive: false,
+      },
     };
 
     await setDoc(LIVE_DOC_REF, {
@@ -2089,6 +2120,8 @@ export async function setStudentQuizRetryMode(studentKey: string, inRetry: boole
 
 export async function stopAllActiveBroadcasts(): Promise<{ success: boolean }> {
   try {
+    const defaultStream = cachedState.streamState || defaultLiveStreamConfig;
+    const streamOff = { ...defaultStream, isActive: false };
     await updateDoc(LIVE_DOC_REF, {
       isProgramActive: false,
       status: 'idle',
@@ -2096,6 +2129,7 @@ export async function stopAllActiveBroadcasts(): Promise<{ success: boolean }> {
       currentQuestionIndex: null,
       videoPlaying: false,
       quizState: null,
+      streamState: streamOff,
       updatedAt: serverTimestamp(),
     });
     cachedState = {
@@ -2106,10 +2140,61 @@ export async function stopAllActiveBroadcasts(): Promise<{ success: boolean }> {
       currentQuestionIndex: null,
       videoPlaying: false,
       quizState: null,
+      streamState: streamOff,
     };
     return { success: true };
   } catch (err: any) {
     console.error('Failed to stop all active broadcasts:', err);
     return { success: false };
   }
+}
+
+// ==========================================
+// --- LIVE STREAM & VDO.NINJA WEBRTC HELPERS ---
+// ==========================================
+
+export function generateStreamToken(): string {
+  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
+  let token = '';
+  for (let i = 0; i < 8; i++) {
+    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return token;
+}
+
+export async function updateLiveStreamState(
+  streamConfig: Partial<LiveStreamConfig>
+): Promise<{ success: boolean; state?: LiveSessionState }> {
+  try {
+    const currentStream = cachedState.streamState || defaultLiveStreamConfig;
+    const merged: LiveStreamConfig = {
+      ...currentStream,
+      ...streamConfig,
+      startedAt: streamConfig.isActive !== undefined 
+        ? (streamConfig.isActive ? (currentStream.startedAt || Date.now()) : 0)
+        : currentStream.startedAt,
+    };
+
+    await updateDoc(LIVE_DOC_REF, {
+      streamState: merged,
+      updatedAt: serverTimestamp(),
+    });
+
+    cachedState = { ...cachedState, streamState: merged };
+    return { success: true, state: cachedState };
+  } catch (error: any) {
+    console.error('Failed to update live stream state in Firebase:', error);
+    throw error;
+  }
+}
+
+export async function toggleLiveStream(
+  isActive: boolean
+): Promise<{ success: boolean; state?: LiveSessionState }> {
+  const currentStream = cachedState.streamState || defaultLiveStreamConfig;
+  return updateLiveStreamState({
+    ...currentStream,
+    isActive,
+    startedAt: isActive ? Date.now() : 0,
+  });
 }

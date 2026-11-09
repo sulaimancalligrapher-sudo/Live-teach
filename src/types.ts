@@ -264,10 +264,20 @@ export interface LiveSessionChannelState {
   videoPlaying?: boolean;
 }
 
+export interface LiveStreamConfig {
+  isActive: boolean;
+  streamId: string;
+  password?: string;
+  mode: 'video' | 'audio';
+  useMeshcast?: boolean;
+  startedAt?: number;
+}
+
 export interface LiveSessionState {
   sessionId: string;
   sessionPin?: string;
   isProgramActive?: boolean;
+  streamState?: LiveStreamConfig; // Live Camera & WebRTC Audio/Video Stream (VDO.Ninja integration)
   accessMode?: 'restricted' | 'open'; // 'restricted' (default) = verifies student against Settings sheet, 'open' = unrestricted guest entry
   showLessonsListInRoom?: boolean; // Controls whether lessons list dropdown/button appears on projector display screen
   showPinInRoom?: boolean; // Controls whether attendance PIN badge appears on projector display screen

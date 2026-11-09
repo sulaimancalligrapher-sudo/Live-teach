@@ -2499,6 +2499,10 @@ export {
   stopAllActiveBroadcasts,
   clearSessionAnswersMemory,
   toggleLiveAccessMode,
+  generateStreamToken,
+  updateLiveStreamState,
+  toggleLiveStream,
+  defaultLiveStreamConfig,
 } from './lib/firebaseLiveService';
 
 export {

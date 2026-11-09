@@ -5,11 +5,12 @@ import {
   ExternalLink, Copy, CheckCircle2, ShieldCheck, 
   Sparkles, KeyRound, Globe, Users, ArrowUpRight, 
   FileSpreadsheet, Play, QrCode, Sliders, Palette, Square,
-  Video, Radio, MessageSquare, Bell
+  Video, Radio, MessageSquare, Bell, Camera
 } from 'lucide-react';
 import { LiveLessonRow, HeaderConfig } from '../types';
 import LiveClassManager from './LiveClassManager';
 import LiveDirectManager from './LiveDirectManager';
+import LiveCameraManager from './LiveCameraManager';
 import QuizManagerPanel from './QuizManagerPanel';
 import SettingsPanel from './SettingsPanel';
 import { 
@@ -34,7 +35,7 @@ interface AdminPanelProps {
   onOpenLiveDirectDisplay?: () => void;
   onOpenQuizArenaDisplay?: () => void;
   onOpenSmartDisplay?: () => void;
-  initialTab?: 'live' | 'live-direct' | 'quiz-challenge' | 'broadcast' | 'translations' | 'sheets-design';
+  initialTab?: 'live' | 'live-direct' | 'quiz-challenge' | 'camera' | 'broadcast' | 'translations' | 'sheets-design';
 }
 
 export default function AdminPanel({ 
@@ -45,7 +46,7 @@ export default function AdminPanel({
   onOpenSmartDisplay,
   initialTab = 'live'
 }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<'live' | 'live-direct' | 'quiz-challenge' | 'broadcast' | 'translations' | 'sheets-design'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'live' | 'live-direct' | 'quiz-challenge' | 'camera' | 'broadcast' | 'translations' | 'sheets-design'>(initialTab);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [currentPin, setCurrentPin] = useState<string>('1234');
   const [isUpdatingPin, setIsUpdatingPin] = useState(false);
@@ -297,7 +298,20 @@ export default function AdminPanel({
             <span>شرح مباشر</span>
           </button>
 
-          {/* Tab 3: Quiz Challenge */}
+          {/* Tab 3: Live Camera & Audio Stream */}
+          <button
+            onClick={() => setActiveTab('camera')}
+            className={`px-3.5 sm:px-4 py-2.5 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'camera'
+                ? 'bg-slate-900 text-amber-400 border-amber-500 shadow-sm'
+                : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/40'
+            }`}
+          >
+            <Camera className="w-4 h-4 text-emerald-400" />
+            <span>كاميرا مباشر</span>
+          </button>
+
+          {/* Tab 4: Quiz Challenge */}
           <button
             onClick={() => setActiveTab('quiz-challenge')}
             className={`px-3.5 sm:px-4 py-2.5 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
@@ -372,6 +386,13 @@ export default function AdminPanel({
               <LiveDirectManager 
                 onOpenDisplayScreen={onOpenLiveDirectDisplay}
               />
+            </div>
+          )}
+
+          {/* TAB 3: LIVE CAMERA & AUDIO STREAM */}
+          {activeTab === 'camera' && (
+            <div className="py-2">
+              <LiveCameraManager />
             </div>
           )}
 

@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Video, Mic, Radio, Copy, Check, ExternalLink, RefreshCw, 
+  Video, Mic, Radio, Copy, Check, ExternalLink, 
   ShieldCheck, Sliders, Play, Square, Users, Sparkles, 
-  Layers, Lock, AlertCircle, Eye, Monitor
+  Eye, VolumeX, AlertCircle
 } from 'lucide-react';
 import { LiveSessionState, LiveStreamConfig } from '../types';
 import { 
@@ -13,14 +12,12 @@ import {
   defaultLiveStreamConfig, 
   subscribeToLiveSession 
 } from '../api';
-import { useLanguage } from '../translations';
 
 interface LiveCameraManagerProps {
   onClose?: () => void;
 }
 
 export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
-  const { t } = useLanguage();
   const [sessionState, setSessionState] = useState<LiveSessionState | null>(null);
   const [streamConfig, setStreamConfig] = useState<LiveStreamConfig>(defaultLiveStreamConfig);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -77,7 +74,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
         setShowInPagePreview(true);
       }
     } catch (err: any) {
-      console.error('Failed to toggle stream:', err);
+      console.error('فشل تغيير حالة البث:', err);
     } finally {
       setIsUpdating(false);
     }
@@ -89,7 +86,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
       await updateLiveStreamState({ mode });
       setStreamConfig(prev => ({ ...prev, mode }));
     } catch (err: any) {
-      console.error('Failed to change mode:', err);
+      console.error('فشل تغيير نوع البث:', err);
     } finally {
       setIsUpdating(false);
     }
@@ -102,7 +99,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
       await updateLiveStreamState({ password: newToken });
       setStreamConfig(prev => ({ ...prev, password: newToken }));
     } catch (err: any) {
-      console.error('Failed to generate token:', err);
+      console.error('فشل توليد رمز سري جديد:', err);
     } finally {
       setIsUpdating(false);
     }
@@ -115,7 +112,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
       await updateLiveStreamState({ streamId: cleanId });
       setStreamConfig(prev => ({ ...prev, streamId: cleanId }));
     } catch (err: any) {
-      console.error('Failed to update streamId:', err);
+      console.error('فشل تحديث معرف البث:', err);
     } finally {
       setIsUpdating(false);
     }
@@ -128,16 +125,19 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
       await updateLiveStreamState({ useMeshcast: nextMeshcast });
       setStreamConfig(prev => ({ ...prev, useMeshcast: nextMeshcast }));
     } catch (err: any) {
-      console.error('Failed to toggle meshcast:', err);
+      console.error('فشل تعديل خاصية Meshcast:', err);
     } finally {
       setIsUpdating(false);
     }
   };
 
-  // VDO.Ninja Push Link for Teacher
+  // Base VDO.Ninja Push Link for Teacher
   const teacherPushUrl = `https://vdo.ninja/?push=${encodeURIComponent(streamConfig.streamId)}&autostart&webcam${
     streamConfig.password ? `&password=${encodeURIComponent(streamConfig.password)}` : ''
   }${streamConfig.mode === 'audio' ? '&novideo' : ''}`;
+
+  // Teacher In-Page Preview URL (Crucial: Muted to prevent echo / hearing own voice!)
+  const teacherMutedPreviewUrl = `${teacherPushUrl}&mute=1&noaudio=1`;
 
   // VDO.Ninja View Link for Students
   const studentViewUrl = `https://vdo.ninja/?view=${encodeURIComponent(streamConfig.streamId)}&cleanoutput&autostart&playsinline&transparent=0${
@@ -166,7 +166,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
             <div>
               <div className="flex items-center gap-2.5">
                 <h2 className="text-xl sm:text-2xl font-black text-white">
-                  {t('live_camera_title', 'كاميرا وبث مباشر للمعلم')}
+                  كاميرا وبث مباشر للمعلم
                 </h2>
                 {streamConfig.isActive ? (
                   <span className="px-3 py-1 rounded-full text-xs font-black bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1.5 animate-pulse">
@@ -185,7 +185,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
             </div>
           </div>
 
-          {/* Quick Active Metrics */}
+          {/* Quick Active Metrics & Master Toggle */}
           <div className="flex items-center gap-3 w-full md:w-auto">
             <div className="bg-slate-950/60 border border-slate-800 px-4 py-2.5 rounded-2xl flex items-center gap-2.5">
               <Users className="w-4 h-4 text-emerald-400" />
@@ -208,12 +208,12 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
               {streamConfig.isActive ? (
                 <>
                   <Square className="w-4 h-4 fill-white" />
-                  <span>{t('stop_stream_btn', 'إيقاف البث ⏹️')}</span>
+                  <span>إيقاف البث ⏹️</span>
                 </>
               ) : (
                 <>
                   <Play className="w-4 h-4 fill-slate-950" />
-                  <span>{t('start_stream_btn', 'بدء البث المباشر 🟢')}</span>
+                  <span>بدء البث المباشر 🟢</span>
                 </>
               )}
             </button>
@@ -247,7 +247,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
               }`}
             >
               <Video className="w-6 h-6" />
-              <div className="font-black text-xs">{t('stream_mode_video', 'فيديو + صوت 🎥')}</div>
+              <div className="font-black text-xs">فيديو + صوت 🎥</div>
               <div className="text-[10px] text-slate-400">كاميرا المعلم أو شاشة الحاسوب</div>
             </button>
 
@@ -262,7 +262,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
               }`}
             >
               <Mic className="w-6 h-6" />
-              <div className="font-black text-xs">{t('stream_mode_audio', 'صوت مباشر فقط 🎙️')}</div>
+              <div className="font-black text-xs">صوت مباشر فقط 🎙️</div>
               <div className="text-[10px] text-slate-400">بدقة عالية وتوفير كامل لبيانات النت</div>
             </button>
           </div>
@@ -303,7 +303,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
           {/* Stream ID Input */}
           <div>
             <label className="block text-xs font-bold text-slate-300 mb-1.5">
-              {t('stream_id_label', 'معرّف البث (Stream ID)')}
+              معرّف البث (Stream ID)
             </label>
             <div className="flex items-center gap-2">
               <input
@@ -408,6 +408,9 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
               <Sparkles className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
               <div>
                 <span className="font-bold">البث المباشر بدون برامج:</span> يمكنك فتح كاميرا الحاسوب أو كاميرا الهاتف أو مشاركة شاشتك مباشرة بنقرة زر واحدة دون الحاجة لتثبيت أي برامج على جهازك!
+                <div className="mt-1 text-slate-300">
+                  💡 <b>ملاحظة:</b> تم كتم صوت المعاينة المحلية تلقائياً في شاشتك حتى تتحدث براحة تامة دون أن تسمع صدى صوتك في مكبرات الصوت.
+                </div>
               </div>
             </div>
 
@@ -451,11 +454,15 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
               </button>
             </div>
 
-            {/* Embedded Live Push Window */}
+            {/* Embedded Live Push Window (Muted to eliminate echo!) */}
             {showInPagePreview && (
               <div className="rounded-2xl overflow-hidden border border-slate-700 bg-black aspect-video relative shadow-2xl mt-4">
+                <div className="absolute top-2 left-2 z-10 bg-slate-950/80 px-2.5 py-1 rounded-lg text-[11px] text-amber-300 flex items-center gap-1.5 border border-slate-800">
+                  <VolumeX className="w-3.5 h-3.5 text-amber-400" />
+                  <span>معاينة صامتة تلقائياً لمنع صدى الصوت</span>
+                </div>
                 <iframe
-                  src={teacherPushUrl}
+                  src={teacherMutedPreviewUrl}
                   title="Teacher Live Stream Broadcast"
                   allow="camera; microphone; display-capture; autoplay"
                   className="w-full h-full border-0"
@@ -468,19 +475,25 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
         {/* METHOD 2: OBS Studio or External Mixer */}
         {activeBroadcastMethod === 'obs' && (
           <div className="space-y-4">
-            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 leading-relaxed">
-              <div className="font-bold text-white mb-1">خطوات الربط مع برنامج OBS Studio:</div>
-              <ol className="list-decimal list-inside space-y-1 text-slate-400">
-                <li>افتح برنامج <span className="text-amber-400 font-mono">OBS Studio</span> على حاسوبك.</li>
-                <li>أضف مصدراً جديداً من نوع <span className="text-amber-400 font-mono">Browser Source (متصفح)</span>.</li>
-                <li>ضع رابط البث المنسوخ أدناه في خانة الـ URL.</li>
-                <li>سيبدأ البث فوراً للطلاب عبر نفس الغرفة المشتركة بجودة عالية وثبات كامل!</li>
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 leading-relaxed space-y-2">
+              <div className="font-bold text-amber-400 flex items-center gap-1.5 text-sm">
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <span>طريقة الربط المعتمدة والأسهل مع OBS Studio (بدون مشاكل أذونات):</span>
+              </div>
+              <p className="text-slate-300">
+                برنامج OBS يمنع أذونات الكاميرا داخل الـ Browser Source افتراضياً، لذلك <b>الطريقة الصحيحة والاحترافية</b> هي استخدام ميزة الكاميرا الافتراضية بنقرة واحدة:
+              </p>
+              <ol className="list-decimal list-inside space-y-1.5 text-slate-300 pr-2">
+                <li>افتح برنامج <span className="text-amber-400 font-mono">OBS Studio</span> وجهّز الكاميرا والمايك والمشاهد كالمعتاد.</li>
+                <li>في أسفل يمين شاشة OBS، انقر على زر: <span className="text-emerald-400 font-bold bg-slate-900 px-2 py-0.5 rounded border border-slate-700">Start Virtual Camera (بدء الكاميرا الافتراضية)</span>.</li>
+                <li>عد هنا وانقر على <span className="text-amber-400 font-bold">"فتح نافذة البث المباشر المنبثقة"</span>، وستجد كاميرا OBS ظاهرة فوراً كخيار كاميرا رئيسي!</li>
+                <li>سيبث النظام مخرجات OBS كاملة بدقة فائقة وبدون أي تعقيد.</li>
               </ol>
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-400 mb-1.5">
-                رابط البث الخارجي المباشر لـ OBS (Push URL)
+                رابط البث الخارجي المباشر لـ OBS (في حال استخدام إضافات OBS Ninja)
               </label>
               <div className="flex items-center gap-2">
                 <input

@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Volume2, VolumeX, Maximize2, Minimize2, Radio, 
-  Mic, Video, Sparkles, ChevronDown, ChevronUp, X
+  Mic, Video, Sparkles, X, Columns, Fullscreen,
+  Move
 } from 'lucide-react';
 import { LiveStreamConfig } from '../types';
 import { useLanguage } from '../translations';
@@ -12,27 +13,40 @@ interface LiveFloatingStreamPlayerProps {
   isQuestionActive?: boolean;
 }
 
+export type StreamDisplayMode = 'pip' | 'split' | 'fullscreen';
+
 export default function LiveFloatingStreamPlayer({
   streamState,
   isQuestionActive = false,
 }: LiveFloatingStreamPlayerProps) {
   const { t } = useLanguage();
-  const [isManualPip, setIsManualPip] = useState<boolean | null>(null);
+  
+  // Display mode: 'split' (inline in page), 'pip' (floating corner), 'fullscreen' (100% screen)
+  const [displayMode, setDisplayMode] = useState<StreamDisplayMode>('split');
   const [isMuted, setIsMuted] = useState(false);
-  const [volume, setVolume] = useState<number>(1.0);
-  const [isAudioCardCollapsed, setIsAudioCardCollapsed] = useState(false);
+  const prevQuestionActiveRef = useRef(isQuestionActive);
+
+  // Auto-switch to 'pip' when a question becomes active so questions are never blocked!
+  useEffect(() => {
+    if (isQuestionActive && !prevQuestionActiveRef.current) {
+      setDisplayMode('pip');
+    }
+    prevQuestionActiveRef.current = isQuestionActive;
+  }, [isQuestionActive]);
 
   // If stream is inactive or no streamId, unmount completely (free WebRTC connections)
   if (!streamState || !streamState.isActive || !streamState.streamId) {
     return null;
   }
 
-  // Determine effective PIP mode:
-  // If user explicitly chose PIP or Expand, use that; otherwise auto-PIP when question is active
-  const isPip = isManualPip !== null ? isManualPip : Boolean(isQuestionActive);
-
-  // Construct secure VDO.Ninja URL
-  const viewUrl = `https://vdo.ninja/?view=${encodeURIComponent(streamState.streamId)}&cleanoutput&autostart&playsinline&transparent=0${
+  // Construct secure, mobile-optimized VDO.Ninja URL
+  // Parameters:
+  // &cleanoutput: removes UI buttons
+  // &autostart: auto-connects WebRTC
+  // &playsinline: prevents iOS fullscreen takeover
+  // &webautoplay: ensures mobile WebRTC audio/video plays automatically
+  // &scale=100: responsive aspect scaling on mobile
+  const viewUrl = `https://vdo.ninja/?view=${encodeURIComponent(streamState.streamId)}&cleanoutput&autostart&playsinline&webautoplay&transparent=0&scale=100${
     streamState.password ? `&password=${encodeURIComponent(streamState.password)}` : ''
   }${streamState.mode === 'audio' ? '&novideo' : ''}${streamState.useMeshcast ? '&meshcast' : ''}`;
 
@@ -44,6 +58,7 @@ export default function LiveFloatingStreamPlayer({
       <div 
         className="w-full my-3"
         onContextMenu={(e) => e.preventDefault()}
+        dir="rtl"
       >
         <div className="bg-gradient-to-r from-slate-900 via-indigo-950/80 to-slate-900 border border-indigo-500/30 rounded-2xl p-3.5 shadow-xl backdrop-blur-md">
           <div className="flex items-center justify-between gap-3">
@@ -104,90 +119,118 @@ export default function LiveFloatingStreamPlayer({
   }
 
   // ==========================================
-  // --- VIDEO MODE: NORMAL VS FLOATING PIP ---
+  // --- VIDEO MODE (SINGLE PERSISTENT IFRAME WITH 3 DISPLAY MODES) ---
   // ==========================================
 
-  // 1. FLOATING PICTURE-IN-PICTURE (PIP) MODE
-  if (isPip) {
-    return (
-      <motion.div
-        drag
-        dragConstraints={{ left: -250, right: 250, top: -400, bottom: 200 }}
-        initial={{ scale: 0.8, opacity: 0, y: 30 }}
-        animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.8, opacity: 0, y: 30 }}
-        className="fixed bottom-20 right-3 sm:bottom-6 sm:right-6 z-40 w-44 sm:w-64 bg-slate-950/95 border-2 border-amber-500/60 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl group select-none"
-        onContextMenu={(e) => e.preventDefault()}
-      >
-        {/* PIP Mini Header */}
-        <div className="bg-slate-900/90 px-2.5 py-1.5 flex items-center justify-between border-b border-slate-800 text-[10px] cursor-grab active:cursor-grabbing">
-          <div className="flex items-center gap-1.5 font-bold text-white">
-            <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
-            <span>بث المعلم</span>
-          </div>
+  // Determine container styling according to mode
+  const isFullscreen = displayMode === 'fullscreen';
+  const isPip = displayMode === 'pip';
+  const isSplit = displayMode === 'split';
 
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setIsManualPip(false)}
-              className="p-1 hover:bg-slate-800 text-slate-300 hover:text-white rounded transition cursor-pointer"
-              title="تكبير المشغل"
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Video Container */}
-        <div className="aspect-video w-full bg-black relative">
-          <iframe
-            src={viewUrl}
-            title="Teacher Live Video Stream PIP"
-            allow="autoplay; fullscreen"
-            className="w-full h-full border-0"
-          />
-        </div>
-      </motion.div>
-    );
-  }
-
-  // 2. NORMAL EMBEDDED MODE
   return (
-    <div 
-      className="w-full my-3"
-      onContextMenu={(e) => e.preventDefault()}
-    >
-      <div className="bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl backdrop-blur-md">
-        {/* Top Control Bar */}
-        <div className="px-4 py-2 bg-slate-950/70 border-b border-slate-800/80 flex items-center justify-between">
+    <>
+      {/* 
+        CRITICAL ARCHITECTURAL DESIGN:
+        We render the iframe inside a single wrapper hierarchy without ever unmounting it.
+        This prevents iOS Safari / Android Chrome from killing the WebRTC PeerConnection on mode change.
+      */}
+      <div 
+        onContextMenu={(e) => e.preventDefault()}
+        dir="rtl"
+        className={
+          isFullscreen
+            ? 'fixed inset-0 z-50 w-screen h-screen bg-black flex flex-col justify-between overflow-hidden select-none'
+            : isPip
+            ? 'fixed bottom-20 right-3 sm:bottom-6 sm:right-6 z-40 w-52 sm:w-72 bg-slate-950/95 border-2 border-amber-500/80 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl select-none animate-in fade-in zoom-in-95 duration-200'
+            : 'w-full my-3 bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl backdrop-blur-md'
+        }
+      >
+        {/* Dynamic Control Bar */}
+        <div className={`flex items-center justify-between border-b border-slate-800/80 transition-all ${
+          isFullscreen 
+            ? 'p-3 bg-slate-950/80 backdrop-blur-md text-white' 
+            : isPip 
+            ? 'px-2.5 py-1.5 bg-slate-900/90 text-white text-[11px]' 
+            : 'px-4 py-2 bg-slate-950/70 text-white text-xs'
+        }`}>
+          {/* Status Label */}
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
-            <span className="text-xs font-black text-white">بث مباشر من المعلم 🎥</span>
+            <span className="font-black text-white">
+              {isFullscreen ? 'بث مباشر من المعلم (ملء الشاشة)' : isPip ? 'بث المعلم' : 'بث مباشر من المعلم 🎥'}
+            </span>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          {/* 3 Mode Control Buttons: [صغير عائم] [تقسيم شاشة] [تكبير كامل الشاشة] */}
+          <div className="flex items-center gap-1">
+            {/* 1. PIP Mode Button (صغير عائم) */}
             <button
               type="button"
-              onClick={() => setIsManualPip(true)}
-              className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-              title="تصغير إلى نافذة عائمة"
+              onClick={() => setDisplayMode('pip')}
+              className={`p-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                isPip 
+                  ? 'bg-amber-500 text-slate-950 shadow-sm' 
+                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white'
+              }`}
+              title="تصغير إلى نافذة عائمة في الزاوية"
             >
               <Minimize2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">تصغير عائم</span>
+              {!isPip && <span className="hidden sm:inline">صغير عائم</span>}
+            </button>
+
+            {/* 2. Split Screen Mode Button (تقسيم شاشة) */}
+            <button
+              type="button"
+              onClick={() => setDisplayMode('split')}
+              className={`p-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                isSplit 
+                  ? 'bg-amber-500 text-slate-950 shadow-sm' 
+                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white'
+              }`}
+              title="عرض مدمج مع الشاشة والأسئلة"
+            >
+              <Columns className="w-3.5 h-3.5" />
+              {!isPip && <span className="hidden sm:inline">تقسيم شاشة</span>}
+            </button>
+
+            {/* 3. Fullscreen Mode Button (تكبير كامل الشاشة) */}
+            <button
+              type="button"
+              onClick={() => setDisplayMode(isFullscreen ? 'split' : 'fullscreen')}
+              className={`p-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+                isFullscreen 
+                  ? 'bg-rose-600 hover:bg-rose-500 text-white' 
+                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white'
+              }`}
+              title={isFullscreen ? 'تصغير الشاشة' : 'تكبير كامل الشاشة'}
+            >
+              {isFullscreen ? (
+                <>
+                  <X className="w-4 h-4" />
+                  <span className="text-xs">تصغير ✕</span>
+                </>
+              ) : (
+                <>
+                  <Fullscreen className="w-3.5 h-3.5" />
+                  {!isPip && <span className="hidden sm:inline">كامل الشاشة</span>}
+                </>
+              )}
             </button>
           </div>
         </div>
 
-        {/* Video Frame */}
-        <div className="aspect-video w-full bg-black relative">
+        {/* Video Frame: Responsive 16:9 on split/pip, full viewport on fullscreen */}
+        <div className={`relative bg-black w-full flex items-center justify-center ${
+          isFullscreen ? 'flex-1 h-full' : 'aspect-video'
+        }`}>
           <iframe
             src={viewUrl}
             title="Teacher Live Video Stream"
-            allow="autoplay; fullscreen"
+            allow="camera; microphone; autoplay; playsinline; fullscreen; picture-in-picture"
             className="w-full h-full border-0"
           />
         </div>
       </div>
-    </div>
+    </>
   );
 }

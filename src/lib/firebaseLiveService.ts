@@ -313,6 +313,8 @@ export async function endLiveProgram(): Promise<{ success: boolean; state?: Live
       status: 'program_ended',
       accessMode: 'restricted',
       videoPlaying: false,
+      connectedStudents: [],
+      answersForCurrentQuestion: {},
       currentQuestion: null,
       currentQuestionIndex: null,
       questionTriggeredAt: null,

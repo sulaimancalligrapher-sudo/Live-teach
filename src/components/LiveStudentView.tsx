@@ -176,13 +176,15 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
         setConnected(true);
         setSessionState(state);
 
-        if (isJoined && (state.status === 'program_ended' || state.status === 'finished')) {
+        if (isJoined && (state.status === 'program_ended' || state.status === 'finished' || state.isProgramActive === false)) {
           setIsSessionEndedWithGratitude(true);
           setIsJoined(false);
           setIsPinVerified(false);
           setSubmittedAnswer(null);
           setScanSuccessMsg(null);
           setScannerError(null);
+          sessionStorage.removeItem('liveStudentUsername');
+          sessionStorage.removeItem('liveStudentSheet');
           sessionStorage.removeItem('liveStudentPin');
           sessionStorage.removeItem('hasAcceptedQuizChallenge');
           localStorage.removeItem('liveStudentPin');

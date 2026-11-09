@@ -55,6 +55,7 @@ export default function AdminPanel({
   const [settingUpLiveSheets, setSettingUpLiveSheets] = useState(false);
   const [settingUpQuizSheets, setSettingUpQuizSheets] = useState(false);
   const [settingUpPdfSheets, setSettingUpPdfSheets] = useState(false);
+  const [isStreamActive, setIsStreamActive] = useState(false);
 
   const [allLiveLessons, setAllLiveLessons] = useState<LiveLessonRow[]>([]);
 
@@ -80,6 +81,7 @@ export default function AdminPanel({
     }).catch(() => {});
 
     const unsub = subscribeToLiveSession((state) => {
+      setIsStreamActive(Boolean(state.streamState?.isActive));
       const msgs = state.messages || [];
       if (lastKnownMessagesCountRef.current === 0) {
         lastKnownMessagesCountRef.current = msgs.length;
@@ -239,6 +241,17 @@ export default function AdminPanel({
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            {isStreamActive && (
+              <button
+                type="button"
+                onClick={() => setActiveTab('camera')}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1.5 animate-pulse cursor-pointer hover:bg-rose-500/30 transition"
+                title="الانتقال إلى تبويب كاميرا مباشر"
+              >
+                <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+                <span>البث المباشر يعمل الآن 🔴</span>
+              </button>
+            )}
             <button
               onClick={onClose}
               className="p-2 sm:p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
@@ -309,6 +322,9 @@ export default function AdminPanel({
           >
             <Camera className="w-4 h-4 text-emerald-400" />
             <span>كاميرا مباشر</span>
+            {isStreamActive && (
+              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shadow-sm shadow-rose-500/50"></span>
+            )}
           </button>
 
           {/* Tab 4: Quiz Challenge */}
@@ -389,12 +405,10 @@ export default function AdminPanel({
             </div>
           )}
 
-          {/* TAB 3: LIVE CAMERA & AUDIO STREAM */}
-          {activeTab === 'camera' && (
-            <div className="py-2">
-              <LiveCameraManager />
-            </div>
-          )}
+          {/* TAB 3: LIVE CAMERA & AUDIO STREAM (Kept mounted so camera and WebRTC stream never disconnect when switching tabs) */}
+          <div className={`py-2 ${activeTab === 'camera' ? 'block' : 'hidden'}`}>
+            <LiveCameraManager />
+          </div>
 
           {/* TAB 3: LIVE QUIZ CHALLENGE */}
           {activeTab === 'quiz-challenge' && (

@@ -2729,6 +2729,24 @@ export async function translateBatchWithAi(
   }
 }
 
+export async function translateLiveCaption(text: string): Promise<{ th: string; en: string }> {
+  try {
+    const res = await fetch('/api/translate-live-caption', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      return { th: data.th || '', en: data.en || '' };
+    }
+    return { th: '', en: '' };
+  } catch (err) {
+    console.warn('Live caption translation failed:', err);
+    return { th: '', en: '' };
+  }
+}
+
 
 
 

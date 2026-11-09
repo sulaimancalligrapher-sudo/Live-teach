@@ -10,6 +10,7 @@ import {
   toggleLiveStream, 
   generateStreamToken, 
   updateLiveCaption,
+  translateLiveCaption,
   defaultLiveStreamConfig, 
   subscribeToLiveSession 
 } from '../api';
@@ -27,6 +28,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
   const [showInPagePreview, setShowInPagePreview] = useState(false);
   const [elapsedTime, setElapsedTime] = useState('00:00');
   const [liveTranscriptPreview, setLiveTranscriptPreview] = useState<string>('');
+  const [liveTranslations, setLiveTranslations] = useState<{ th: string; en: string }>({ th: '', en: '' });
   const speechRecognitionRef = useRef<any>(null);
   const isSpeechActiveRef = useRef<boolean>(false);
 
@@ -99,8 +101,20 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
           if (cleanText) {
             setLiveTranscriptPreview(cleanText);
             clearTimeout(pushTimer);
-            pushTimer = setTimeout(() => {
+            pushTimer = setTimeout(async () => {
+              // 1. Immediately push Arabic caption so students see it with 0 latency
               updateLiveCaption(cleanText);
+              // 2. Simultaneously translate to Thai and English via Gemini
+              try {
+                const trans = await translateLiveCaption(cleanText);
+                if (trans.th || trans.en) {
+                  setLiveTranslations({ th: trans.th, en: trans.en });
+                  // Push updated translations to Firestore
+                  updateLiveCaption(cleanText, { th: trans.th, en: trans.en });
+                }
+              } catch (e) {
+                console.warn('Real-time caption translation error:', e);
+              }
             }, 80);
           }
         };
@@ -436,20 +450,48 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
                   </div>
                 </div>
 
-                {/* Live Speech Preview */}
+                {/* Live Speech & Translation Preview */}
                 {liveTranscriptPreview ? (
-                  <div className="bg-black/60 border border-indigo-400/40 rounded-xl p-2.5 text-xs">
-                    <div className="text-[10px] text-indigo-300 font-bold mb-1 flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
-                      <span>جاري التقاط الصوت وبثه للطلاب فوراً:</span>
+                  <div className="bg-black/60 border border-indigo-400/40 rounded-xl p-3 text-xs space-y-2">
+                    <div className="text-[10px] text-indigo-300 font-bold flex items-center justify-between border-b border-indigo-500/20 pb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                        <span>الترجمة الفورية المباشرة (عربي + تايلاندي + إنجليزي):</span>
+                      </div>
+                      <span className="text-[10px] text-emerald-400 font-mono">Gemini AI ✨</span>
                     </div>
-                    <div className="text-amber-300 font-bold font-sans text-sm">
-                      "{liveTranscriptPreview}"
+
+                    {/* Arabic original */}
+                    <div>
+                      <div className="text-[10px] text-slate-400 font-bold mb-0.5">🇸🇦 النص العربي المنطوق:</div>
+                      <div className="text-amber-300 font-bold font-sans text-sm">
+                        "{liveTranscriptPreview}"
+                      </div>
                     </div>
+
+                    {/* Thai translation */}
+                    {liveTranslations.th && (
+                      <div className="pt-1.5 border-t border-slate-800">
+                        <div className="text-[10px] text-indigo-300 font-bold mb-0.5">🇹🇭 ภาษาไทย (التايلاندية للطلاب):</div>
+                        <div className="text-emerald-300 font-bold text-xs leading-relaxed">
+                          {liveTranslations.th}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* English translation */}
+                    {liveTranslations.en && (
+                      <div className="pt-1.5 border-t border-slate-800">
+                        <div className="text-[10px] text-blue-300 font-bold mb-0.5">🇬🇧 English (الإنجليزية للطلاب):</div>
+                        <div className="text-blue-200 font-bold text-xs leading-relaxed">
+                          {liveTranslations.en}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  <div className="text-[11px] text-slate-400 italic bg-black/30 rounded-xl p-2 text-center">
-                    تحدّث في الميكروفون ليتم تحويل صوتك إلى كلمات عربية مكتوبة...
+                  <div className="text-[11px] text-slate-400 italic bg-black/30 rounded-xl p-2.5 text-center leading-relaxed">
+                    تحدّث في الميكروفون ليتم تحويل صوتك العربي إلى كتابة وترجمتها تلقائياً للتايلاندية والإنجليزية للطلاب...
                   </div>
                 )}
 

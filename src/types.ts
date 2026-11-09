@@ -272,6 +272,8 @@ export interface LiveStreamConfig {
   useMeshcast?: boolean;
   enableSubtitles?: boolean;
   liveCaption?: string;
+  liveCaptionTh?: string;
+  liveCaptionEn?: string;
   liveCaptionUpdatedAt?: number;
   startedAt?: number;
 }

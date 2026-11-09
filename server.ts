@@ -983,6 +983,51 @@ async function startServer() {
     }
   });
 
+  // AI Live Caption Dual-Language Translation Endpoint (Arabic -> Thai & English)
+  app.post("/api/translate-live-caption", async (req, res) => {
+    try {
+      const { text } = req.body;
+      if (!text || typeof text !== 'string') {
+        return res.status(400).json({ success: false, error: "Text is required" });
+      }
+
+      const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+      if (apiKey) {
+        try {
+          const { GoogleGenAI } = await import("@google/genai");
+          const ai = new GoogleGenAI({ apiKey });
+          const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: `Translate this spoken Arabic educational sentence into natural, idiomatic Thai and English. Return ONLY a strict JSON object with keys "th" and "en" without markdown formatting or conversational text. Example: {"th": "...", "en": "..."}\n\nArabic: "${text}"`,
+            config: {
+              responseMimeType: "application/json"
+            }
+          });
+          const raw = (response.text || "").trim();
+          const parsed = JSON.parse(raw);
+          return res.json({
+            success: true,
+            th: String(parsed.th || '').trim(),
+            en: String(parsed.en || '').trim()
+          });
+        } catch (apiErr: any) {
+          console.warn("Gemini live caption translation error:", apiErr.message);
+        }
+      }
+
+      // Fallback translations
+      const thFallback = lookupFallbackTranslation(text, 'th');
+      const enFallback = lookupFallbackTranslation(text, 'en');
+      return res.json({
+        success: true,
+        th: thFallback,
+        en: enFallback
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   // AI Batch Translation Endpoint
   app.post("/api/translate-batch", async (req, res) => {
     try {

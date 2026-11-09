@@ -32,6 +32,8 @@ export const defaultLiveStreamConfig: LiveStreamConfig = {
   useMeshcast: true,
   enableSubtitles: false,
   liveCaption: '',
+  liveCaptionTh: '',
+  liveCaptionEn: '',
   liveCaptionUpdatedAt: 0,
   startedAt: 0,
 };
@@ -170,6 +172,8 @@ export function subscribeToLiveSession(
             useMeshcast: data.streamState.useMeshcast !== false,
             enableSubtitles: Boolean(data.streamState.enableSubtitles),
             liveCaption: data.streamState.liveCaption || '',
+            liveCaptionTh: data.streamState.liveCaptionTh || '',
+            liveCaptionEn: data.streamState.liveCaptionEn || '',
             liveCaptionUpdatedAt: data.streamState.liveCaptionUpdatedAt || 0,
             startedAt: data.streamState.startedAt || 0,
           } : defaultLiveStreamConfig,
@@ -2208,12 +2212,17 @@ export async function toggleLiveStream(
   });
 }
 
-export async function updateLiveCaption(caption: string): Promise<void> {
+export async function updateLiveCaption(
+  caption: string,
+  translations?: { th?: string; en?: string }
+): Promise<void> {
   try {
     const currentStream = cachedState.streamState || defaultLiveStreamConfig;
     const merged = {
       ...currentStream,
       liveCaption: caption,
+      liveCaptionTh: translations?.th !== undefined ? translations.th : (currentStream.liveCaptionTh || ''),
+      liveCaptionEn: translations?.en !== undefined ? translations.en : (currentStream.liveCaptionEn || ''),
       liveCaptionUpdatedAt: Date.now(),
     };
     await updateDoc(LIVE_DOC_REF, {

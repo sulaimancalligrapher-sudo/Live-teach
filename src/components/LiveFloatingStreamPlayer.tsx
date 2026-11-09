@@ -22,8 +22,12 @@ export default function LiveFloatingStreamPlayer({
   isRevealed = false,
   sessionStatus,
 }: LiveFloatingStreamPlayerProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   
+  // Subtitle Language preference: 'auto' (follows app language), 'ar', 'th', or 'en'
+  const [subLangMode, setSubLangMode] = useState<'auto' | 'ar' | 'th' | 'en'>('auto');
+  const activeSubLang = subLangMode === 'auto' ? (language || 'ar') : subLangMode;
+
   // Display modes:
   // - 'banner': compact top docked strip (leaves 100% of question & choices clearly visible below it)
   // - 'split': normal inline player in page
@@ -47,6 +51,26 @@ export default function LiveFloatingStreamPlayer({
     streamState?.liveCaptionUpdatedAt &&
     (now - streamState.liveCaptionUpdatedAt) < 5500
   );
+
+  // Multilingual Subtitle Resolution
+  let primaryCaptionText = streamState?.liveCaption || '';
+  let secondaryCaptionText: string | null = null;
+
+  if (activeSubLang === 'th') {
+    if (streamState?.liveCaptionTh) {
+      primaryCaptionText = streamState.liveCaptionTh;
+      secondaryCaptionText = streamState.liveCaption || null;
+    } else {
+      primaryCaptionText = streamState?.liveCaption || '';
+    }
+  } else if (activeSubLang === 'en') {
+    if (streamState?.liveCaptionEn) {
+      primaryCaptionText = streamState.liveCaptionEn;
+      secondaryCaptionText = streamState.liveCaption || null;
+    } else {
+      primaryCaptionText = streamState?.liveCaption || '';
+    }
+  }
 
   // Remember previous mode before question started to restore it automatically afterwards
   const previousModeRef = useRef<StreamDisplayMode>('split');
@@ -280,12 +304,13 @@ export default function LiveFloatingStreamPlayer({
           - If isLandscapeRotate is false: 100% full screen w-full h-full absolute inset-0
           - If isLandscapeRotate is true: exact geometrical cover w-[100vh] h-[100vw] rotate-90 origin-center
             matching mobile height and width with zero side margins!
+          - CRITICAL: Subtitles overlay is INSIDE this container so it rotates 90 degrees WITH the video!
         */}
         <div className="absolute inset-0 w-full h-full bg-black flex items-center justify-center overflow-hidden">
           <div className={
             isLandscapeRotate
-              ? 'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100vh] h-[100vw] rotate-90 origin-center bg-black'
-              : 'w-full h-full'
+              ? 'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100vh] h-[100vw] rotate-90 origin-center bg-black overflow-hidden'
+              : 'w-full h-full relative overflow-hidden'
           }>
             <iframe
               key={`stream-iframe-${reloadKey}`}
@@ -294,18 +319,63 @@ export default function LiveFloatingStreamPlayer({
               allow="camera; microphone; autoplay; playsinline; fullscreen; picture-in-picture"
               className="w-full h-full border-0 block"
             />
+
+            {/* Continuous Live Multilingual Subtitles Overlay in Fullscreen - Rotates With The Video! */}
+            {streamState?.enableSubtitles && streamState?.liveCaption && isCaptionFresh && (
+              <div className="absolute bottom-6 sm:bottom-8 left-4 right-4 z-40 flex flex-col items-center pointer-events-none">
+                <div className="max-w-[92%] bg-black/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-amber-500/40 shadow-2xl text-center leading-relaxed animate-in fade-in zoom-in-95 duration-150">
+                  {/* Secondary/Original Arabic text when viewing in Thai or English */}
+                  {secondaryCaptionText && (
+                    <div className="text-[11px] text-amber-200/80 mb-0.5 font-medium line-clamp-1" dir="rtl">
+                      {secondaryCaptionText}
+                    </div>
+                  )}
+                  {/* Primary text in active language */}
+                  <div className={`font-bold ${
+                    activeSubLang === 'th' 
+                      ? 'text-emerald-300 text-sm sm:text-base' 
+                      : activeSubLang === 'en' 
+                      ? 'text-blue-200 text-xs sm:text-sm font-sans' 
+                      : 'text-amber-300 text-xs sm:text-sm'
+                  }`}>
+                    <span>{primaryCaptionText}</span>
+                  </div>
+                </div>
+
+                {/* Subtitle Language Switcher Pills */}
+                <div className="mt-1.5 flex items-center gap-1 bg-black/75 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/10 pointer-events-auto shadow-md">
+                  <button
+                    type="button"
+                    onClick={() => setSubLangMode('ar')}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition cursor-pointer ${
+                      activeSubLang === 'ar' ? 'bg-amber-500 text-slate-950 font-black' : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    العربية
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSubLangMode('th')}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition cursor-pointer ${
+                      activeSubLang === 'th' ? 'bg-emerald-500 text-slate-950 font-black' : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    ไทย
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSubLangMode('en')}
+                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition cursor-pointer ${
+                      activeSubLang === 'en' ? 'bg-blue-500 text-white font-black' : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    EN
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-
-        {/* Continuous Arabic Live Subtitles Overlay in Fullscreen */}
-        {streamState?.enableSubtitles && streamState?.liveCaption && isCaptionFresh && (
-          <div className="absolute bottom-6 sm:bottom-8 left-4 right-4 z-40 flex justify-center pointer-events-none">
-            <div className="max-w-[90%] bg-black/85 backdrop-blur-md text-amber-300 font-bold px-4 py-2 rounded-2xl border border-amber-500/40 text-xs sm:text-sm shadow-2xl text-center leading-relaxed animate-in fade-in zoom-in-95 duration-150">
-              <span className="text-amber-400 font-black ml-1.5">🎙️</span>
-              <span>{streamState.liveCaption}</span>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -440,13 +510,58 @@ export default function LiveFloatingStreamPlayer({
           />
         </div>
 
-        {/* Continuous Arabic Live Subtitles Overlay (Docked Banner & Split) */}
+        {/* Continuous Multilingual Live Subtitles Overlay (Docked Banner & Split) */}
         {streamState?.enableSubtitles && streamState?.liveCaption && isCaptionFresh && (
-          <div className="absolute bottom-2 left-2 right-2 z-30 flex justify-center pointer-events-none">
-            <div className="max-w-[95%] bg-black/85 backdrop-blur-md text-amber-300 font-bold px-3 py-1 rounded-xl border border-amber-500/40 text-[11px] sm:text-xs shadow-xl text-center truncate animate-in fade-in duration-150">
-              <span className="text-amber-400 font-black ml-1">🎙️</span>
-              <span>{streamState.liveCaption}</span>
+          <div className="absolute bottom-1.5 left-2 right-2 z-30 flex flex-col items-center pointer-events-none">
+            <div className="max-w-[96%] bg-black/85 backdrop-blur-md px-3 py-1 rounded-xl border border-amber-500/40 shadow-xl text-center">
+              {secondaryCaptionText && !isBanner && (
+                <div className="text-[10px] text-amber-200/80 mb-0.5 font-medium truncate" dir="rtl">
+                  {secondaryCaptionText}
+                </div>
+              )}
+              <div className={`font-bold truncate ${
+                activeSubLang === 'th' 
+                  ? 'text-emerald-300 text-xs sm:text-sm' 
+                  : activeSubLang === 'en' 
+                  ? 'text-blue-200 text-[11px] sm:text-xs font-sans' 
+                  : 'text-amber-300 text-[11px] sm:text-xs'
+              }`}>
+                <span>{primaryCaptionText}</span>
+              </div>
             </div>
+
+            {/* Language Quick Switcher (Shown in Split Mode) */}
+            {!isBanner && (
+              <div className="mt-1 flex items-center gap-1 bg-black/75 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/10 pointer-events-auto shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setSubLangMode('ar')}
+                  className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold transition cursor-pointer ${
+                    activeSubLang === 'ar' ? 'bg-amber-500 text-slate-950 font-black' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  عربي
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSubLangMode('th')}
+                  className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold transition cursor-pointer ${
+                    activeSubLang === 'th' ? 'bg-emerald-500 text-slate-950 font-black' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  ไทย
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSubLangMode('en')}
+                  className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold transition cursor-pointer ${
+                    activeSubLang === 'en' ? 'bg-blue-500 text-white font-black' : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  EN
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

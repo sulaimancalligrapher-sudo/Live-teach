@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Video, Mic, Radio, Copy, Check, ExternalLink, 
   ShieldCheck, Sliders, Play, Square, Users, Sparkles, 
@@ -9,6 +9,7 @@ import {
   updateLiveStreamState, 
   toggleLiveStream, 
   generateStreamToken, 
+  updateLiveCaption,
   defaultLiveStreamConfig, 
   subscribeToLiveSession 
 } from '../api';
@@ -25,6 +26,9 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
   const [activeBroadcastMethod, setActiveBroadcastMethod] = useState<'browser' | 'obs'>('browser');
   const [showInPagePreview, setShowInPagePreview] = useState(false);
   const [elapsedTime, setElapsedTime] = useState('00:00');
+  const [liveTranscriptPreview, setLiveTranscriptPreview] = useState<string>('');
+  const speechRecognitionRef = useRef<any>(null);
+  const isSpeechActiveRef = useRef<boolean>(false);
 
   // Sync with Firestore sessionState
   useEffect(() => {
@@ -53,6 +57,92 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
 
     return () => clearInterval(interval);
   }, [streamConfig.isActive, streamConfig.startedAt]);
+
+  // Continuous Arabic Speech Recognition Engine with Auto-Restart Loop
+  // Directly bypasses Chrome's 60-second limit and silence timeout!
+  useEffect(() => {
+    isSpeechActiveRef.current = Boolean(streamConfig.enableSubtitles);
+
+    if (!streamConfig.enableSubtitles) {
+      if (speechRecognitionRef.current) {
+        try { speechRecognitionRef.current.stop(); } catch {}
+        speechRecognitionRef.current = null;
+      }
+      setLiveTranscriptPreview('');
+      return;
+    }
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      return;
+    }
+
+    let isDestroyed = false;
+    let pushTimer: any = null;
+
+    const initRecognition = () => {
+      if (isDestroyed || !isSpeechActiveRef.current) return;
+
+      try {
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'ar-SA';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
+
+        recognition.onresult = (event: any) => {
+          let text = '';
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            text += event.results[i][0].transcript;
+          }
+          const cleanText = text.trim();
+          if (cleanText) {
+            setLiveTranscriptPreview(cleanText);
+            clearTimeout(pushTimer);
+            pushTimer = setTimeout(() => {
+              updateLiveCaption(cleanText);
+            }, 80);
+          }
+        };
+
+        recognition.onerror = () => {
+          // Silence or network hiccup; onend will automatically recover
+        };
+
+        // AUTO-RESTART LOOP: Whenever Chrome's 60-second server limit is reached,
+        // onend triggers. We instantly restart SpeechRecognition in an endless loop!
+        recognition.onend = () => {
+          if (!isDestroyed && isSpeechActiveRef.current) {
+            setTimeout(() => {
+              if (!isDestroyed && isSpeechActiveRef.current) {
+                initRecognition();
+              }
+            }, 50);
+          }
+        };
+
+        recognition.start();
+        speechRecognitionRef.current = recognition;
+      } catch {
+        setTimeout(() => {
+          if (!isDestroyed && isSpeechActiveRef.current) {
+            initRecognition();
+          }
+        }, 500);
+      }
+    };
+
+    initRecognition();
+
+    return () => {
+      isDestroyed = true;
+      clearTimeout(pushTimer);
+      if (speechRecognitionRef.current) {
+        try { speechRecognitionRef.current.stop(); } catch {}
+        speechRecognitionRef.current = null;
+      }
+    };
+  }, [streamConfig.enableSubtitles]);
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -333,19 +423,36 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
               </button>
             </div>
 
-            {/* Subtitles Guidance & Re-open Window Helper */}
+            {/* Subtitles Guidance & Continuous Engine Status */}
             {streamConfig.enableSubtitles && (
-              <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-2xl p-3 text-xs text-indigo-200 space-y-2">
+              <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-2xl p-3 text-xs text-indigo-200 space-y-2.5">
                 <div className="flex items-start gap-2">
                   <Sparkles className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
                   <div className="leading-relaxed">
-                    <b>كيف تعمل الترجمة المباشرة بدقة عالية:</b>
+                    <b className="text-white">الترجمة المستمرة المباشرة (بدون حد الـ 60 ثانية) 🟢:</b>
                     <div className="text-slate-300 mt-0.5">
-                      يتم تحويل صوتك إلى كتابة عبر ميزة التعرف الصوتي لمتصفح <b>Google Chrome</b> أو <b>Edge</b>.
-                      إذا كانت نافذة الكاميرا مفتوحة من قبل، يرجى إغلاقها وإعادة فتحها عبر الزر التالي لتطبيق الترجمة:
+                      تم دمج محرك تكرار تلقائي (Auto-Restart Loop) يتجاوز قيود متصفح Chrome السابقة؛ سيتعرف المايك على كلامك بالعربية ويرسله تلقائياً لشاشات الطلاب باستمرار طوال الحصة.
                     </div>
                   </div>
                 </div>
+
+                {/* Live Speech Preview */}
+                {liveTranscriptPreview ? (
+                  <div className="bg-black/60 border border-indigo-400/40 rounded-xl p-2.5 text-xs">
+                    <div className="text-[10px] text-indigo-300 font-bold mb-1 flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                      <span>جاري التقاط الصوت وبثه للطلاب فوراً:</span>
+                    </div>
+                    <div className="text-amber-300 font-bold font-sans text-sm">
+                      "{liveTranscriptPreview}"
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-slate-400 italic bg-black/30 rounded-xl p-2 text-center">
+                    تحدّث في الميكروفون ليتم تحويل صوتك إلى كلمات عربية مكتوبة...
+                  </div>
+                )}
+
                 <button
                   type="button"
                   onClick={() => {
@@ -355,7 +462,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
                   className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-md"
                 >
                   <ExternalLink className="w-3.5 h-3.5" />
-                  <span>فتح نافذة الكاميرا المجهزة بالترجمة الآن ↗️</span>
+                  <span>فتح نافذة الكاميرا المنبثقة ↗️</span>
                 </button>
               </div>
             )}

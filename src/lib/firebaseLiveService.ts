@@ -31,6 +31,8 @@ export const defaultLiveStreamConfig: LiveStreamConfig = {
   mode: 'video',
   useMeshcast: true,
   enableSubtitles: false,
+  liveCaption: '',
+  liveCaptionUpdatedAt: 0,
   startedAt: 0,
 };
 
@@ -167,6 +169,8 @@ export function subscribeToLiveSession(
             mode: data.streamState.mode === 'audio' ? 'audio' : 'video',
             useMeshcast: data.streamState.useMeshcast !== false,
             enableSubtitles: Boolean(data.streamState.enableSubtitles),
+            liveCaption: data.streamState.liveCaption || '',
+            liveCaptionUpdatedAt: data.streamState.liveCaptionUpdatedAt || 0,
             startedAt: data.streamState.startedAt || 0,
           } : defaultLiveStreamConfig,
         };
@@ -2203,3 +2207,22 @@ export async function toggleLiveStream(
     startedAt: isActive ? Date.now() : 0,
   });
 }
+
+export async function updateLiveCaption(caption: string): Promise<void> {
+  try {
+    const currentStream = cachedState.streamState || defaultLiveStreamConfig;
+    const merged = {
+      ...currentStream,
+      liveCaption: caption,
+      liveCaptionUpdatedAt: Date.now(),
+    };
+    await updateDoc(LIVE_DOC_REF, {
+      streamState: merged,
+      updatedAt: serverTimestamp(),
+    });
+    cachedState = { ...cachedState, streamState: merged };
+  } catch (error) {
+    console.warn('Failed to update live caption in Firebase:', error);
+  }
+}
+

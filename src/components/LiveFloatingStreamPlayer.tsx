@@ -35,6 +35,19 @@ export default function LiveFloatingStreamPlayer({
   const [studentAudioOnly, setStudentAudioOnly] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
+  // Time ticker to auto-fade caption after 5.5s of silence
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const isCaptionFresh = Boolean(
+    streamState?.liveCaption &&
+    streamState?.liveCaptionUpdatedAt &&
+    (now - streamState.liveCaptionUpdatedAt) < 5500
+  );
+
   // Remember previous mode before question started to restore it automatically afterwards
   const previousModeRef = useRef<StreamDisplayMode>('split');
   const currentModeRef = useRef<StreamDisplayMode>('split');
@@ -283,6 +296,16 @@ export default function LiveFloatingStreamPlayer({
             />
           </div>
         </div>
+
+        {/* Continuous Arabic Live Subtitles Overlay in Fullscreen */}
+        {streamState?.enableSubtitles && streamState?.liveCaption && isCaptionFresh && (
+          <div className="absolute bottom-6 sm:bottom-8 left-4 right-4 z-40 flex justify-center pointer-events-none">
+            <div className="max-w-[90%] bg-black/85 backdrop-blur-md text-amber-300 font-bold px-4 py-2 rounded-2xl border border-amber-500/40 text-xs sm:text-sm shadow-2xl text-center leading-relaxed animate-in fade-in zoom-in-95 duration-150">
+              <span className="text-amber-400 font-black ml-1.5">🎙️</span>
+              <span>{streamState.liveCaption}</span>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -393,21 +416,39 @@ export default function LiveFloatingStreamPlayer({
 
       {/* 
         Video Frame:
-        - Banner: Ultra-compact height on mobile: h-16 sm:h-28 md:h-36 (leaves maximum room for question options!)
+        - Banner: Fixed height container (h-20 sm:h-28 md:h-36).
+          Inner container is h-full aspect-video mx-auto, so the ENTIRE 16:9 frame scales down completely
+          WITHOUT ANY CROPPING of top or bottom!
         - Split: aspect-video w-full
       */}
-      <div className={`relative bg-black w-full flex items-center justify-center overflow-hidden ${
+      <div className={`relative bg-slate-950 w-full flex items-center justify-center overflow-hidden ${
         isBanner 
-          ? 'h-16 sm:h-28 md:h-36' 
+          ? 'h-20 sm:h-28 md:h-36 py-1 px-2' 
           : 'aspect-video'
       }`}>
-        <iframe
-          key={`stream-iframe-${reloadKey}`}
-          src={viewUrl}
-          title="Teacher Live Video Stream"
-          allow="camera; microphone; autoplay; playsinline; fullscreen; picture-in-picture"
-          className="w-full h-full border-0 block"
-        />
+        <div className={
+          isBanner 
+            ? 'h-full aspect-video rounded-xl overflow-hidden shadow-lg border border-slate-800 bg-black flex items-center justify-center' 
+            : 'w-full h-full'
+        }>
+          <iframe
+            key={`stream-iframe-${reloadKey}`}
+            src={viewUrl}
+            title="Teacher Live Video Stream"
+            allow="camera; microphone; autoplay; playsinline; fullscreen; picture-in-picture"
+            className="w-full h-full border-0 block"
+          />
+        </div>
+
+        {/* Continuous Arabic Live Subtitles Overlay (Docked Banner & Split) */}
+        {streamState?.enableSubtitles && streamState?.liveCaption && isCaptionFresh && (
+          <div className="absolute bottom-2 left-2 right-2 z-30 flex justify-center pointer-events-none">
+            <div className="max-w-[95%] bg-black/85 backdrop-blur-md text-amber-300 font-bold px-3 py-1 rounded-xl border border-amber-500/40 text-[11px] sm:text-xs shadow-xl text-center truncate animate-in fade-in duration-150">
+              <span className="text-amber-400 font-black ml-1">🎙️</span>
+              <span>{streamState.liveCaption}</span>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

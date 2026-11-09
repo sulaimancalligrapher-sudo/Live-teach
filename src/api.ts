@@ -2502,6 +2502,7 @@ export {
   generateStreamToken,
   updateLiveStreamState,
   toggleLiveStream,
+  updateLiveCaption,
   defaultLiveStreamConfig,
 } from './lib/firebaseLiveService';
 

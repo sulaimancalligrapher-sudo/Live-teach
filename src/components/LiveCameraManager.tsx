@@ -131,10 +131,23 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
     }
   };
 
+  const handleToggleSubtitles = async () => {
+    const nextSubtitles = !streamConfig.enableSubtitles;
+    setIsUpdating(true);
+    try {
+      await updateLiveStreamState({ enableSubtitles: nextSubtitles });
+      setStreamConfig(prev => ({ ...prev, enableSubtitles: nextSubtitles }));
+    } catch (err: any) {
+      console.error('فشل تعديل خاصية الترجمة المباشرة:', err);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
   // Base VDO.Ninja Push Link for Teacher
   const teacherPushUrl = `https://vdo.ninja/?push=${encodeURIComponent(streamConfig.streamId)}&autostart&webcam${
     streamConfig.password ? `&password=${encodeURIComponent(streamConfig.password)}` : ''
-  }${streamConfig.mode === 'audio' ? '&novideo' : ''}`;
+  }${streamConfig.mode === 'audio' ? '&novideo' : ''}${streamConfig.enableSubtitles ? '&transcribe=ar' : ''}`;
 
   // Teacher In-Page Preview URL (Crucial: Muted to prevent echo / hearing own voice!)
   const teacherMutedPreviewUrl = `${teacherPushUrl}&mute=1&noaudio=1`;
@@ -142,7 +155,9 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
   // VDO.Ninja View Link for Students
   const studentViewUrl = `https://vdo.ninja/?view=${encodeURIComponent(streamConfig.streamId)}&cleanoutput&autostart&playsinline&transparent=0${
     streamConfig.password ? `&password=${encodeURIComponent(streamConfig.password)}` : ''
-  }${streamConfig.mode === 'audio' ? '&novideo' : ''}${streamConfig.useMeshcast ? '&meshcast' : ''}`;
+  }${streamConfig.mode === 'audio' ? '&novideo' : ''}${streamConfig.useMeshcast ? '&meshcast' : ''}${
+    streamConfig.enableSubtitles ? '&cc' : ''
+  }`;
 
   const connectedStudentsCount = sessionState?.connectedStudents?.length || 0;
 
@@ -285,6 +300,28 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
             >
               <div className={`w-5.5 h-5.5 rounded-full bg-white transition-transform ${
                 streamConfig.useMeshcast ? '-translate-x-5.5' : 'translate-x-0'
+              }`} />
+            </button>
+          </div>
+
+          {/* Live Subtitles / Closed Captions Switch */}
+          <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between">
+            <div>
+              <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                <span>الترجمة والكتابة التلقائية المباشرة (Live Subtitles)</span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">جديد 📝</span>
+              </div>
+              <div className="text-[11px] text-slate-400">يظهر كلام المعلم مكتوباً تلقائياً في شريط أسفل شاشات الطلاب</div>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleSubtitles}
+              className={`w-12 h-6.5 rounded-full transition-colors relative p-0.5 cursor-pointer ${
+                streamConfig.enableSubtitles ? 'bg-indigo-500' : 'bg-slate-800'
+              }`}
+            >
+              <div className={`w-5.5 h-5.5 rounded-full bg-white transition-transform ${
+                streamConfig.enableSubtitles ? '-translate-x-5.5' : 'translate-x-0'
               }`} />
             </button>
           </div>

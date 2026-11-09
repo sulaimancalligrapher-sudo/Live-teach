@@ -30,6 +30,7 @@ export const defaultLiveStreamConfig: LiveStreamConfig = {
   password: '',
   mode: 'video',
   useMeshcast: true,
+  enableSubtitles: false,
   startedAt: 0,
 };
 
@@ -165,6 +166,7 @@ export function subscribeToLiveSession(
             password: data.streamState.password || '',
             mode: data.streamState.mode === 'audio' ? 'audio' : 'video',
             useMeshcast: data.streamState.useMeshcast !== false,
+            enableSubtitles: Boolean(data.streamState.enableSubtitles),
             startedAt: data.streamState.startedAt || 0,
           } : defaultLiveStreamConfig,
         };
@@ -256,6 +258,7 @@ export async function getLiveSessionState(): Promise<LiveSessionState | null> {
           password: data.streamState.password || '',
           mode: data.streamState.mode === 'audio' ? 'audio' : 'video',
           useMeshcast: data.streamState.useMeshcast !== false,
+          enableSubtitles: Boolean(data.streamState.enableSubtitles),
           startedAt: data.streamState.startedAt || 0,
         } : defaultLiveStreamConfig,
       };

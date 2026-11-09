@@ -270,6 +270,7 @@ export interface LiveStreamConfig {
   password?: string;
   mode: 'video' | 'audio';
   useMeshcast?: boolean;
+  enableSubtitles?: boolean;
   startedAt?: number;
 }
 

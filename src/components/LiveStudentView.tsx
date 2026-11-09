@@ -43,15 +43,55 @@ const OPTION_LETTERS = ['أ', 'ب', 'ج', 'د', 'هـ', 'و'];
 export default function LiveStudentView({ onBackToMain, headerConfig: propHeaderConfig }: LiveStudentViewProps) {
   const { t, language } = useLanguage();
   const [headerConfig, setHeaderConfig] = useState<HeaderConfig | null>(propHeaderConfig || null);
+  const [isHeaderLoaded, setIsHeaderLoaded] = useState(Boolean(propHeaderConfig));
 
   useEffect(() => {
+    let isCancelled = false;
+
+    // Safety timeout: release preloader after 1.8s max even if slow network
+    const safetyTimer = setTimeout(() => {
+      if (!isCancelled) setIsHeaderLoaded(true);
+    }, 1800);
+
     if (propHeaderConfig) {
       setHeaderConfig(propHeaderConfig);
+      const logoUrl = propHeaderConfig.loginLogoUrl || propHeaderConfig.logoUrl;
+      if (logoUrl) {
+        const img = new Image();
+        img.src = logoUrl;
+        img.onload = () => { if (!isCancelled) setIsHeaderLoaded(true); };
+        img.onerror = () => { if (!isCancelled) setIsHeaderLoaded(true); };
+      } else {
+        setIsHeaderLoaded(true);
+      }
     } else {
-      fetchHeaderConfig().then(cfg => {
-        if (cfg) setHeaderConfig(cfg);
-      }).catch(() => {});
+      fetchHeaderConfig()
+        .then(cfg => {
+          if (isCancelled) return;
+          if (cfg) {
+            setHeaderConfig(cfg);
+            const logoUrl = cfg.loginLogoUrl || cfg.logoUrl;
+            if (logoUrl) {
+              const img = new Image();
+              img.src = logoUrl;
+              img.onload = () => { if (!isCancelled) setIsHeaderLoaded(true); };
+              img.onerror = () => { if (!isCancelled) setIsHeaderLoaded(true); };
+            } else {
+              setIsHeaderLoaded(true);
+            }
+          } else {
+            setIsHeaderLoaded(true);
+          }
+        })
+        .catch(() => {
+          if (!isCancelled) setIsHeaderLoaded(true);
+        });
     }
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(safetyTimer);
+    };
   }, [propHeaderConfig]);
 
   const [isVerifyingRoster, setIsVerifyingRoster] = useState(false);
@@ -844,6 +884,34 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
 
   // 1. Join Screen (if not logged in or PIN not verified)
   if (!isJoined || !isPinVerified) {
+    if (!isHeaderLoaded) {
+      return (
+        <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl text-center space-y-4 select-none"
+          >
+            <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 mx-auto flex items-center justify-center">
+              <Loader2 className="w-7 h-7 animate-spin text-amber-400" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-slate-100">جاري تجهيز بوابة الطالب...</h3>
+              <p className="text-xs text-slate-400 mt-1">يتم الآن مزامنة بيانات الحصة والشعار الرسمي</p>
+            </div>
+            <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+              <motion.div 
+                className="h-full bg-gradient-to-r from-amber-500 to-indigo-500" 
+                initial={{ width: '25%' }}
+                animate={{ width: '90%' }}
+                transition={{ duration: 1.4, ease: 'easeInOut' }}
+              />
+            </div>
+          </motion.div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center items-center p-4">
         <motion.div 
@@ -1139,16 +1207,11 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
       {/* Top Header Bar */}
       <header className="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-4 py-3 sticky top-0 z-20">
         <div className={`mx-auto flex items-center justify-between transition-all duration-300 ${isShowingPdf ? 'max-w-6xl' : 'max-w-xl'}`}>
-          <div className="flex items-center gap-2.5">
-            <div>
-              <div className="text-xs font-black text-slate-200 flex items-center gap-1.5">
-                <span>{sessionState?.lessonTitle || 'الحصة التفاعلية المباشرة'}</span>
-                <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
-              </div>
-              <div className="text-xs font-bold text-indigo-400">
-                {username}
-              </div>
-            </div>
+          <div className="flex items-center gap-2">
+            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${connected ? 'bg-emerald-400 animate-pulse shadow-sm shadow-emerald-400/50' : 'bg-rose-500'}`} />
+            <span className="text-sm font-black text-white tracking-wide">
+              {username}
+            </span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -1588,7 +1651,7 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
         <div className={`mx-auto flex items-center justify-between gap-3 transition-all duration-300 ${isShowingPdf ? 'max-w-6xl' : 'max-w-xl'}`}>
           <div className="text-xs text-slate-400 font-bold flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>{t('live_footer_connected', 'متصل بالحصة التفاعلية')}</span>
+            <span>{t('live_footer_connected', 'متصل مباشر')}</span>
           </div>
 
           {/* Single Unified Action: محادثة مع الأستاذ */}
@@ -1688,9 +1751,6 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
             )}
           </div>
         ) : null}
-        <div className="text-[10px] text-slate-600 font-mono">
-          نظام الحصص التفاعلية الحية • متزامن لحظياً عبر السحابة
-        </div>
       </footer>
     </div>
   );

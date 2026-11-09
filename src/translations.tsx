@@ -1809,10 +1809,10 @@ export const DEFAULT_TRANSLATIONS: TranslationItem[] = [
   {
     key: 'live_footer_connected',
     category: 'lessons',
-    description: 'متصل بالحصة التفاعلية في الشريط السفلي',
-    ar: 'متصل بالحصة التفاعلية',
-    th: 'เชื่อมต่อกับชั้นเรียนแบบโต้ตอบแล้ว',
-    en: 'Connected to interactive class',
+    description: 'متصل مباشر في الشريط السفلي',
+    ar: 'متصل مباشر',
+    th: 'เชื่อมต่อถ่ายทอดสด',
+    en: 'Directly Connected',
   },
   {
     key: 'live_chat_with_teacher',

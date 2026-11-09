@@ -52,6 +52,8 @@ export default function App() {
   });
 
   const [isAdminUnlocked, setIsAdminUnlocked] = useState(() => localStorage.getItem('isAdminUnlocked') === 'true');
+  const [adminName, setAdminName] = useState(() => localStorage.getItem('adminName') || 'الأستاذ المشرف');
+  const [adminInputName, setAdminInputName] = useState(() => localStorage.getItem('adminName') || '');
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [showAdminPassModal, setShowAdminPassModal] = useState(false);
   const [adminInputPassword, setAdminInputPassword] = useState('');
@@ -62,9 +64,7 @@ export default function App() {
   const [allLiveLessons, setAllLiveLessons] = useState<LiveLessonRow[]>([]);
   const [activeLiveLesson, setActiveLiveLesson] = useState<LiveLessonRow | null>(null);
 
-  // Fast Student PIN & Join State
-  const [enteredPin, setEnteredPin] = useState('');
-  const [pinError, setPinError] = useState<string | null>(null);
+  // Student credentials state (for lessons display)
   const [studentName, setStudentName] = useState(() => {
     return localStorage.getItem('liveStudentUsername') || localStorage.getItem('loggedInUsername') || '';
   });
@@ -149,7 +149,11 @@ export default function App() {
     if (validCodes.includes(adminInputPassword.trim())) {
       setIsAdminUnlocked(true);
       localStorage.setItem('isAdminUnlocked', 'true');
+      const savedName = adminInputName.trim() || 'الأستاذ المشرف';
+      localStorage.setItem('adminName', savedName);
+      setAdminName(savedName);
       setAdminInputPassword('');
+      setShowAdminPassModal(false);
       setIsAdminPanelOpen(true);
     } else {
       setAdminPassError('رمز الدخول غير صحيح! الرمز الافتراضي: 1122 أو 3344');
@@ -164,24 +168,6 @@ export default function App() {
     localStorage.setItem('liveStudentSheet', studentNumber.trim());
     localStorage.setItem('loggedInSheetNumber', studentNumber.trim());
     setIsEditingStudent(false);
-  };
-
-  const handleQuickPinJoin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPinError(null);
-    if (!enteredPin.trim()) {
-      setPinError('يرجى كتابة رمز الـ PIN المكون من 4 أرقام');
-      return;
-    }
-    // Save credentials & jump to live student view
-    if (studentName.trim()) {
-      localStorage.setItem('liveStudentUsername', studentName.trim());
-    }
-    if (studentNumber.trim()) {
-      localStorage.setItem('liveStudentSheet', studentNumber.trim());
-    }
-    sessionStorage.setItem('prefilledPin', enteredPin.trim());
-    navigateToPage('live-student');
   };
 
   const copyLink = (text: string, id: string) => {
@@ -353,53 +339,35 @@ export default function App() {
               </p>
             ) : null}
 
-            {/* FAST PIN BAR */}
-            <form onSubmit={handleQuickPinJoin} className="pt-2 max-w-md mx-auto">
-              <div className="flex items-center gap-2 p-1.5 bg-slate-800/90 rounded-2xl border border-slate-700/80 shadow-lg backdrop-blur-md">
-                <div className="px-3 text-slate-400 flex items-center gap-1.5">
-                  <KeyRound className="w-4 h-4 text-amber-400" />
-                  <span className="text-xs font-bold text-slate-300">PIN:</span>
-                </div>
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={enteredPin}
-                  onChange={(e) => setEnteredPin(e.target.value)}
-                  placeholder="أدخل رمز الحصة..."
-                  className="flex-grow bg-transparent text-white font-mono font-bold text-base tracking-widest text-center focus:outline-none placeholder:text-slate-500 placeholder:font-normal placeholder:tracking-normal placeholder:text-xs"
-                />
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md shadow-amber-500/20"
-                >
-                  <LogIn className="w-4 h-4" />
-                  <span>دخول</span>
-                </button>
-              </div>
-
-              {pinError && (
-                <p className="text-xs text-rose-400 font-bold mt-2 text-center">
-                  {pinError}
-                </p>
-              )}
-            </form>
-
-            {/* Admin / Teacher Profile Status Pill */}
-            <div className="pt-2 flex items-center justify-center gap-2 text-xs text-slate-400">
+            {/* Admin Profile & Action Bar */}
+            <div className="pt-4 flex flex-col items-center justify-center gap-3 max-w-lg mx-auto">
               {isAdminUnlocked ? (
-                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-800/80 border border-amber-500/40 text-amber-300 font-bold shadow-sm">
-                  <ShieldCheck className="w-4 h-4 text-amber-400" />
-                  <span className="text-slate-300">المسؤول / الإداري:</span>
-                  <span className="text-white font-black">إدارة النظام المركزية</span>
+                <div className="w-full flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-800/90 border border-amber-500/40 text-amber-300 shadow-xl backdrop-blur-md">
+                  <div className="flex items-center gap-3 text-right">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                      <ShieldCheck className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="text-[11px] text-slate-400 font-bold">الحساب الإداري المعتمد:</div>
+                      <div className="text-sm font-black text-white">{adminName || 'الأستاذ المشرف'}</div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsAdminPanelOpen(true)}
+                    className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition cursor-pointer shadow-md shadow-amber-500/20 active:scale-95"
+                  >
+                    لوحة التحكم المركزية ⚙️
+                  </button>
                 </div>
               ) : (
                 <button
                   type="button"
                   onClick={() => setShowAdminPassModal(true)}
-                  className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-800/70 hover:bg-slate-800 border border-slate-700 hover:border-amber-500/50 text-slate-300 hover:text-amber-300 font-bold transition cursor-pointer text-xs"
+                  className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs sm:text-sm flex items-center gap-2.5 transition cursor-pointer shadow-lg shadow-amber-500/20 active:scale-95"
                 >
-                  <Lock className="w-3.5 h-3.5 text-amber-400" />
-                  <span>دخول الإدارة والمعلم</span>
+                  <Lock className="w-4 h-4 text-slate-950" />
+                  <span>تسجيل دخول المعلم / الإدارة 🔐</span>
                 </button>
               )}
             </div>
@@ -764,6 +732,22 @@ export default function App() {
 
               <form onSubmit={handleAdminUnlock} className="space-y-4">
                 <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    اسم المعلم / الإداري:
+                  </label>
+                  <input
+                    type="text"
+                    value={adminInputName}
+                    onChange={(e) => setAdminInputName(e.target.value)}
+                    placeholder="مثال: أستاذ أحمد..."
+                    className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-right text-xs focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    رمز المرور الإداري:
+                  </label>
                   <input
                     type="password"
                     autoFocus

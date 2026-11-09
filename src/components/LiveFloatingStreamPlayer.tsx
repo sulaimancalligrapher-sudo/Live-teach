@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
 import { 
   Volume2, VolumeX, Maximize2, Minimize2, Radio, 
   Mic, Video, Sparkles, X, Columns, Fullscreen,
-  Move
+  PanelTopClose, PanelTop
 } from 'lucide-react';
 import { LiveStreamConfig } from '../types';
 import { useLanguage } from '../translations';
@@ -11,28 +10,55 @@ import { useLanguage } from '../translations';
 interface LiveFloatingStreamPlayerProps {
   streamState?: LiveStreamConfig | null;
   isQuestionActive?: boolean;
+  isRevealed?: boolean;
+  sessionStatus?: string;
 }
 
-export type StreamDisplayMode = 'pip' | 'split' | 'fullscreen';
+export type StreamDisplayMode = 'banner' | 'split' | 'fullscreen';
 
 export default function LiveFloatingStreamPlayer({
   streamState,
   isQuestionActive = false,
+  isRevealed = false,
+  sessionStatus,
 }: LiveFloatingStreamPlayerProps) {
   const { t } = useLanguage();
   
-  // Display mode: 'split' (inline in page), 'pip' (floating corner), 'fullscreen' (100% screen)
+  // Display modes:
+  // - 'banner': compact top docked strip (leaves 100% of question & choices clearly visible below it)
+  // - 'split': normal inline 16:9 player in page
+  // - 'fullscreen': 100% full screen video
   const [displayMode, setDisplayMode] = useState<StreamDisplayMode>('split');
   const [isMuted, setIsMuted] = useState(false);
-  const prevQuestionActiveRef = useRef(isQuestionActive);
+  
+  // Remember previous mode before question started to restore it automatically afterwards
+  const previousModeRef = useRef<StreamDisplayMode>('split');
+  const hadQuestionActiveRef = useRef(false);
 
-  // Auto-switch to 'pip' when a question becomes active so questions are never blocked!
+  // Auto-switch to 'banner' when question triggers, and restore previous mode when question ends!
   useEffect(() => {
-    if (isQuestionActive && !prevQuestionActiveRef.current) {
-      setDisplayMode('pip');
+    if (isQuestionActive) {
+      if (!hadQuestionActiveRef.current) {
+        hadQuestionActiveRef.current = true;
+        // Save current mode (e.g. 'fullscreen' or 'split') before docking
+        if (displayMode !== 'banner') {
+          previousModeRef.current = displayMode;
+        }
+        setDisplayMode('banner');
+      }
+    } else {
+      if (hadQuestionActiveRef.current) {
+        hadQuestionActiveRef.current = false;
+        // When question is completed (and answer reveal is finished), return to lesson explanation:
+        // Automatically restore the mode the student was previously enjoying (e.g. fullscreen)!
+        if (previousModeRef.current && previousModeRef.current !== 'banner') {
+          setDisplayMode(previousModeRef.current);
+        } else {
+          setDisplayMode('split');
+        }
+      }
     }
-    prevQuestionActiveRef.current = isQuestionActive;
-  }, [isQuestionActive]);
+  }, [isQuestionActive, displayMode]);
 
   // If stream is inactive or no streamId, unmount completely (free WebRTC connections)
   if (!streamState || !streamState.isActive || !streamState.streamId) {
@@ -40,12 +66,6 @@ export default function LiveFloatingStreamPlayer({
   }
 
   // Construct secure, mobile-optimized VDO.Ninja URL
-  // Parameters:
-  // &cleanoutput: removes UI buttons
-  // &autostart: auto-connects WebRTC
-  // &playsinline: prevents iOS fullscreen takeover
-  // &webautoplay: ensures mobile WebRTC audio/video plays automatically
-  // &scale=100: responsive aspect scaling on mobile
   const viewUrl = `https://vdo.ninja/?view=${encodeURIComponent(streamState.streamId)}&cleanoutput&autostart&playsinline&webautoplay&transparent=0&scale=100${
     streamState.password ? `&password=${encodeURIComponent(streamState.password)}` : ''
   }${streamState.mode === 'audio' ? '&novideo' : ''}${streamState.useMeshcast ? '&meshcast' : ''}`;
@@ -119,118 +139,135 @@ export default function LiveFloatingStreamPlayer({
   }
 
   // ==========================================
-  // --- VIDEO MODE (SINGLE PERSISTENT IFRAME WITH 3 DISPLAY MODES) ---
+  // --- VIDEO MODE (PERSISTENT IFRAME: BANNER, SPLIT, FULLSCREEN) ---
   // ==========================================
-
-  // Determine container styling according to mode
   const isFullscreen = displayMode === 'fullscreen';
-  const isPip = displayMode === 'pip';
+  const isBanner = displayMode === 'banner';
   const isSplit = displayMode === 'split';
 
   return (
-    <>
-      {/* 
-        CRITICAL ARCHITECTURAL DESIGN:
-        We render the iframe inside a single wrapper hierarchy without ever unmounting it.
-        This prevents iOS Safari / Android Chrome from killing the WebRTC PeerConnection on mode change.
-      */}
-      <div 
-        onContextMenu={(e) => e.preventDefault()}
-        dir="rtl"
-        className={
-          isFullscreen
-            ? 'fixed inset-0 z-50 w-screen h-screen bg-black flex flex-col justify-between overflow-hidden select-none'
-            : isPip
-            ? 'fixed bottom-20 right-3 sm:bottom-6 sm:right-6 z-40 w-52 sm:w-72 bg-slate-950/95 border-2 border-amber-500/80 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-xl select-none animate-in fade-in zoom-in-95 duration-200'
-            : 'w-full my-3 bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl backdrop-blur-md'
-        }
-      >
-        {/* Dynamic Control Bar */}
-        <div className={`flex items-center justify-between border-b border-slate-800/80 transition-all ${
-          isFullscreen 
-            ? 'p-3 bg-slate-950/80 backdrop-blur-md text-white' 
-            : isPip 
-            ? 'px-2.5 py-1.5 bg-slate-900/90 text-white text-[11px]' 
-            : 'px-4 py-2 bg-slate-950/70 text-white text-xs'
-        }`}>
-          {/* Status Label */}
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
-            <span className="font-black text-white">
-              {isFullscreen ? 'بث مباشر من المعلم (ملء الشاشة)' : isPip ? 'بث المعلم' : 'بث مباشر من المعلم 🎥'}
-            </span>
-          </div>
-
-          {/* 3 Mode Control Buttons: [صغير عائم] [تقسيم شاشة] [تكبير كامل الشاشة] */}
-          <div className="flex items-center gap-1">
-            {/* 1. PIP Mode Button (صغير عائم) */}
-            <button
-              type="button"
-              onClick={() => setDisplayMode('pip')}
-              className={`p-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
-                isPip 
-                  ? 'bg-amber-500 text-slate-950 shadow-sm' 
-                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white'
-              }`}
-              title="تصغير إلى نافذة عائمة في الزاوية"
-            >
-              <Minimize2 className="w-3.5 h-3.5" />
-              {!isPip && <span className="hidden sm:inline">صغير عائم</span>}
-            </button>
-
-            {/* 2. Split Screen Mode Button (تقسيم شاشة) */}
-            <button
-              type="button"
-              onClick={() => setDisplayMode('split')}
-              className={`p-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
-                isSplit 
-                  ? 'bg-amber-500 text-slate-950 shadow-sm' 
-                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white'
-              }`}
-              title="عرض مدمج مع الشاشة والأسئلة"
-            >
-              <Columns className="w-3.5 h-3.5" />
-              {!isPip && <span className="hidden sm:inline">تقسيم شاشة</span>}
-            </button>
-
-            {/* 3. Fullscreen Mode Button (تكبير كامل الشاشة) */}
-            <button
-              type="button"
-              onClick={() => setDisplayMode(isFullscreen ? 'split' : 'fullscreen')}
-              className={`p-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
-                isFullscreen 
-                  ? 'bg-rose-600 hover:bg-rose-500 text-white' 
-                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white'
-              }`}
-              title={isFullscreen ? 'تصغير الشاشة' : 'تكبير كامل الشاشة'}
-            >
-              {isFullscreen ? (
-                <>
-                  <X className="w-4 h-4" />
-                  <span className="text-xs">تصغير ✕</span>
-                </>
-              ) : (
-                <>
-                  <Fullscreen className="w-3.5 h-3.5" />
-                  {!isPip && <span className="hidden sm:inline">كامل الشاشة</span>}
-                </>
-              )}
-            </button>
-          </div>
+    <div 
+      onContextMenu={(e) => e.preventDefault()}
+      dir="rtl"
+      className={
+        isFullscreen
+          ? 'fixed inset-0 z-50 w-screen h-screen bg-black flex flex-col justify-between overflow-hidden select-none'
+          : isBanner
+          ? 'w-full mb-3 bg-slate-900/95 border border-amber-500/60 rounded-2xl overflow-hidden shadow-xl backdrop-blur-md transition-all duration-300'
+          : 'w-full my-3 bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl backdrop-blur-md transition-all duration-300'
+      }
+    >
+      {/* Control Header */}
+      <div className={`flex items-center justify-between border-b border-slate-800/80 transition-all ${
+        isFullscreen 
+          ? 'p-3 bg-slate-950/80 backdrop-blur-md text-white' 
+          : isBanner 
+          ? 'px-3 py-1.5 bg-slate-950/80 text-white text-[11px]' 
+          : 'px-4 py-2 bg-slate-950/70 text-white text-xs'
+      }`}>
+        {/* Status Label */}
+        <div className="flex items-center gap-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse"></span>
+          <span className="font-black text-white">
+            {isFullscreen 
+              ? 'بث مباشر من المعلم (ملء الشاشة)' 
+              : isBanner 
+              ? 'بث المعلم (شريط علوي مع السؤال) 🎥' 
+              : 'بث مباشر من المعلم 🎥'}
+          </span>
         </div>
 
-        {/* Video Frame: Responsive 16:9 on split/pip, full viewport on fullscreen */}
-        <div className={`relative bg-black w-full flex items-center justify-center ${
-          isFullscreen ? 'flex-1 h-full' : 'aspect-video'
-        }`}>
-          <iframe
-            src={viewUrl}
-            title="Teacher Live Video Stream"
-            allow="camera; microphone; autoplay; playsinline; fullscreen; picture-in-picture"
-            className="w-full h-full border-0"
-          />
+        {/* 3 Display Mode Buttons: [شريط علوي] [تقسيم شاشة] [كامل الشاشة] */}
+        <div className="flex items-center gap-1">
+          {/* 1. Banner Strip Button (شريط علوي) */}
+          <button
+            type="button"
+            onClick={() => {
+              previousModeRef.current = displayMode;
+              setDisplayMode('banner');
+            }}
+            className={`p-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+              isBanner 
+                ? 'bg-amber-500 text-slate-950 shadow-sm' 
+                : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white'
+            }`}
+            title="تصغير إلى شريط علوي صغير لتسهيل إجابة السؤال"
+          >
+            <PanelTop className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">شريط علوي</span>
+          </button>
+
+          {/* 2. Split Screen Button (تقسيم شاشة) */}
+          <button
+            type="button"
+            onClick={() => {
+              previousModeRef.current = displayMode;
+              setDisplayMode('split');
+            }}
+            className={`p-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+              isSplit 
+                ? 'bg-amber-500 text-slate-950 shadow-sm' 
+                : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white'
+            }`}
+            title="عرض مدمج بحجم عادي"
+          >
+            <Columns className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">تقسيم شاشة</span>
+          </button>
+
+          {/* 3. Fullscreen Button (كامل الشاشة) */}
+          <button
+            type="button"
+            onClick={() => {
+              if (isFullscreen) {
+                setDisplayMode(isQuestionActive ? 'banner' : 'split');
+              } else {
+                previousModeRef.current = displayMode;
+                setDisplayMode('fullscreen');
+              }
+            }}
+            className={`p-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
+              isFullscreen 
+                ? 'bg-rose-600 hover:bg-rose-500 text-white' 
+                : 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white'
+            }`}
+            title={isFullscreen ? 'تصغير الشاشة' : 'تكبير كامل الشاشة'}
+          >
+            {isFullscreen ? (
+              <>
+                <X className="w-4 h-4" />
+                <span className="text-xs">تصغير ✕</span>
+              </>
+            ) : (
+              <>
+                <Fullscreen className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">كامل الشاشة</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
-    </>
+
+      {/* 
+        Video Frame:
+        - Fullscreen: flex-1 h-full
+        - Banner: compact height h-32 sm:h-44 md:h-52 w-full (Leaves entire bottom area for question & options!)
+        - Split: aspect-video w-full
+      */}
+      <div className={`relative bg-black w-full flex items-center justify-center ${
+        isFullscreen 
+          ? 'flex-1 h-full' 
+          : isBanner 
+          ? 'h-32 sm:h-44 md:h-52' 
+          : 'aspect-video'
+      }`}>
+        <iframe
+          src={viewUrl}
+          title="Teacher Live Video Stream"
+          allow="camera; microphone; autoplay; playsinline; fullscreen; picture-in-picture"
+          className="w-full h-full border-0"
+        />
+      </div>
+    </div>
   );
 }

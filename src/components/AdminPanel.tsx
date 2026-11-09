@@ -284,99 +284,99 @@ export default function AdminPanel({
         </AnimatePresence>
 
         {/* Tabs Bar */}
-        <div className="flex items-center gap-1 sm:gap-2 px-4 sm:px-6 pt-3 border-b border-slate-800 bg-slate-950/60 overflow-x-auto custom-scrollbar">
+        <div className="flex items-center gap-2 sm:gap-2.5 px-4 sm:px-6 py-3 border-b border-slate-800 bg-slate-950/80 overflow-x-auto custom-scrollbar min-h-[64px]">
           {/* Tab 1: Live Video */}
           <button
             onClick={() => setActiveTab('live')}
-            className={`px-3.5 sm:px-4 py-2.5 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center gap-2.5 shrink-0 transition-all cursor-pointer whitespace-nowrap shadow-sm ${
               activeTab === 'live'
-                ? 'bg-slate-900 text-amber-400 border-amber-500 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/40'
+                ? 'bg-amber-500 text-slate-950 shadow-amber-500/20 scale-[1.02]'
+                : 'bg-slate-850 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60'
             }`}
           >
-            <Video className="w-4 h-4 text-amber-400" />
+            <Video className={`w-4 h-4 ${activeTab === 'live' ? 'text-slate-950' : 'text-amber-400'}`} />
             <span>فيديو التفاعلي المباشر</span>
           </button>
 
           {/* Tab 2: Live Direct */}
           <button
             onClick={() => setActiveTab('live-direct')}
-            className={`px-3.5 sm:px-4 py-2.5 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center gap-2.5 shrink-0 transition-all cursor-pointer whitespace-nowrap shadow-sm ${
               activeTab === 'live-direct'
-                ? 'bg-slate-900 text-amber-400 border-amber-500 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/40'
+                ? 'bg-amber-500 text-slate-950 shadow-amber-500/20 scale-[1.02]'
+                : 'bg-slate-850 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60'
             }`}
           >
-            <Radio className="w-4 h-4 text-amber-400 animate-pulse" />
+            <Radio className={`w-4 h-4 ${activeTab === 'live-direct' ? 'text-slate-950' : 'text-amber-400 animate-pulse'}`} />
             <span>شرح مباشر</span>
           </button>
 
           {/* Tab 3: Live Camera & Audio Stream */}
           <button
             onClick={() => setActiveTab('camera')}
-            className={`px-3.5 sm:px-4 py-2.5 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center gap-2.5 shrink-0 transition-all cursor-pointer whitespace-nowrap shadow-sm ${
               activeTab === 'camera'
-                ? 'bg-slate-900 text-amber-400 border-amber-500 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/40'
+                ? 'bg-amber-500 text-slate-950 shadow-amber-500/20 scale-[1.02]'
+                : 'bg-slate-850 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60'
             }`}
           >
-            <Camera className="w-4 h-4 text-emerald-400" />
+            <Camera className={`w-4 h-4 ${activeTab === 'camera' ? 'text-slate-950' : 'text-emerald-400'}`} />
             <span>كاميرا مباشر</span>
             {isStreamActive && (
-              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shadow-sm shadow-rose-500/50"></span>
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse shadow-sm shadow-rose-500/50"></span>
             )}
           </button>
 
           {/* Tab 4: Quiz Challenge */}
           <button
             onClick={() => setActiveTab('quiz-challenge')}
-            className={`px-3.5 sm:px-4 py-2.5 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center gap-2.5 shrink-0 transition-all cursor-pointer whitespace-nowrap shadow-sm ${
               activeTab === 'quiz-challenge'
-                ? 'bg-slate-900 text-amber-400 border-amber-500 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/40'
+                ? 'bg-amber-500 text-slate-950 shadow-amber-500/20 scale-[1.02]'
+                : 'bg-slate-850 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60'
             }`}
           >
-            <Trophy className="w-4 h-4 text-amber-400" />
+            <Trophy className={`w-4 h-4 ${activeTab === 'quiz-challenge' ? 'text-slate-950' : 'text-amber-400'}`} />
             <span>تحدي كويز</span>
           </button>
 
-          {/* Tab 4: Broadcast & Displays */}
+          {/* Tab 5: Broadcast & Displays */}
           <button
             onClick={() => setActiveTab('broadcast')}
-            className={`px-3.5 sm:px-4 py-2.5 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center gap-2.5 shrink-0 transition-all cursor-pointer whitespace-nowrap shadow-sm ${
               activeTab === 'broadcast'
-                ? 'bg-slate-900 text-amber-400 border-amber-500 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/40'
+                ? 'bg-amber-500 text-slate-950 shadow-amber-500/20 scale-[1.02]'
+                : 'bg-slate-850 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60'
             }`}
           >
-            <Monitor className="w-4 h-4 text-amber-400" />
+            <Monitor className={`w-4 h-4 ${activeTab === 'broadcast' ? 'text-slate-950' : 'text-amber-400'}`} />
             <span>العرض</span>
           </button>
 
-          {/* Tab 5: Translations & Localization */}
+          {/* Tab 6: Translations & Localization */}
           <button
             onClick={() => setActiveTab('translations')}
-            className={`px-3.5 sm:px-4 py-2.5 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center gap-2 border-b-2 transition-all cursor-pointer whitespace-nowrap ${
+            className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center gap-2.5 shrink-0 transition-all cursor-pointer whitespace-nowrap shadow-sm ${
               activeTab === 'translations'
-                ? 'bg-slate-900 text-amber-400 border-amber-500 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/40'
+                ? 'bg-amber-500 text-slate-950 shadow-amber-500/20 scale-[1.02]'
+                : 'bg-slate-850 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60'
             }`}
           >
-            <Globe className="w-4 h-4 text-amber-400" />
+            <Globe className={`w-4 h-4 ${activeTab === 'translations' ? 'text-slate-950' : 'text-amber-400'}`} />
             <span>الترجمة</span>
           </button>
 
-          {/* Tab 6: Sheets & Design Settings (Icon only) */}
+          {/* Tab 7: Sheets & Design Settings (Icon only) */}
           <button
             onClick={() => setActiveTab('sheets-design')}
             title="الربط بالشيت وتصميم الصفحة والإعدادات"
-            className={`p-2.5 px-3.5 rounded-t-2xl font-bold text-xs sm:text-sm flex items-center justify-center border-b-2 transition-all cursor-pointer ${
+            className={`p-2.5 sm:p-3 px-3.5 sm:px-4 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center shrink-0 transition-all cursor-pointer shadow-sm ${
               activeTab === 'sheets-design'
-                ? 'bg-slate-900 text-amber-400 border-amber-500 shadow-sm'
-                : 'text-slate-400 hover:text-slate-200 border-transparent hover:bg-slate-900/40'
+                ? 'bg-amber-500 text-slate-950 shadow-amber-500/20 scale-[1.02]'
+                : 'bg-slate-850 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60'
             }`}
           >
-            <Settings className="w-4 h-4 text-amber-400" />
+            <Settings className={`w-4 h-4 ${activeTab === 'sheets-design' ? 'text-slate-950' : 'text-amber-400'}`} />
           </button>
         </div>
 

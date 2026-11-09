@@ -409,7 +409,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
               <div>
                 <span className="font-bold">البث المباشر بدون برامج:</span> يمكنك فتح كاميرا الحاسوب أو كاميرا الهاتف أو مشاركة شاشتك مباشرة بنقرة زر واحدة دون الحاجة لتثبيت أي برامج على جهازك!
                 <div className="mt-1 text-slate-300">
-                  💡 <b>ملاحظة:</b> تم كتم صوت المعاينة المحلية تلقائياً في شاشتك حتى تتحدث براحة تامة دون أن تسمع صدى صوتك في مكبرات الصوت.
+                  💡 <b>تنبيه لتفادي تعارض البث:</b> يمكنك البث إما عبر <b>النافذة المنبثقة المستقلة</b> (الموصى بها) أو عبر <b>المعاينة المدمجة هنا</b>. اختر أحدهما فقط حتى لا يظهر لك تنبيه أن المعرف قيد الاستخدام.
                 </div>
               </div>
             </div>
@@ -418,6 +418,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
               <button
                 type="button"
                 onClick={() => {
+                  setShowInPagePreview(false);
                   window.open(teacherPushUrl, 'vdo_ninja_push', 'width=1000,height=750,menubar=no,toolbar=no,location=no');
                 }}
                 className="px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs sm:text-sm flex items-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer"

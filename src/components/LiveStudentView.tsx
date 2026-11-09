@@ -1261,6 +1261,8 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
         <LiveFloatingStreamPlayer
           streamState={sessionState?.streamState}
           isQuestionActive={Boolean(isQuestionActive)}
+          isRevealed={Boolean(isRevealed)}
+          sessionStatus={sessionState?.status}
         />
 
         {/* Step 1: Floating Challenge Invitation Banner for students in "شرح مباشر" */}

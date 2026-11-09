@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Volume2, VolumeX, Maximize2, Minimize2, Radio, 
   Mic, Video, Sparkles, X, Columns, Fullscreen,
-  PanelTop, ChevronDown, RotateCw, BatteryCharging
+  PanelTop, ChevronDown, RotateCw, RefreshCw
 } from 'lucide-react';
 import { LiveStreamConfig } from '../types';
 import { useLanguage } from '../translations';
@@ -33,9 +33,12 @@ export default function LiveFloatingStreamPlayer({
   const [isMuted, setIsMuted] = useState(false);
   const [isLandscapeRotate, setIsLandscapeRotate] = useState(false);
   const [studentAudioOnly, setStudentAudioOnly] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Remember previous mode before question started to restore it automatically afterwards
   const previousModeRef = useRef<StreamDisplayMode>('split');
+  const currentModeRef = useRef<StreamDisplayMode>('split');
+  currentModeRef.current = displayMode;
   const hadQuestionActiveRef = useRef(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -59,8 +62,8 @@ export default function LiveFloatingStreamPlayer({
       if (!hadQuestionActiveRef.current) {
         hadQuestionActiveRef.current = true;
         // Save current mode (e.g. 'fullscreen' or 'split') before docking
-        if (displayMode !== 'banner') {
-          previousModeRef.current = displayMode;
+        if (currentModeRef.current !== 'banner') {
+          previousModeRef.current = currentModeRef.current;
         }
         setDisplayMode('banner');
       }
@@ -69,51 +72,34 @@ export default function LiveFloatingStreamPlayer({
         hadQuestionActiveRef.current = false;
         // When question round is completely finished (teacher clicked "العودة إلى الشرح"):
         // Automatically restore the mode the student was previously enjoying (e.g. fullscreen)!
-        if (previousModeRef.current && previousModeRef.current !== 'banner') {
-          setDisplayMode(previousModeRef.current);
-          if (previousModeRef.current === 'fullscreen') {
-            try {
-              if (window.screen?.orientation && 'lock' in window.screen.orientation) {
-                (window.screen.orientation as any).lock('landscape').catch(() => {});
-              }
-            } catch {}
-          }
-        } else {
-          setDisplayMode('split');
-        }
+        const targetMode = previousModeRef.current !== 'banner' ? previousModeRef.current : 'split';
+        setDisplayMode(targetMode);
+        // CRITICAL NOTE: We do NOT call window.screen.orientation.lock() automatically here!
+        // Automated orientation locks without user touch event throw DOMExceptions and freeze the
+        // mobile Android GPU WebRTC hardware decoder surface.
+        // Pure CSS zero-margin transform handles horizontal full bleed reliably.
       }
     }
-  }, [isQuestionRoundActive, displayMode]);
+  }, [isQuestionRoundActive]);
 
   const handleSelectMode = (mode: StreamDisplayMode) => {
     setIsModeMenuOpen(false);
     if (mode === 'fullscreen') {
       previousModeRef.current = displayMode;
       setDisplayMode('fullscreen');
-      try {
-        if (window.screen?.orientation && 'lock' in window.screen.orientation) {
-          (window.screen.orientation as any).lock('landscape').catch(() => {});
-        }
-      } catch {}
     } else {
-      try {
-        if (window.screen?.orientation && 'unlock' in window.screen.orientation) {
-          (window.screen.orientation as any).unlock();
-        }
-      } catch {}
       previousModeRef.current = mode;
+      setIsLandscapeRotate(false);
       setDisplayMode(mode);
     }
   };
 
   const handleExitFullscreen = () => {
-    try {
-      if (window.screen?.orientation && 'unlock' in window.screen.orientation) {
-        (window.screen.orientation as any).unlock();
-      }
-    } catch {}
     setIsLandscapeRotate(false);
-    setDisplayMode(isQuestionRoundActive ? 'banner' : (previousModeRef.current !== 'fullscreen' ? previousModeRef.current : 'split'));
+    const target = isQuestionRoundActive 
+      ? 'banner' 
+      : (previousModeRef.current !== 'fullscreen' ? previousModeRef.current : 'split');
+    setDisplayMode(target);
   };
 
   // If stream is inactive or no streamId, unmount completely (free WebRTC connections)
@@ -124,10 +110,15 @@ export default function LiveFloatingStreamPlayer({
   const isAudioModeEffective = streamState.mode === 'audio' || studentAudioOnly;
 
   // Construct secure, mobile-optimized VDO.Ninja URL
-  const viewUrl = `https://vdo.ninja/?view=${encodeURIComponent(streamState.streamId)}&cleanoutput&autostart&playsinline&webautoplay&transparent=0&scale=100${
+  // KEY STABILITY RULES:
+  // 1. &cover: Eliminates side/edge margins completely, filling 100% of the mobile display like object-fit: cover.
+  // 2. &closedcaptions: Always included! When subtitles are toggled, the student iframe URL NEVER changes,
+  //    preventing black screen reloads and WebRTC teardown.
+  // 3. &cleanoutput &playsinline &webautoplay: Pristine distraction-free playback on mobile.
+  const viewUrl = `https://vdo.ninja/?view=${encodeURIComponent(streamState.streamId)}&cleanoutput&autostart&playsinline&webautoplay&transparent=0&cover&scale=100&closedcaptions${
     streamState.password ? `&password=${encodeURIComponent(streamState.password)}` : ''
   }${isAudioModeEffective ? '&novideo' : ''}${streamState.useMeshcast ? '&meshcast' : ''}${
-    streamState.enableSubtitles ? '&cc' : ''
+    reloadKey > 0 ? `&_r=${reloadKey}` : ''
   }`;
 
   // ==========================================
@@ -206,9 +197,99 @@ export default function LiveFloatingStreamPlayer({
   }
 
   // ==========================================
-  // --- VIDEO MODE (PERSISTENT IFRAME: BANNER, SPLIT, FULLSCREEN) ---
+  // --- FULLSCREEN MODE (ABSOLUTE 100% FULL-BLEED ZERO-MARGIN OVERLAY) ---
   // ==========================================
-  const isFullscreen = displayMode === 'fullscreen';
+  if (displayMode === 'fullscreen') {
+    return (
+      <div 
+        onContextMenu={(e) => e.preventDefault()}
+        dir="rtl"
+        className="fixed inset-0 z-50 w-screen h-screen bg-black overflow-hidden select-none"
+      >
+        {/* Floating Top Controls Overlay - No height push, zero wasted margin */}
+        <div className="absolute top-3 left-3 right-3 z-30 flex items-center justify-between pointer-events-none">
+          {/* Pulsing Live Dot Badge */}
+          <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 pointer-events-auto shadow-lg">
+            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse shadow-sm shadow-rose-500/50"></span>
+            <span className="text-[11px] font-bold text-white/90">مباشر</span>
+          </div>
+
+          {/* Overlay Action Buttons */}
+          <div className="flex items-center gap-1.5 pointer-events-auto">
+            {/* Rotate Button for Horizontal / Landscape View (Zero Margin Geometrical Fit) */}
+            <button
+              type="button"
+              onClick={() => setIsLandscapeRotate(!isLandscapeRotate)}
+              className={`p-2 rounded-xl backdrop-blur-md border text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-lg ${
+                isLandscapeRotate 
+                  ? 'bg-amber-500 text-slate-950 border-amber-400' 
+                  : 'bg-black/60 text-slate-300 hover:text-white border-white/10'
+              }`}
+              title={isLandscapeRotate ? 'العودة للوضع الرأسي' : 'تدوير الشاشة أفقياً (كامل الشاشة)'}
+            >
+              <RotateCw className="w-4 h-4" />
+            </button>
+
+            {/* Quick Unfreeze / Reload Button */}
+            <button
+              type="button"
+              onClick={() => setReloadKey(k => k + 1)}
+              className="p-2 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 text-slate-300 hover:text-white text-xs font-bold transition cursor-pointer shadow-lg"
+              title="إنعاش البث في حال تجمد الصورة على الجوال"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+
+            {/* Battery Saver: Audio-only toggle */}
+            <button
+              type="button"
+              onClick={() => setStudentAudioOnly(true)}
+              className="p-2 rounded-xl bg-black/60 backdrop-blur-md border border-white/10 text-slate-300 hover:text-white text-xs font-bold transition cursor-pointer shadow-lg"
+              title="توفير البطارية (صوت فقط 🎙️)"
+            >
+              <Mic className="w-4 h-4 text-indigo-400" />
+            </button>
+
+            {/* Exit Fullscreen */}
+            <button
+              type="button"
+              onClick={handleExitFullscreen}
+              className="p-2 rounded-xl bg-rose-600/90 hover:bg-rose-500 text-white text-xs font-bold transition cursor-pointer shadow-lg"
+              title="تصغير الشاشة"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* 
+          Video Frame Container:
+          - If isLandscapeRotate is false: 100% full screen w-full h-full absolute inset-0
+          - If isLandscapeRotate is true: exact geometrical cover w-[100vh] h-[100vw] rotate-90 origin-center
+            matching mobile height and width with zero side margins!
+        */}
+        <div className="absolute inset-0 w-full h-full bg-black flex items-center justify-center overflow-hidden">
+          <div className={
+            isLandscapeRotate
+              ? 'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[100vh] h-[100vw] rotate-90 origin-center bg-black'
+              : 'w-full h-full'
+          }>
+            <iframe
+              key={`stream-iframe-${reloadKey}`}
+              src={viewUrl}
+              title="Teacher Live Video Stream Fullscreen"
+              allow="camera; microphone; autoplay; playsinline; fullscreen; picture-in-picture"
+              className="w-full h-full border-0 block"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // --- INLINE MODES: BANNER (DOCKED TOP) & SPLIT ---
+  // ==========================================
   const isBanner = displayMode === 'banner';
   const isSplit = displayMode === 'split';
 
@@ -217,18 +298,14 @@ export default function LiveFloatingStreamPlayer({
       onContextMenu={(e) => e.preventDefault()}
       dir="rtl"
       className={
-        isFullscreen
-          ? 'fixed inset-0 z-50 w-screen h-screen bg-black flex flex-col justify-between overflow-hidden select-none'
-          : isBanner
-          ? 'w-full mb-2.5 bg-slate-900/95 border border-amber-500/60 rounded-2xl overflow-hidden shadow-xl backdrop-blur-md transition-all duration-300'
-          : 'w-full my-3 bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl backdrop-blur-md transition-all duration-300'
+        isBanner
+          ? 'w-full mb-2 bg-slate-900/95 border border-amber-500/60 rounded-2xl overflow-hidden shadow-xl backdrop-blur-md'
+          : 'w-full my-3 bg-slate-900/90 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl backdrop-blur-md'
       }
     >
       {/* Control Header Bar: Minimalist with NO TEXT - Only Pulsing Dot and Single Dropdown Button */}
-      <div className={`flex items-center justify-between border-b border-slate-800/80 transition-all ${
-        isFullscreen 
-          ? 'p-2 sm:p-3 bg-slate-950/80 backdrop-blur-md text-white' 
-          : isBanner 
+      <div className={`flex items-center justify-between border-b border-slate-800/80 ${
+        isBanner 
           ? 'px-2 py-1 bg-slate-950/80 text-white' 
           : 'px-3 py-1.5 bg-slate-950/70 text-white'
       }`}>
@@ -239,17 +316,15 @@ export default function LiveFloatingStreamPlayer({
 
         {/* Action Controls & Single Dropdown Mode Selector */}
         <div className="flex items-center gap-1.5 relative" ref={menuRef}>
-          {/* In Fullscreen: Rotate Button for Landscape / Horizontal View */}
-          {isFullscreen && (
-            <button
-              type="button"
-              onClick={() => setIsLandscapeRotate(!isLandscapeRotate)}
-              className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-              title="تدوير الشاشة أفقياً"
-            >
-              <RotateCw className="w-3.5 h-3.5" />
-            </button>
-          )}
+          {/* Quick Refresh if needed */}
+          <button
+            type="button"
+            onClick={() => setReloadKey(k => k + 1)}
+            className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition cursor-pointer"
+            title="إنعاش البث"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
 
           {/* Student Battery Saver: Audio-only toggle */}
           <button
@@ -262,96 +337,79 @@ export default function LiveFloatingStreamPlayer({
           </button>
 
           {/* SINGLE DROPDOWN BUTTON FOR DISPLAY MODES */}
-          {!isFullscreen ? (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsModeMenuOpen(!isModeMenuOpen)}
-                className="p-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 text-xs font-bold transition flex items-center gap-1 border border-slate-700/80 cursor-pointer shadow-sm"
-                title="تغيير وضع العرض"
-              >
-                {isBanner ? (
-                  <PanelTop className="w-3.5 h-3.5" />
-                ) : (
-                  <Columns className="w-3.5 h-3.5" />
-                )}
-                <ChevronDown className="w-3 h-3 text-slate-400" />
-              </button>
-
-              {/* Floating Popup Menu */}
-              {isModeMenuOpen && (
-                <div className="absolute left-0 mt-1.5 w-36 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1 z-50 text-xs text-right animate-in fade-in zoom-in-95 duration-150">
-                  <button
-                    type="button"
-                    onClick={() => handleSelectMode('banner')}
-                    className={`w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-800 transition cursor-pointer ${
-                      isBanner ? 'text-amber-400 font-bold bg-amber-400/10' : 'text-slate-300'
-                    }`}
-                  >
-                    <PanelTop className="w-3.5 h-3.5" />
-                    <span>شريط علوي</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSelectMode('split')}
-                    className={`w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-800 transition cursor-pointer ${
-                      isSplit ? 'text-amber-400 font-bold bg-amber-400/10' : 'text-slate-300'
-                    }`}
-                  >
-                    <Columns className="w-3.5 h-3.5" />
-                    <span>عرض مدمج</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSelectMode('fullscreen')}
-                    className="w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-800 transition cursor-pointer text-slate-300"
-                  >
-                    <Fullscreen className="w-3.5 h-3.5" />
-                    <span>كامل الشاشة</span>
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-            /* Close / Exit Fullscreen Button */
+          <div className="relative">
             <button
               type="button"
-              onClick={handleExitFullscreen}
-              className="p-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-              title="تصغير الشاشة"
+              onClick={() => setIsModeMenuOpen(!isModeMenuOpen)}
+              className="p-1.5 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-400 hover:text-amber-300 text-xs font-bold transition flex items-center gap-1 border border-slate-700/80 cursor-pointer shadow-sm"
+              title="تغيير وضع العرض"
             >
-              <X className="w-4 h-4" />
+              {isBanner ? (
+                <PanelTop className="w-3.5 h-3.5" />
+              ) : (
+                <Columns className="w-3.5 h-3.5" />
+              )}
+              <ChevronDown className="w-3 h-3 text-slate-400" />
             </button>
-          )}
+
+            {/* Floating Popup Menu */}
+            {isModeMenuOpen && (
+              <div className="absolute left-0 mt-1.5 w-36 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl py-1 z-50 text-xs text-right animate-in fade-in zoom-in-95 duration-150">
+                <button
+                  type="button"
+                  onClick={() => handleSelectMode('banner')}
+                  className={`w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-800 transition cursor-pointer ${
+                    isBanner ? 'text-amber-400 font-bold bg-amber-400/10' : 'text-slate-300'
+                  }`}
+                >
+                  <PanelTop className="w-3.5 h-3.5" />
+                  <span>شريط علوي</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectMode('split')}
+                  className={`w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-800 transition cursor-pointer ${
+                    isSplit ? 'text-amber-400 font-bold bg-amber-400/10' : 'text-slate-300'
+                  }`}
+                >
+                  <Columns className="w-3.5 h-3.5" />
+                  <span>عرض مدمج</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectMode('fullscreen')}
+                  className="w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-800 transition cursor-pointer text-slate-300"
+                >
+                  <Fullscreen className="w-3.5 h-3.5" />
+                  <span>كامل الشاشة</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* 
         Video Frame:
-        - Fullscreen: flex-1 h-full (with optional landscape 90deg CSS rotation if student tapped rotate)
-        - Banner: Ultra-compact height on mobile: h-20 sm:h-36 md:h-48 (leaves 100% room for question options!)
+        - Banner: Ultra-compact height on mobile: h-16 sm:h-28 md:h-36 (leaves maximum room for question options!)
         - Split: aspect-video w-full
       */}
       <div className={`relative bg-black w-full flex items-center justify-center overflow-hidden ${
-        isFullscreen 
-          ? 'flex-1 h-full' 
-          : isBanner 
-          ? 'h-20 sm:h-36 md:h-48' 
+        isBanner 
+          ? 'h-16 sm:h-28 md:h-36' 
           : 'aspect-video'
       }`}>
-        <div className={`w-full h-full transition-transform duration-300 ${
-          isFullscreen && isLandscapeRotate ? 'rotate-90 scale-125' : ''
-        }`}>
-          <iframe
-            src={viewUrl}
-            title="Teacher Live Video Stream"
-            allow="camera; microphone; autoplay; playsinline; fullscreen; picture-in-picture"
-            className="w-full h-full border-0"
-          />
-        </div>
+        <iframe
+          key={`stream-iframe-${reloadKey}`}
+          src={viewUrl}
+          title="Teacher Live Video Stream"
+          allow="camera; microphone; autoplay; playsinline; fullscreen; picture-in-picture"
+          className="w-full h-full border-0 block"
+        />
       </div>
     </div>
   );
 }
+

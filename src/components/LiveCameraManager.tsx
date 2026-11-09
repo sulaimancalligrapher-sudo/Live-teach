@@ -131,12 +131,19 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
     }
   };
 
+  const [subtitleNotice, setSubtitleNotice] = useState<string | null>(null);
+
   const handleToggleSubtitles = async () => {
     const nextSubtitles = !streamConfig.enableSubtitles;
     setIsUpdating(true);
     try {
       await updateLiveStreamState({ enableSubtitles: nextSubtitles });
       setStreamConfig(prev => ({ ...prev, enableSubtitles: nextSubtitles }));
+      if (nextSubtitles) {
+        setSubtitleNotice('تم تفعيل ميزة الترجمة التلقائية! 💡 ملاحظة مهمة: يتم التعرف الصوتي عبر متصفح Google Chrome أو Edge. إذا كانت نافذة الكاميرا مفتوحة مسبقاً، يرجى إغلاقها وإعادة فتحها بالزر أدناه لتبدأ الكاميرا بنقل صوتك وكتابته للطلاب.');
+      } else {
+        setSubtitleNotice(null);
+      }
     } catch (err: any) {
       console.error('فشل تعديل خاصية الترجمة المباشرة:', err);
     } finally {
@@ -145,19 +152,18 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
   };
 
   // Base VDO.Ninja Push Link for Teacher
+  // Using &transcribe=ar-SA to activate Chrome Speech Recognition in Arabic
   const teacherPushUrl = `https://vdo.ninja/?push=${encodeURIComponent(streamConfig.streamId)}&autostart&webcam${
     streamConfig.password ? `&password=${encodeURIComponent(streamConfig.password)}` : ''
-  }${streamConfig.mode === 'audio' ? '&novideo' : ''}${streamConfig.enableSubtitles ? '&transcribe=ar' : ''}`;
+  }${streamConfig.mode === 'audio' ? '&novideo' : ''}${streamConfig.enableSubtitles ? '&transcribe=ar-SA' : ''}`;
 
   // Teacher In-Page Preview URL (Crucial: Muted to prevent echo / hearing own voice!)
   const teacherMutedPreviewUrl = `${teacherPushUrl}&mute=1&noaudio=1`;
 
-  // VDO.Ninja View Link for Students
-  const studentViewUrl = `https://vdo.ninja/?view=${encodeURIComponent(streamConfig.streamId)}&cleanoutput&autostart&playsinline&transparent=0${
+  // VDO.Ninja View Link for Students (includes &cover for zero margins and &closedcaptions for subtitles)
+  const studentViewUrl = `https://vdo.ninja/?view=${encodeURIComponent(streamConfig.streamId)}&cleanoutput&autostart&playsinline&transparent=0&cover&scale=100&closedcaptions${
     streamConfig.password ? `&password=${encodeURIComponent(streamConfig.password)}` : ''
-  }${streamConfig.mode === 'audio' ? '&novideo' : ''}${streamConfig.useMeshcast ? '&meshcast' : ''}${
-    streamConfig.enableSubtitles ? '&cc' : ''
-  }`;
+  }${streamConfig.mode === 'audio' ? '&novideo' : ''}${streamConfig.useMeshcast ? '&meshcast' : ''}`;
 
   const connectedStudentsCount = sessionState?.connectedStudents?.length || 0;
 
@@ -305,25 +311,54 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
           </div>
 
           {/* Live Subtitles / Closed Captions Switch */}
-          <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between">
-            <div>
-              <div className="text-xs font-bold text-white flex items-center gap-1.5">
-                <span>الترجمة والكتابة التلقائية المباشرة (Live Subtitles)</span>
-                <span className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">جديد 📝</span>
+          <div className="pt-2 border-t border-slate-800/60 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span>الترجمة والكتابة التلقائية المباشرة (Live Subtitles)</span>
+                  <span className="px-1.5 py-0.5 rounded text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">جديد 📝</span>
+                </div>
+                <div className="text-[11px] text-slate-400">يظهر كلام المعلم مكتوباً تلقائياً في شريط أسفل شاشات الطلاب</div>
               </div>
-              <div className="text-[11px] text-slate-400">يظهر كلام المعلم مكتوباً تلقائياً في شريط أسفل شاشات الطلاب</div>
+              <button
+                type="button"
+                onClick={handleToggleSubtitles}
+                className={`w-12 h-6.5 rounded-full transition-colors relative p-0.5 cursor-pointer ${
+                  streamConfig.enableSubtitles ? 'bg-indigo-500' : 'bg-slate-800'
+                }`}
+              >
+                <div className={`w-5.5 h-5.5 rounded-full bg-white transition-transform ${
+                  streamConfig.enableSubtitles ? '-translate-x-5.5' : 'translate-x-0'
+                }`} />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleToggleSubtitles}
-              className={`w-12 h-6.5 rounded-full transition-colors relative p-0.5 cursor-pointer ${
-                streamConfig.enableSubtitles ? 'bg-indigo-500' : 'bg-slate-800'
-              }`}
-            >
-              <div className={`w-5.5 h-5.5 rounded-full bg-white transition-transform ${
-                streamConfig.enableSubtitles ? '-translate-x-5.5' : 'translate-x-0'
-              }`} />
-            </button>
+
+            {/* Subtitles Guidance & Re-open Window Helper */}
+            {streamConfig.enableSubtitles && (
+              <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-2xl p-3 text-xs text-indigo-200 space-y-2">
+                <div className="flex items-start gap-2">
+                  <Sparkles className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                  <div className="leading-relaxed">
+                    <b>كيف تعمل الترجمة المباشرة بدقة عالية:</b>
+                    <div className="text-slate-300 mt-0.5">
+                      يتم تحويل صوتك إلى كتابة عبر ميزة التعرف الصوتي لمتصفح <b>Google Chrome</b> أو <b>Edge</b>.
+                      إذا كانت نافذة الكاميرا مفتوحة من قبل، يرجى إغلاقها وإعادة فتحها عبر الزر التالي لتطبيق الترجمة:
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowInPagePreview(false);
+                    window.open(teacherPushUrl, 'vdo_ninja_push', 'width=1000,height=750,menubar=no,toolbar=no,location=no');
+                  }}
+                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-md"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>فتح نافذة الكاميرا المجهزة بالترجمة الآن ↗️</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

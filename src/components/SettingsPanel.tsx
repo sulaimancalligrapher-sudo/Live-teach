@@ -294,6 +294,13 @@ function RUN_SETUP_PDF_SHEETS() {
   return res;
 }
 
+// 6. إنشاء وتهيئة ورقة السكربت والترجمة (Live_Subtitles) بنقرة واحدة
+function RUN_SETUP_LIVE_SUBTITLES_SHEET() {
+  var res = setupLiveSubtitlesSheet();
+  Logger.log('نتيجة تهيئة ورقة Live_Subtitles: ' + JSON.stringify(res));
+  return res;
+}
+
 function doGet(e) {
   var action = (e && e.parameter) ? e.parameter.action : '';
   var response;

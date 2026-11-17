@@ -10,8 +10,8 @@ import {
 
 // Helper to get Web App URL from localStorage or environment variables
 export function getWebAppUrl(): string {
-  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbxztJ2MzcxOw6JbYtN84ojWPWL8CjoccwJvpu8Ty1bAoybLO_YlS8fibHHOhad5W85hoA/exec';
-  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbxztJ2MzcxOw6JbYtN84ojWPWL8CjoccwJvpu8Ty1bAoybLO_YlS8fibHHOhad5W85hoA/exec';
+  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbwNv7aLBgsQ72d9SCVA1tfW-kdglU_e8D_Dicfgii1wEaXQquA0zkq2y01JsuYvxr1arQ/exec';
+  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbwNv7aLBgsQ72d9SCVA1tfW-kdglU_e8D_Dicfgii1wEaXQquA0zkq2y01JsuYvxr1arQ/exec';
 
   // 1. Check localStorage first (allows individual overrides / testing)
   const localUrl = localStorage.getItem('webAppUrl');
@@ -2863,16 +2863,16 @@ export async function fetchLiveSubtitlesFromSheet(): Promise<{
   }
   try {
     let res = await fetchGas({ action: 'getLiveSubtitles' }, 'GET');
-    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success !== true) {
       try {
         res = await fetchGas({ action: 'getLiveSubtitles' }, 'POST', { action: 'getLiveSubtitles' });
       } catch {}
     }
     const rawArr = Array.isArray(res)
       ? res
-      : Array.isArray(res?.data)
+      : res?.success === true && Array.isArray(res?.data)
       ? res.data
-      : Array.isArray(res?.lines)
+      : res?.success === true && Array.isArray(res?.lines)
       ? res.lines
       : null;
 
@@ -2891,7 +2891,16 @@ export async function fetchLiveSubtitlesFromSheet(): Promise<{
 
       return { success: true, data: mapped };
     }
-    return { success: false, data: [], message: res?.message || 'تعذر قراءة ورقة Live_Subtitles من الشيت' };
+    const isOutdatedScript =
+      res?.message === 'الإجراء المطلوب غير معروف' ||
+      (res && typeof res === 'object' && ('profile' in res || 'header' in res));
+    return {
+      success: false,
+      data: [],
+      message: isOutdatedScript
+        ? 'كود Apps Script المنشور على الشيت قديم ولا يحتوي على دوال Live_Subtitles! حدّث الكود من تبويب الإعدادات ⚙️ ثم انشر إصداراً جديداً.'
+        : (res?.message || 'تعذر قراءة ورقة Live_Subtitles من الشيت'),
+    };
   } catch (err: any) {
     console.warn('fetchLiveSubtitlesFromSheet error:', err);
     return { success: false, data: [], message: err?.message || 'فشل الاتصال بالشيت' };
@@ -2921,10 +2930,19 @@ export async function saveLiveSubtitlesToSheet(
       action: 'saveLiveSubtitles',
       lines: cleanPayload,
     });
-    if (res && res.success === false) {
-      return { success: false, message: res.message || 'تعذر الحفظ في الشيت' };
+    if (res && res.success === true) {
+      return { success: true, message: res.message || 'تمت المزامنة مع ورقة Live_Subtitles في Google Sheets بنجاح' };
     }
-    return { success: true, message: res?.message || 'تمت المزامنة مع ورقة Live_Subtitles في Google Sheets بنجاح' };
+    const isOutdatedScript =
+      !res ||
+      res.message === 'الإجراء المطلوب غير معروف' ||
+      ('profile' in res && res.success !== true);
+    return {
+      success: false,
+      message: isOutdatedScript
+        ? 'لم يتم تحديث كود Apps Script المنشور في الشيت بعد! انسخ الكود من تبويب الإعدادات ⚙️ ثم اعمل نشر إصدار جديد في Apps Script.'
+        : (res?.message || 'تعذر الحفظ في ورقة Live_Subtitles بالشيت'),
+    };
   } catch (err: any) {
     console.warn('saveLiveSubtitlesToSheet error:', err);
     return { success: false, message: err?.message || 'فشل الحفظ في الشيت' };
@@ -2938,10 +2956,19 @@ export async function setupLiveSubtitlesSheetApi(): Promise<{ success: boolean; 
   }
   try {
     let res = await fetchGas({ action: 'setupLiveSubtitlesSheet' }, 'GET');
-    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+    if (!res || res.success !== true) {
       res = await fetchGas({ action: 'setupLiveSubtitlesSheet' }, 'POST', { action: 'setupLiveSubtitlesSheet' });
     }
-    return res || { success: true, message: 'تم إنشاء وتهيئة ورقة (Live_Subtitles) في الشيت بنجاح! 🌐' };
+    if (res && res.success === true) {
+      return res;
+    }
+    return {
+      success: false,
+      message:
+        res?.message && res.message !== 'الإجراء المطلوب غير معروف'
+          ? res.message
+          : 'كود Apps Script المنشور حالياً على الشيت قديم! افتح تبويب الإعدادات ⚙️ ← انسخ الكود المحدث ← الصقه في Apps Script ← انشر إصداراً جديداً (Manage Deployments -> New Version).',
+    };
   } catch (err: any) {
     console.error('Error setting up Live_Subtitles sheet:', err);
     return { success: false, message: err?.message || 'تعذر الاتصال بخادم Google Apps Script' };

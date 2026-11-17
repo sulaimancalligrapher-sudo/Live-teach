@@ -75,6 +75,11 @@ export default function ScriptPrompterPanel({
   const manualOverrideLockUntilRef = useRef<number>(0);
   const interimTimerRef = useRef<number | null>(null);
   const activeRowElRef = useRef<HTMLDivElement | null>(null);
+  const hasUnsavedEditsRef = useRef(false);
+  const autoFollowPdfPageRef = useRef(true);
+
+  hasUnsavedEditsRef.current = hasUnsavedEdits;
+  autoFollowPdfPageRef.current = autoFollowPdfPage;
 
   // Determine effective active PDF page
   const effectivePage = autoFollowPdfPage ? (sessionState?.pdfPage || 1) : manualPage;
@@ -90,11 +95,11 @@ export default function ScriptPrompterPanel({
     }, 4500);
   }, []);
 
-  // Subscribe to real-time live session + Firestore script catalog
+  // Subscribe ONCE to real-time live session + Firestore script catalog
   useEffect(() => {
     const unsubSession = subscribeToLiveSession((st) => {
       setSessionState(st);
-      if (st?.pdfPage && autoFollowPdfPage) {
+      if (st?.pdfPage && autoFollowPdfPageRef.current) {
         setManualPage(st.pdfPage);
       }
     });
@@ -102,13 +107,15 @@ export default function ScriptPrompterPanel({
     getScriptSubtitles().then((initial) => {
       if (initial.length > 0) {
         setLines(initial);
-        setEditorLines(initial);
+        if (!hasUnsavedEditsRef.current) {
+          setEditorLines(initial);
+        }
       }
     }).catch(() => {});
 
     const unsubLines = subscribeToScriptSubtitles((incoming) => {
       setLines(incoming);
-      if (!hasUnsavedEdits) {
+      if (!hasUnsavedEditsRef.current) {
         setEditorLines(incoming);
       }
     });
@@ -117,7 +124,7 @@ export default function ScriptPrompterPanel({
       unsubSession();
       unsubLines();
     };
-  }, [autoFollowPdfPage, hasUnsavedEdits]);
+  }, []);
 
   // Unique lesson titles present in script
   const availableLessons = useMemo(() => {
@@ -417,8 +424,8 @@ export default function ScriptPrompterPanel({
 
     setIsTranslatingBatch(true);
     try {
-      const updated = [...editorLines];
       let translatedCount = 0;
+      const mergedTranslations: Record<string, { th: string; en: string }> = {};
 
       for (let i = 0; i < missing.length; i += 12) {
         const chunk = missing.slice(i, i + 12);
@@ -428,27 +435,30 @@ export default function ScriptPrompterPanel({
         chunk.forEach((item) => {
           const t = translatedMap[item.id];
           if (t && (t.th?.trim() || t.en?.trim())) {
-            const idx = updated.findIndex((u) => u.id === item.id);
-            if (idx !== -1) {
-              const nextTh = updated[idx].th.trim() ? updated[idx].th : (t.th || '').trim();
-              const nextEn = updated[idx].en.trim() ? updated[idx].en : (t.en || '').trim();
-              if (nextTh !== updated[idx].th || nextEn !== updated[idx].en) {
-                translatedCount += 1;
-              }
-              updated[idx] = {
-                ...updated[idx],
-                th: nextTh,
-                en: nextEn,
-              };
-            }
+            mergedTranslations[item.id] = {
+              th: (t.th || '').trim(),
+              en: (t.en || '').trim(),
+            };
           }
         });
       }
 
-      if (translatedCount > 0) {
-        setEditorLines(updated);
+      if (Object.keys(mergedTranslations).length > 0) {
+        hasUnsavedEditsRef.current = true;
         setHasUnsavedEdits(true);
-        showToast(`تمت ترجمة ${translatedCount} سطر آلياً بالذكاء الاصطناعي بنجاح! اضغط «حفظ ومزامنة» لحفظها.`, 'success');
+        setEditorLines((prev) =>
+          prev.map((row) => {
+            const t = mergedTranslations[row.id];
+            if (!t) return row;
+            const nextTh = row.th.trim() ? row.th : t.th;
+            const nextEn = row.en.trim() ? row.en : t.en;
+            if (nextTh !== row.th || nextEn !== row.en) {
+              translatedCount += 1;
+            }
+            return { ...row, th: nextTh, en: nextEn };
+          })
+        );
+        showToast(`تمت ترجمة الأسطر بنجاح! اضغط «حفظ ومزامنة» لحفظها في الشيت والنظام.`, 'success');
       } else {
         showToast('تعذر استرجاع ترجمة جديدة من الخادم. تأكد من الاتصال أو جرب ترجمة كل سطر على حدة.', 'error');
       }
@@ -469,6 +479,8 @@ export default function ScriptPrompterPanel({
     try {
       const res = await translateLiveCaption(row.arabic);
       if (res.th || res.en) {
+        hasUnsavedEditsRef.current = true;
+        setHasUnsavedEdits(true);
         setEditorLines((prev) =>
           prev.map((item) =>
             item.id === row.id
@@ -480,7 +492,6 @@ export default function ScriptPrompterPanel({
               : item
           )
         );
-        setHasUnsavedEdits(true);
       } else {
         showToast('تعذرت ترجمة هذا السطر حالياً', 'error');
       }
@@ -519,8 +530,9 @@ export default function ScriptPrompterPanel({
       th: '',
       en: '',
     };
-    setEditorLines((prev) => [...prev, newRow]);
+    hasUnsavedEditsRef.current = true;
     setHasUnsavedEdits(true);
+    setEditorLines((prev) => [...prev, newRow]);
   };
 
   const handleUpdateEditorCell = (
@@ -528,16 +540,17 @@ export default function ScriptPrompterPanel({
     field: keyof ScriptSubtitleLine,
     value: string | number
   ) => {
+    hasUnsavedEditsRef.current = true;
+    setHasUnsavedEdits(true);
     setEditorLines((prev) =>
       prev.map((row) => (row.id === id ? { ...row, [field]: value } : row))
     );
-    setHasUnsavedEdits(true);
   };
 
   const handleDeleteEditorRow = async (id: string) => {
-    const next = editorLines.filter((r) => r.id !== id);
-    setEditorLines(next);
+    hasUnsavedEditsRef.current = true;
     setHasUnsavedEdits(true);
+    setEditorLines((prev) => prev.filter((r) => r.id !== id));
   };
 
   const handleClearAllEditorRows = async () => {
@@ -548,8 +561,9 @@ export default function ScriptPrompterPanel({
       'نعم، مسح الكل'
     );
     if (!ok) return;
-    setEditorLines([]);
+    hasUnsavedEditsRef.current = true;
     setHasUnsavedEdits(true);
+    setEditorLines([]);
   };
 
   // Bulk Paste Parser (supports TSV copied from Excel/Sheets OR raw multi-line Arabic paragraphs)

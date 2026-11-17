@@ -390,267 +390,78 @@ export default function App() {
           </div>
         </section>
 
-        {/* ----------------- SMART HUB DISPLAY BANNER ----------------- */}
-        <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-amber-500/10 via-blue-500/10 to-purple-500/10 border border-amber-500/30 dark:border-amber-500/20 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3 text-right">
-            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-500 dark:text-amber-400 flex items-center justify-center shrink-0">
+        {/* ----------------- UNIFIED SCREEN ACTIONS CARD (الشاشة) ----------------- */}
+        <section className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 sm:p-7 shadow-lg">
+          <div className="flex items-center gap-2.5 mb-5 pb-3 border-b border-slate-100 dark:border-slate-800">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center shrink-0">
               <Monitor className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-black text-slate-900 dark:text-white text-sm">
-                  الشاشة الجامعة الذكية للبروجكتر (Smart Hub Display)
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-400 text-slate-950">
-                  شاشة موحدة ⚡
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                شاشة عرض كبرى واحدة تجمع مسرح الحصص، شرح مباشر و PDF، وتحدي كويز مع تحويل ذكي تلقائي وشريط تبديل سريع.
-              </p>
-            </div>
+            <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
+              الشاشة
+            </h3>
           </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <button
               onClick={() => navigateToPage('display')}
-              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-sm cursor-pointer"
+              className="w-full py-3.5 px-4 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-md shadow-amber-500/15 cursor-pointer active:scale-[0.98]"
             >
-              <ExternalLink className="w-3.5 h-3.5" />
+              <ExternalLink className="w-4 h-4 shrink-0" />
               <span>فتح الشاشة الجامعة</span>
             </button>
-          </div>
-        </div>
 
-        {/* ----------------- THREE EXTRACTED CORE SECTIONS ----------------- */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-lg sm:text-xl font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <Radio className="w-5 h-5 text-amber-500" />
-                الأقسام والأنظمة التفاعلية المستخرجة
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                ثلاثة أقسام مستقلة بالكامل متصلة بأوراق Google Sheets الخاصة بها
-              </p>
-            </div>
-          </div>
+            <button
+              onClick={() => navigateToPage('live-student')}
+              className="w-full py-3.5 px-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-md shadow-blue-500/15 cursor-pointer active:scale-[0.98]"
+            >
+              <LogIn className="w-4 h-4 shrink-0" />
+              <span>دخول غرفة الطالب</span>
+            </button>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            
-            {/* ================= CARD 1: LIVE CLASSROOM (Questions-T & Answers-T) ================= */}
-            <div className="group relative rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/20 transition" />
-              
-              <div className="relative z-10 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-500/10 text-blue-500 dark:bg-blue-500/20 dark:text-blue-400 flex items-center justify-center text-xl shadow-sm">
-                    <Tv className="w-6 h-6" />
-                  </div>
-                  <div className="text-right">
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold font-mono bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700/50">
-                      Questions-T
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white mb-1.5 flex items-center gap-2">
-                    الحصص التفاعلية المباشرة
-                  </h4>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    عرض فيديو الدرس مع أسئلة منبثقة تفاعلية عند كل توقيت محدد، وتجميع إجابات الطلاب وحفظها تلقائياً في ورقة <b>Answers-T</b>.
-                  </p>
-                </div>
-
-                {/* Sub-features list */}
-                <ul className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800/80 pt-3">
-                  <li className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" />
-                    <span>مزامنة فيديو وتوقيت ظهور السؤال</span>
-                  </li>
-                  <li className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" />
-                    <span>أسئلة خيارات متعددة وأسئلة نصية حرة</span>
-                  </li>
-                  <li className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" />
-                    <span>رصد فوري في ورقة <b>Answers-T</b></span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="pt-5 mt-4 border-t border-slate-100 dark:border-slate-800 space-y-2 relative z-10">
-                <button
-                  onClick={() => navigateToPage('live-student')}
-                  className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-md shadow-blue-500/20"
-                >
-                  <LogIn className="w-4 h-4" />
-                  <span>دخول غرفة الطالب (Live Student)</span>
-                </button>
-                <button
-                  onClick={() => {
-                    if (isAdminUnlocked) {
-                      navigateToPage('live-teacher');
-                    } else {
-                      setShowAdminPassModal(true);
-                    }
-                  }}
-                  className="w-full py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
-                >
-                  <Play className="w-3.5 h-3.5 text-blue-500" />
-                  <span>فتح مسرح المعلم (Teacher Room)</span>
-                </button>
-              </div>
-            </div>
-
-            {/* ================= CARD 2: LIVE DIRECT LECTURE (Questions-Live & Answers-Live) ================= */}
-            <div className="group relative rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition" />
-              
-              <div className="relative z-10 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 dark:bg-amber-500/20 dark:text-amber-400 flex items-center justify-center text-xl shadow-sm">
-                    <Mic className="w-6 h-6 animate-pulse" />
-                  </div>
-                  <div className="text-right">
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold font-mono bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-700/50">
-                      Questions-Live
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white mb-1.5 flex items-center gap-2">
-                    شرح مباشر (Live Direct)
-                  </h4>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    إدارة أسئلة المحاضرات الحية وبث الأسئلة الفورية للطلاب مع عداد زمني، ورصد النتائج فورياً في ورقة <b>Answers-Live</b>.
-                  </p>
-                </div>
-
-                {/* Sub-features list */}
-                <ul className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800/80 pt-3">
-                  <li className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-amber-500" />
-                    <span>شاشة عرض للمحاضر والبروجكتور (Display Screen)</span>
-                  </li>
-                  <li className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-amber-500" />
-                    <span>إرسال أسئلة فورية مع عد تنازلي</span>
-                  </li>
-                  <li className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-amber-500" />
-                    <span>تسجيل النتائج والتصويت في <b>Answers-Live</b></span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="pt-5 mt-4 border-t border-slate-100 dark:border-slate-800 space-y-2 relative z-10">
-                <button
-                  onClick={() => navigateToPage('live-direct-display')}
-                  className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-md shadow-amber-500/20"
-                >
-                  <Monitor className="w-4 h-4" />
-                  <span>فتح شاشة العرض المباشر (Display Room)</span>
-                </button>
-                <button
-                  onClick={() => navigateToPage('live-student')}
-                  className="w-full py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
-                >
-                  <Users className="w-3.5 h-3.5 text-amber-500" />
-                  <span>انضمام كطالب للشرح المباشر</span>
-                </button>
-              </div>
-            </div>
-
-            {/* ================= CARD 3: QUIZ CHALLENGE (Questions-Qui & Answers-Qui) ================= */}
-            <div className="group relative rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col justify-between overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl group-hover:bg-purple-500/20 transition" />
-              
-              <div className="relative z-10 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="w-12 h-12 rounded-2xl bg-purple-500/10 text-purple-500 dark:bg-purple-500/20 dark:text-purple-400 flex items-center justify-center text-xl shadow-sm">
-                    <Trophy className="w-6 h-6" />
-                  </div>
-                  <div className="text-right">
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-bold font-mono bg-purple-100 dark:bg-purple-900/40 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-700/50">
-                      Questions-Qui
-                    </span>
-                  </div>
-                </div>
-
-                <div>
-                  <h4 className="text-base sm:text-lg font-black text-slate-900 dark:text-white mb-1.5 flex items-center gap-2">
-                    تحدي كويز (Quiz Arena)
-                  </h4>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    ساحة تحدي سريعة وتنافسية على غرار كاهوت، مع لوحة متصدرين حية ومنصة فائزين، وتسجيل النقاط في <b>Answers-Qui</b>.
-                  </p>
-                </div>
-
-                {/* Sub-features list */}
-                <ul className="space-y-1.5 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800/80 pt-3">
-                  <li className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-purple-500" />
-                    <span>حلبة العرض الكبرى (Quiz Arena Display)</span>
-                  </li>
-                  <li className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-purple-500" />
-                    <span>لوحة متصدرين ونقاط السرعة والإجابة</span>
-                  </li>
-                  <li className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-purple-500" />
-                    <span>تخزين النتائج والمراكز في <b>Answers-Qui</b></span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="pt-5 mt-4 border-t border-slate-100 dark:border-slate-800 space-y-2 relative z-10">
-                <button
-                  onClick={() => navigateToPage('quiz-arena')}
-                  className="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer shadow-md shadow-purple-500/20"
-                >
-                  <Trophy className="w-4 h-4" />
-                  <span>فتح ساحة تحدي كويز (Quiz Arena)</span>
-                </button>
-                <button
-                  onClick={() => navigateToPage('student-quiz')}
-                  className="w-full py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center justify-center gap-2 transition cursor-pointer"
-                >
-                  <Users className="w-3.5 h-3.5 text-purple-500" />
-                  <span>واجهة الطالب للمسابقة (Quiz Remote)</span>
-                </button>
-              </div>
-            </div>
-
-          </div>
-        </section>
-
-        {/* ----------------- GOOGLE SHEETS CONNECTION & DESIGN BAR ----------------- */}
-        <section className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="space-y-1 text-right">
-            <h4 className="font-black text-slate-900 dark:text-white text-base flex items-center gap-2">
-              <Settings className="w-5 h-5 text-amber-500" />
-              أوراق الشيت وتصميم الصفحة
-            </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              يمكنك ربط وتعديل رابط الـ Web App، تهيئة الأوراق التلقائية، وتخصيص العنوان والشعار وأزرار الصفحة من لوحة التحكم.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={() => {
                 if (isAdminUnlocked) {
-                  setIsAdminPanelOpen(true);
+                  navigateToPage('live-teacher');
                 } else {
                   setShowAdminPassModal(true);
                 }
               }}
-              className="px-5 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-2 transition cursor-pointer"
+              className="w-full py-3.5 px-4 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition cursor-pointer active:scale-[0.98]"
             >
-              <Settings className="w-4 h-4 text-amber-400" />
-              <span>إدارة الأوراق والتصميم</span>
+              <Play className="w-4 h-4 text-blue-500 shrink-0" />
+              <span>فتح مسرح المعلم</span>
+            </button>
+
+            <button
+              onClick={() => navigateToPage('live-direct-display')}
+              className="w-full py-3.5 px-4 rounded-2xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-700 dark:text-amber-300 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition cursor-pointer active:scale-[0.98]"
+            >
+              <Monitor className="w-4 h-4 text-amber-500 shrink-0" />
+              <span>شاشة العرض المباشر</span>
+            </button>
+
+            <button
+              onClick={() => navigateToPage('live-student')}
+              className="w-full py-3.5 px-4 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition cursor-pointer active:scale-[0.98]"
+            >
+              <Users className="w-4 h-4 text-amber-500 shrink-0" />
+              <span>انضمام كطالب للشرح المباشر</span>
+            </button>
+
+            <button
+              onClick={() => navigateToPage('quiz-arena')}
+              className="w-full py-3.5 px-4 rounded-2xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition shadow-md shadow-purple-500/15 cursor-pointer active:scale-[0.98]"
+            >
+              <Trophy className="w-4 h-4 shrink-0" />
+              <span>فتح ساحة تحدي كويز</span>
+            </button>
+
+            <button
+              onClick={() => navigateToPage('student-quiz')}
+              className="w-full py-3.5 px-4 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition cursor-pointer active:scale-[0.98]"
+            >
+              <Users className="w-4 h-4 text-purple-500 shrink-0" />
+              <span>واجهة الطالب للمسابقة</span>
             </button>
           </div>
         </section>

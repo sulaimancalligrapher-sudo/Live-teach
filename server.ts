@@ -959,7 +959,7 @@ async function startServer() {
     });
   }
 
-  // Fast free translation fallback when Gemini API key is unavailable or errors
+  // Fast free translation fallbacks when Gemini API key is unavailable or errors
   async function translateViaGoogleFree(text: string, targetLang: 'th' | 'en'): Promise<string | null> {
     try {
       const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ar&tl=${targetLang}&dt=t&q=${encodeURIComponent(text.slice(0, 800))}`;
@@ -971,6 +971,22 @@ async function startServer() {
       if (Array.isArray(json?.[0])) {
         const joined = json[0].map((seg: any) => seg?.[0] || '').join('').trim();
         if (joined && joined !== text) return joined;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function translateViaMyMemory(text: string, targetLang: 'th' | 'en'): Promise<string | null> {
+    try {
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.slice(0, 500))}&langpair=ar|${targetLang}`;
+      const r = await fetch(url);
+      if (!r.ok) return null;
+      const json: any = await r.json();
+      const candidate = String(json?.responseData?.translatedText || '').trim();
+      if (candidate && candidate !== text && !candidate.toUpperCase().includes('MYMEMORY WARNING')) {
+        return candidate;
       }
       return null;
     } catch {
@@ -1018,6 +1034,11 @@ async function startServer() {
         return res.json({ success: true, translated: gFallback, engine: 'google-free' });
       }
 
+      const mmFallback = await translateViaMyMemory(text, safeLang);
+      if (mmFallback) {
+        return res.json({ success: true, translated: mmFallback, engine: 'mymemory' });
+      }
+
       // Dictionary fallback
       const fallback = lookupFallbackTranslation(text, safeLang);
       return res.json({ success: true, translated: fallback, engine: 'dictionary' });
@@ -1057,10 +1078,10 @@ async function startServer() {
         }
       }
 
-      // Google Translate free fallback
+      // HTTP translation fallbacks
       const [gTh, gEn] = await Promise.all([
-        translateViaGoogleFree(text, 'th'),
-        translateViaGoogleFree(text, 'en'),
+        translateViaGoogleFree(text, 'th').then((r) => r || translateViaMyMemory(text, 'th')),
+        translateViaGoogleFree(text, 'en').then((r) => r || translateViaMyMemory(text, 'en')),
       ]);
       return res.json({
         success: true,
@@ -1112,8 +1133,8 @@ ${JSON.stringify(items.map((i: any) => ({ key: String(i.key), ar: String(i.ar ||
         items.map(async (item: any) => {
           const src = String(item.ar || item.key || '').trim();
           const [gTh, gEn] = await Promise.all([
-            translateViaGoogleFree(src, 'th'),
-            translateViaGoogleFree(src, 'en'),
+            translateViaGoogleFree(src, 'th').then((r) => r || translateViaMyMemory(src, 'th')),
+            translateViaGoogleFree(src, 'en').then((r) => r || translateViaMyMemory(src, 'en')),
           ]);
           fallbackTranslations[String(item.key)] = {
             th: gTh || lookupFallbackTranslation(src, 'th'),
@@ -1121,7 +1142,7 @@ ${JSON.stringify(items.map((i: any) => ({ key: String(i.key), ar: String(i.ar ||
           };
         })
       );
-      return res.json({ success: true, translations: fallbackTranslations, engine: 'google-free' });
+      return res.json({ success: true, translations: fallbackTranslations, engine: 'http-fallback' });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }

@@ -81,6 +81,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
 
     let isDestroyed = false;
     let pushTimer: any = null;
+    let translateTimer: any = null;
 
     const initRecognition = () => {
       if (isDestroyed || !isSpeechActiveRef.current) return;
@@ -101,21 +102,24 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
           if (cleanText) {
             setLiveTranscriptPreview(cleanText);
             clearTimeout(pushTimer);
-            pushTimer = setTimeout(async () => {
+            pushTimer = setTimeout(() => {
               // 1. Immediately push Arabic caption so students see it with 0 latency
               updateLiveCaption(cleanText);
-              // 2. Simultaneously translate to Thai and English via Gemini
+            }, 80);
+
+            clearTimeout(translateTimer);
+            translateTimer = setTimeout(async () => {
+              // 2. Translate to Thai and English with safe debounce
               try {
                 const trans = await translateLiveCaption(cleanText);
                 if (trans.th || trans.en) {
                   setLiveTranslations({ th: trans.th, en: trans.en });
-                  // Push updated translations to Firestore
                   updateLiveCaption(cleanText, { th: trans.th, en: trans.en });
                 }
               } catch (e) {
                 console.warn('Real-time caption translation error:', e);
               }
-            }, 80);
+            }, 420);
           }
         };
 
@@ -151,6 +155,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
     return () => {
       isDestroyed = true;
       clearTimeout(pushTimer);
+      clearTimeout(translateTimer);
       if (speechRecognitionRef.current) {
         try { speechRecognitionRef.current.stop(); } catch {}
         speechRecognitionRef.current = null;

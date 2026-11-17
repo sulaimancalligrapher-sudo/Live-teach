@@ -10,8 +10,8 @@ import {
 
 // Helper to get Web App URL from localStorage or environment variables
 export function getWebAppUrl(): string {
-  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzkChJ1v3fMVytcBZ_8hMVZc1U0UWX9Bb-YuJrRfVRTuNblCcjon5IkqaH_JqMlU7mi9w/exec';
-  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbzkChJ1v3fMVytcBZ_8hMVZc1U0UWX9Bb-YuJrRfVRTuNblCcjon5IkqaH_JqMlU7mi9w/exec';
+  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbxztJ2MzcxOw6JbYtN84ojWPWL8CjoccwJvpu8Ty1bAoybLO_YlS8fibHHOhad5W85hoA/exec';
+  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbxztJ2MzcxOw6JbYtN84ojWPWL8CjoccwJvpu8Ty1bAoybLO_YlS8fibHHOhad5W85hoA/exec';
 
   // 1. Check localStorage first (allows individual overrides / testing)
   const localUrl = localStorage.getItem('webAppUrl');
@@ -2697,19 +2697,69 @@ export async function setupPdfLessonsSheetApi(): Promise<{ success: boolean; mes
 
 export { generatePinCode, clearLiveDirectLessonAnswers, clearLiveVideoLessonAnswers, setLiveBroadcastVolume } from './lib/firebaseLiveService';
 
-// AI Translation Client Helpers
-export async function translateTextWithAi(text: string, targetLang: 'th' | 'en'): Promise<string> {
+// Safe POST JSON helper (avoids SyntaxError when static host returns HTML/404 page)
+async function safePostJson(url: string, body: any): Promise<any | null> {
   try {
-    const res = await fetch('/api/translate-ai', {
+    const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, targetLang }),
+      body: JSON.stringify(body),
     });
-    const data = await res.json();
-    if (data.success && data.translated) {
+    if (!res.ok) return null;
+    const ct = res.headers.get('content-type') || '';
+    if (!ct.toLowerCase().includes('application/json')) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+async function translateViaMyMemoryBrowser(text: string, targetLang: 'th' | 'en'): Promise<string> {
+  try {
+    const clean = text.trim().slice(0, 480);
+    if (!clean) return '';
+    const res = await fetch(
+      `https://api.mymemory.translated.net/get?q=${encodeURIComponent(clean)}&langpair=ar|${targetLang}`
+    );
+    if (!res.ok) return '';
+    const json = await res.json();
+    const out = String(json?.responseData?.translatedText || '').trim();
+    if (!out || out === clean || out.toUpperCase().includes('MYMEMORY WARNING')) {
+      return '';
+    }
+    return out;
+  } catch {
+    return '';
+  }
+}
+
+// AI Translation Client Helpers (Server /api -> Google Apps Script LanguageApp -> Browser Fallback)
+export async function translateTextWithAi(text: string, targetLang: 'th' | 'en'): Promise<string> {
+  try {
+    // Tier 1: Express or Vercel /api/translate-ai
+    const data = await safePostJson('/api/translate-ai', { text, targetLang });
+    if (data?.success && data?.translated) {
       return data.translated;
     }
-    return text;
+
+    // Tier 2: Connected Google Apps Script LanguageApp.translate
+    if (isApiConfigured()) {
+      try {
+        const gasRes = await fetchGas(
+          { action: 'translateLiveCaption' },
+          'POST',
+          { action: 'translateLiveCaption', text }
+        );
+        const picked = targetLang === 'th' ? gasRes?.th : gasRes?.en;
+        if (picked && String(picked).trim()) {
+          return String(picked).trim();
+        }
+      } catch {}
+    }
+
+    // Tier 3: Direct browser CORS fallback (MyMemory)
+    const mm = await translateViaMyMemoryBrowser(text, targetLang);
+    return mm || text;
   } catch (err) {
     console.warn('AI translation client error:', err);
     return text;
@@ -2720,16 +2770,45 @@ export async function translateBatchWithAi(
   items: Array<{ key: string; ar: string }>
 ): Promise<Record<string, { th: string; en: string }>> {
   try {
-    const res = await fetch('/api/translate-batch', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items }),
-    });
-    const data = await res.json();
-    if (data.success && data.translations) {
+    // Tier 1: Express or Vercel /api/translate-batch
+    const data = await safePostJson('/api/translate-batch', { items });
+    if (data?.success && data?.translations && Object.keys(data.translations).length > 0) {
       return data.translations;
     }
-    return {};
+
+    // Tier 2: Connected Google Apps Script LanguageApp.translate
+    if (isApiConfigured()) {
+      try {
+        const gasRes = await fetchGas(
+          { action: 'translateBatch' },
+          'POST',
+          { action: 'translateBatch', items }
+        );
+        if (gasRes?.success && gasRes?.translations && Object.keys(gasRes.translations).length > 0) {
+          return gasRes.translations;
+        }
+      } catch {}
+    }
+
+    // Tier 3: Direct browser CORS fallback (MyMemory) in small parallel batches
+    const result: Record<string, { th: string; en: string }> = {};
+    for (let i = 0; i < items.length; i += 4) {
+      const slice = items.slice(i, i + 4);
+      await Promise.all(
+        slice.map(async (item) => {
+          const src = (item.ar || '').trim();
+          if (!src) return;
+          const [th, en] = await Promise.all([
+            translateViaMyMemoryBrowser(src, 'th'),
+            translateViaMyMemoryBrowser(src, 'en'),
+          ]);
+          if (th || en) {
+            result[item.key] = { th, en };
+          }
+        })
+      );
+    }
+    return result;
   } catch (err) {
     console.warn('AI batch translation client error:', err);
     return {};
@@ -2738,16 +2817,32 @@ export async function translateBatchWithAi(
 
 export async function translateLiveCaption(text: string): Promise<{ th: string; en: string }> {
   try {
-    const res = await fetch('/api/translate-live-caption', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    });
-    const data = await res.json();
-    if (data.success) {
+    // Tier 1: Express or Vercel /api/translate-live-caption
+    const data = await safePostJson('/api/translate-live-caption', { text });
+    if (data?.success && (data.th || data.en)) {
       return { th: data.th || '', en: data.en || '' };
     }
-    return { th: '', en: '' };
+
+    // Tier 2: Connected Google Apps Script LanguageApp.translate
+    if (isApiConfigured()) {
+      try {
+        const gasRes = await fetchGas(
+          { action: 'translateLiveCaption' },
+          'POST',
+          { action: 'translateLiveCaption', text }
+        );
+        if (gasRes?.success && (gasRes.th || gasRes.en)) {
+          return { th: gasRes.th || '', en: gasRes.en || '' };
+        }
+      } catch {}
+    }
+
+    // Tier 3: Direct browser CORS fallback (MyMemory)
+    const [th, en] = await Promise.all([
+      translateViaMyMemoryBrowser(text, 'th'),
+      translateViaMyMemoryBrowser(text, 'en'),
+    ]);
+    return { th, en };
   } catch (err) {
     console.warn('Live caption translation failed:', err);
     return { th: '', en: '' };
@@ -2858,15 +2953,7 @@ export async function fetchTtsAudio(
   lang: 'ar' | 'th' | 'en'
 ): Promise<{ success: boolean; audioDataUrl?: string; fallback?: 'browser'; source?: string }> {
   try {
-    const res = await fetch('/api/tts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, lang }),
-    });
-    if (!res.ok) {
-      return { success: false, fallback: 'browser' };
-    }
-    const data = await res.json();
+    const data = await safePostJson('/api/tts', { text, lang });
     if (data?.success && data?.audioDataUrl) {
       return { success: true, audioDataUrl: data.audioDataUrl, source: data.source };
     }

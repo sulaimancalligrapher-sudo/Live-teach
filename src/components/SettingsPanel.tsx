@@ -525,6 +525,10 @@ function doPost(e) {
       response = saveLiveSubtitles(payload.lines || []);
     } else if (action === 'setupLiveSubtitlesSheet' || action === 'setupSubtitlesSheet') {
       response = setupLiveSubtitlesSheet();
+    } else if (action === 'translateBatch') {
+      response = translateBatchGas(payload.items || []);
+    } else if (action === 'translateLiveCaption') {
+      response = translateLiveCaptionGas(payload.text || '');
     } else if (action === 'getAllSettingsStudents') {
       response = getAllSettingsStudents();
     } else if (action === 'readDriveFile' || action === 'getPdfFile' || action === 'getDriveFile') {
@@ -4349,6 +4353,38 @@ function saveLiveSubtitles(lines) {
     };
   } catch (err) {
     return { success: false, message: err.message };
+  }
+}
+
+function translateLiveCaptionGas(text) {
+  try {
+    var src = String(text || '').trim();
+    if (!src) return { success: false, th: '', en: '' };
+    var th = LanguageApp.translate(src, 'ar', 'th');
+    var en = LanguageApp.translate(src, 'ar', 'en');
+    return { success: true, th: th || '', en: en || '', engine: 'gas-languageapp' };
+  } catch (err) {
+    return { success: false, message: err.message, th: '', en: '' };
+  }
+}
+
+function translateBatchGas(items) {
+  try {
+    var list = Array.isArray(items) ? items : [];
+    var translations = {};
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i];
+      var key = String(item.key || i);
+      var ar = String(item.ar || '').trim();
+      if (!ar) continue;
+      translations[key] = {
+        th: LanguageApp.translate(ar, 'ar', 'th') || '',
+        en: LanguageApp.translate(ar, 'ar', 'en') || ''
+      };
+    }
+    return { success: true, translations: translations, engine: 'gas-languageapp' };
+  } catch (err) {
+    return { success: false, message: err.message, translations: {} };
   }
 }
 `;

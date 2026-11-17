@@ -3,7 +3,7 @@ import {
   Mic, MicOff, Eye, EyeOff, ArrowUp, ArrowDown, ExternalLink,
   RefreshCw, Save, Sparkles, Plus, Trash2, ClipboardPaste,
   FileSpreadsheet, CheckCircle2, AlertCircle, Play, Eraser,
-  BookOpen, Code2, Copy, Check, ArrowLeft, ChevronRight, ChevronLeft,
+  BookOpen, ArrowLeft, ChevronRight, ChevronLeft,
   Radio, ListFilter
 } from 'lucide-react';
 import { LiveSessionState, ScriptSubtitleLine } from '../types';
@@ -16,7 +16,9 @@ import {
   setActiveScriptLine,
   fetchLiveSubtitlesFromSheet,
   saveLiveSubtitlesToSheet,
+  setupLiveSubtitlesSheetApi,
   translateBatchWithAi,
+  translateLiveCaption,
 } from '../api';
 import { matchSpokenTranscriptToScript } from '../lib/scriptMatcher';
 import { showAppConfirm } from './AppDialog';
@@ -25,72 +27,6 @@ interface ScriptPrompterPanelProps {
   isStandalone?: boolean;
   onBack?: () => void;
 }
-
-const APPS_SCRIPT_SNIPPET = `// أضف هاتين الدالتين داخل ملف Code.gs في Google Apps Script ثم انشر نسخة جديدة (New Deployment)
-// اسم الورقة المطلوبة: Live_Subtitles
-// الأعمدة: A: lessonTitle | B: page | C: arabic | D: th | E: en
-
-function getLiveSubtitlesSheet_() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('Live_Subtitles');
-  if (!sheet) {
-    sheet = ss.insertSheet('Live_Subtitles');
-    sheet.appendRow(['lessonTitle', 'page', 'arabic', 'th', 'en']);
-    sheet.setFrozenRows(1);
-  }
-  return sheet;
-}
-
-function handleGetLiveSubtitles_() {
-  var sheet = getLiveSubtitlesSheet_();
-  var values = sheet.getDataRange().getValues();
-  var rows = [];
-  for (var i = 1; i < values.length; i++) {
-    var r = values[i];
-    var ar = String(r[2] || '').trim();
-    var th = String(r[3] || '').trim();
-    var en = String(r[4] || '').trim();
-    if (!ar && !th && !en) continue;
-    rows.push({
-      id: 'sheet_' + (i + 1),
-      lessonTitle: String(r[0] || '').trim(),
-      page: Number(r[1]) || 1,
-      order: i - 1,
-      arabic: ar,
-      th: th,
-      en: en
-    });
-  }
-  return ContentService.createTextOutput(JSON.stringify({ success: true, data: rows }))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function handleSaveLiveSubtitles_(payload) {
-  var sheet = getLiveSubtitlesSheet_();
-  var lines = payload.lines || [];
-  sheet.clearContents();
-  sheet.appendRow(['lessonTitle', 'page', 'arabic', 'th', 'en']);
-  if (lines.length > 0) {
-    var rows = lines.map(function(l) {
-      return [
-        String(l.lessonTitle || ''),
-        Number(l.page) || 1,
-        String(l.arabic || ''),
-        String(l.th || ''),
-        String(l.en || '')
-      ];
-    });
-    sheet.getRange(2, 1, rows.length, 5).setValues(rows);
-  }
-  return ContentService.createTextOutput(JSON.stringify({ success: true, message: 'تم حفظ ' + lines.length + ' سطر في Live_Subtitles' }))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-// داخل doGet(e) أضف:
-// if (action === 'getLiveSubtitles') return handleGetLiveSubtitles_();
-// داخل doPost(e) أضف:
-// if (action === 'getLiveSubtitles') return handleGetLiveSubtitles_();
-// if (action === 'saveLiveSubtitles') return handleSaveLiveSubtitles_(data);`;
 
 export default function ScriptPrompterPanel({
   isStandalone = false,
@@ -118,16 +54,16 @@ export default function ScriptPrompterPanel({
   const [isLoadingSheet, setIsLoadingSheet] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTranslatingBatch, setIsTranslatingBatch] = useState(false);
+  const [translatingRowId, setTranslatingRowId] = useState<string | null>(null);
+  const [isSettingUpSheet, setIsSettingUpSheet] = useState(false);
   const [notice, setNotice] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  // Bulk Paste Modal & Apps Script Code Toggle
+  // Bulk Paste Modal
   const [showPasteModal, setShowPasteModal] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [pastePage, setPastePage] = useState(1);
   const [pasteLesson, setPasteLesson] = useState('');
   const [pasteReplaceMode, setPasteReplaceMode] = useState(false);
-  const [showAppsScriptCode, setShowAppsScriptCode] = useState(false);
-  const [copiedCode, setCopiedCode] = useState(false);
 
   // Refs for stable SpeechRecognition callbacks
   const recognitionRef = useRef<any>(null);
@@ -475,41 +411,100 @@ export default function ScriptPrompterPanel({
       (l) => l.arabic.trim() && (!l.th.trim() || !l.en.trim())
     );
     if (missing.length === 0) {
-      showToast('جميع الأسطر تحتوي على ترجمة تايلندية وإنجليزية بالفعل!', 'info');
+      showToast('أضف نصاً عربياً في صف فارغ الترجمة أولاً ليتم ترجمته آلياً!', 'info');
       return;
     }
 
     setIsTranslatingBatch(true);
     try {
       const updated = [...editorLines];
-      // Process in chunks of 15 lines
-      for (let i = 0; i < missing.length; i += 15) {
-        const chunk = missing.slice(i, i + 15);
+      let translatedCount = 0;
+
+      for (let i = 0; i < missing.length; i += 12) {
+        const chunk = missing.slice(i, i + 12);
         const batchInput = chunk.map((item) => ({ key: item.id, ar: item.arabic }));
         const translatedMap = await translateBatchWithAi(batchInput);
 
         chunk.forEach((item) => {
           const t = translatedMap[item.id];
-          if (t) {
+          if (t && (t.th?.trim() || t.en?.trim())) {
             const idx = updated.findIndex((u) => u.id === item.id);
             if (idx !== -1) {
+              const nextTh = updated[idx].th.trim() ? updated[idx].th : (t.th || '').trim();
+              const nextEn = updated[idx].en.trim() ? updated[idx].en : (t.en || '').trim();
+              if (nextTh !== updated[idx].th || nextEn !== updated[idx].en) {
+                translatedCount += 1;
+              }
               updated[idx] = {
                 ...updated[idx],
-                th: updated[idx].th.trim() ? updated[idx].th : (t.th || ''),
-                en: updated[idx].en.trim() ? updated[idx].en : (t.en || ''),
+                th: nextTh,
+                en: nextEn,
               };
             }
           }
         });
       }
 
-      setEditorLines(updated);
-      setHasUnsavedEdits(true);
-      showToast(`تمت ترجمة ${missing.length} سطر آلياً! يمكنك مراجعتها ثم الضغط على حفظ ومزامنة.`, 'success');
+      if (translatedCount > 0) {
+        setEditorLines(updated);
+        setHasUnsavedEdits(true);
+        showToast(`تمت ترجمة ${translatedCount} سطر آلياً بالذكاء الاصطناعي بنجاح! اضغط «حفظ ومزامنة» لحفظها.`, 'success');
+      } else {
+        showToast('تعذر استرجاع ترجمة جديدة من الخادم. تأكد من الاتصال أو جرب ترجمة كل سطر على حدة.', 'error');
+      }
     } catch (e: any) {
       showToast(e?.message || 'تعذرت الترجمة الآلية', 'error');
     } finally {
       setIsTranslatingBatch(false);
+    }
+  };
+
+  // Single Row AI Translate
+  const handleTranslateSingleRow = async (row: ScriptSubtitleLine) => {
+    if (!row.arabic.trim()) {
+      showToast('يرجى كتابة النص العربي أولاً ثم الضغط على زر الترجمة ✨', 'info');
+      return;
+    }
+    setTranslatingRowId(row.id);
+    try {
+      const res = await translateLiveCaption(row.arabic);
+      if (res.th || res.en) {
+        setEditorLines((prev) =>
+          prev.map((item) =>
+            item.id === row.id
+              ? {
+                  ...item,
+                  th: res.th || item.th,
+                  en: res.en || item.en,
+                }
+              : item
+          )
+        );
+        setHasUnsavedEdits(true);
+      } else {
+        showToast('تعذرت ترجمة هذا السطر حالياً', 'error');
+      }
+    } catch {
+      showToast('حدث خطأ أثناء ترجمة السطر', 'error');
+    } finally {
+      setTranslatingRowId(null);
+    }
+  };
+
+  // Setup / Auto-create Live_Subtitles Sheet
+  const handleAutoSetupSheet = async () => {
+    setIsSettingUpSheet(true);
+    try {
+      const res = await setupLiveSubtitlesSheetApi();
+      if (res.success) {
+        showToast(res.message || 'تم إنشاء وتهيئة ورقة Live_Subtitles بالشيت تلقائياً! 🌐', 'success');
+      } else {
+        showToast(res.message || 'تأكد من نسخ وتحديث كود Apps Script الموحد من تبويب الإعدادات ⚙️ أولاً', 'error');
+      }
+    } catch (e: any) {
+      showToast(e?.message || 'تعذر تهيئة الورقة بالشيت', 'error');
+    } finally {
+      setIsSettingUpSheet(false);
     }
   };
 
@@ -608,12 +603,6 @@ export default function ScriptPrompterPanel({
     setShowPasteModal(false);
     setPasteText('');
     showToast(`تم استيراد ${parsed.length} سطر في المحرر السريع!`, 'success');
-  };
-
-  const handleCopySnippet = () => {
-    navigator.clipboard.writeText(APPS_SCRIPT_SNIPPET);
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2500);
   };
 
   return (
@@ -1079,6 +1068,17 @@ export default function ScriptPrompterPanel({
 
                 <button
                   type="button"
+                  onClick={handleAutoSetupSheet}
+                  disabled={isSettingUpSheet}
+                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold flex items-center gap-1.5 border border-slate-700 cursor-pointer transition"
+                  title="إنشاء وتهيئة ورقة Live_Subtitles في Google Sheets تلقائياً"
+                >
+                  <FileSpreadsheet className={`w-3.5 h-3.5 ${isSettingUpSheet ? 'animate-spin' : ''}`} />
+                  <span>{isSettingUpSheet ? 'جارٍ التهيئة...' : 'إنشاء الورقة تلقائياً'}</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => handleSaveAndSyncAll(editorLines)}
                   disabled={isSaving}
                   className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer transition"
@@ -1218,6 +1218,15 @@ export default function ScriptPrompterPanel({
                           <div className="flex items-center justify-center gap-1 pt-1">
                             <button
                               type="button"
+                              onClick={() => handleTranslateSingleRow(row)}
+                              disabled={translatingRowId === row.id}
+                              className="p-1.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600 text-amber-300 hover:text-white cursor-pointer transition"
+                              title="ترجمة هذا السطر آلياً بالذكاء الاصطناعي"
+                            >
+                              <Sparkles className={`w-3.5 h-3.5 ${translatingRowId === row.id ? 'animate-spin' : ''}`} />
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => {
                                 handleActivateLine(row, true);
                                 setSubTab('prompter');
@@ -1244,45 +1253,14 @@ export default function ScriptPrompterPanel({
               </table>
             </div>
 
-            {/* Google Apps Script Helper Box (Collapsible) */}
-            <div className="rounded-2xl bg-slate-900/90 border border-slate-800 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setShowAppsScriptCode(!showAppsScriptCode)}
-                className="w-full px-4 py-3 flex items-center justify-between text-xs font-bold text-slate-300 hover:text-white cursor-pointer"
-              >
-                <span className="flex items-center gap-2">
-                  <Code2 className="w-4 h-4 text-amber-400" />
-                  <span>كود الربط مع ورقة Google Sheets الجديدة (Live_Subtitles) في Apps Script</span>
-                </span>
-                <span className="text-[11px] text-amber-400">
-                  {showAppsScriptCode ? 'إخفاء ▲' : 'عرض ونسخ ▼'}
-                </span>
-              </button>
-
-              {showAppsScriptCode && (
-                <div className="p-4 pt-0 space-y-2 border-t border-slate-800/80">
-                  <div className="flex items-center justify-between pt-2">
-                    <p className="text-[11px] text-slate-400">
-                      أضف هذه الدوال إلى مشروع Google Apps Script المربوط معك لتفعيل القراءة والكتابة التلقائية لورقة <b className="text-amber-300">Live_Subtitles</b>.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={handleCopySnippet}
-                      className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 cursor-pointer shrink-0"
-                    >
-                      {copiedCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedCode ? 'تم النسخ!' : 'نسخ الكود'}</span>
-                    </button>
-                  </div>
-                  <pre
-                    dir="ltr"
-                    className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-emerald-300 font-mono overflow-x-auto max-h-60 custom-scrollbar"
-                  >
-                    {APPS_SCRIPT_SNIPPET}
-                  </pre>
-                </div>
-              )}
+            {/* Clean Hint linking to Central Settings for unified Apps Script */}
+            <div className="px-4 py-3 rounded-2xl bg-slate-900/70 border border-slate-800 text-[11px] text-slate-400 flex items-center justify-between flex-wrap gap-2">
+              <span>
+                يتم إنشاء ورقة <b className="text-amber-300">Live_Subtitles</b> تلقائياً في Google Sheets عند الضغط على «إنشاء الورقة تلقائياً» أو «حفظ ومزامنة».
+              </span>
+              <span className="text-slate-500">
+                (تحديث كود Apps Script الموحد متاح دائماً داخل تبويب الإعدادات ⚙️)
+              </span>
             </div>
           </div>
         )}

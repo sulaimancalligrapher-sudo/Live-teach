@@ -10,8 +10,8 @@ import {
 
 // Helper to get Web App URL from localStorage or environment variables
 export function getWebAppUrl(): string {
-  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzoO7NK1oE4RjYDZ-SD_SPzGDSGi8qNXk9LL16YqbszmhOEQVz6Yn7kPQPVEIQXKGR-XA/exec';
-  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbzoO7NK1oE4RjYDZ-SD_SPzGDSGi8qNXk9LL16YqbszmhOEQVz6Yn7kPQPVEIQXKGR-XA/exec';
+  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbzkChJ1v3fMVytcBZ_8hMVZc1U0UWX9Bb-YuJrRfVRTuNblCcjon5IkqaH_JqMlU7mi9w/exec';
+  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbzkChJ1v3fMVytcBZ_8hMVZc1U0UWX9Bb-YuJrRfVRTuNblCcjon5IkqaH_JqMlU7mi9w/exec';
 
   // 1. Check localStorage first (allows individual overrides / testing)
   const localUrl = localStorage.getItem('webAppUrl');
@@ -2833,6 +2833,23 @@ export async function saveLiveSubtitlesToSheet(
   } catch (err: any) {
     console.warn('saveLiveSubtitlesToSheet error:', err);
     return { success: false, message: err?.message || 'فشل الحفظ في الشيت' };
+  }
+}
+
+// Initialize / Auto-create Live_Subtitles sheet in Google Spreadsheet via API
+export async function setupLiveSubtitlesSheetApi(): Promise<{ success: boolean; message?: string }> {
+  if (!isApiConfigured()) {
+    return { success: false, message: 'لم يتم تكوين رابط Google Sheets في الإعدادات بعد' };
+  }
+  try {
+    let res = await fetchGas({ action: 'setupLiveSubtitlesSheet' }, 'GET');
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      res = await fetchGas({ action: 'setupLiveSubtitlesSheet' }, 'POST', { action: 'setupLiveSubtitlesSheet' });
+    }
+    return res || { success: true, message: 'تم إنشاء وتهيئة ورقة (Live_Subtitles) في الشيت بنجاح! 🌐' };
+  } catch (err: any) {
+    console.error('Error setting up Live_Subtitles sheet:', err);
+    return { success: false, message: err?.message || 'تعذر الاتصال بخادم Google Apps Script' };
   }
 }
 

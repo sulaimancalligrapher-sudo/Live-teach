@@ -347,6 +347,10 @@ function doGet(e) {
       response = getPdfLessons();
     } else if (action === 'setupPdfLessonsSheet' || action === 'setupPdfSheet') {
       response = setupPdfLessonsSheet();
+    } else if (action === 'getLiveSubtitles' || action === 'getSubtitles') {
+      response = getLiveSubtitles();
+    } else if (action === 'setupLiveSubtitlesSheet' || action === 'setupSubtitlesSheet') {
+      response = setupLiveSubtitlesSheet();
     } else if (action === 'getAdminQuestions') {
       response = getAdminQuestions();
     } else if (action === 'getAdminAnswers') {
@@ -515,6 +519,12 @@ function doPost(e) {
       response = savePdfLesson(payload.lesson || payload);
     } else if (action === 'setupPdfLessonsSheet' || action === 'setupPdfSheet') {
       response = setupPdfLessonsSheet();
+    } else if (action === 'getLiveSubtitles' || action === 'getSubtitles') {
+      response = getLiveSubtitles();
+    } else if (action === 'saveLiveSubtitles' || action === 'saveSubtitles') {
+      response = saveLiveSubtitles(payload.lines || []);
+    } else if (action === 'setupLiveSubtitlesSheet' || action === 'setupSubtitlesSheet') {
+      response = setupLiveSubtitlesSheet();
     } else if (action === 'getAllSettingsStudents') {
       response = getAllSettingsStudents();
     } else if (action === 'readDriveFile' || action === 'getPdfFile' || action === 'getDriveFile') {
@@ -4231,6 +4241,112 @@ function savePdfLesson(lesson) {
       sheet.appendRow(rowValues);
     }
     return { success: true, message: 'تم حفظ ملف الـ PDF في ورقة PDF-Lessons بالشيت بنجاح 📄' };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+// ==========================================
+// --- دوال السكربت والترجمة المباشرة (Live_Subtitles) ---
+// ==========================================
+
+function getOrCreateLiveSubtitlesSheet() {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName('Live_Subtitles') || ss.getSheetByName('Live-Subtitles') || ss.getSheetByName('LiveSubtitles');
+  if (!sheet) {
+    sheet = ss.insertSheet('Live_Subtitles');
+    var headers = ['lessonTitle', 'page', 'arabic', 'th', 'en'];
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#fef3c7');
+    sheet.setFrozenRows(1);
+    sheet.appendRow([
+      'مثال - الدرس الأول',
+      1,
+      'بسم الله الرحمن الرحيم أهلاً بكم في درس اليوم',
+      'ด้วยพระนามของอัลลอฮ์ ผู้ทรงกรุณาปรานี ยินดีต้อนรับสู่บทเรียนวันนี้',
+      'In the name of Allah, welcome to today’s lesson'
+    ]);
+  }
+  return sheet;
+}
+
+function setupLiveSubtitlesSheet() {
+  try {
+    var sheet = getOrCreateLiveSubtitlesSheet();
+    var headers = ['lessonTitle', 'page', 'arabic', 'th', 'en'];
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#fef3c7');
+    sheet.setFrozenRows(1);
+    return {
+      success: true,
+      message: 'تم إنشاء وتهيئة ورقة (Live_Subtitles) للسكربت والترجمة في الشيت بنجاح! 🌐'
+    };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+function getLiveSubtitles() {
+  try {
+    var sheet = getOrCreateLiveSubtitlesSheet();
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return { success: true, data: [] };
+
+    var lastCol = Math.max(5, sheet.getLastColumn());
+    var values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    var rows = [];
+
+    for (var i = 0; i < values.length; i++) {
+      var r = values[i];
+      var lessonTitle = String(r[0] || '').trim();
+      var page = parseInt(r[1], 10) || 1;
+      var ar = String(r[2] || '').trim();
+      var th = String(r[3] || '').trim();
+      var en = String(r[4] || '').trim();
+      if (!ar && !th && !en) continue;
+
+      rows.push({
+        id: 'sheet_' + (i + 2),
+        lessonTitle: lessonTitle,
+        page: Math.max(1, page),
+        order: i,
+        arabic: ar,
+        th: th,
+        en: en
+      });
+    }
+    return { success: true, data: rows };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+function saveLiveSubtitles(lines) {
+  try {
+    var sheet = getOrCreateLiveSubtitlesSheet();
+    var list = Array.isArray(lines) ? lines : [];
+    sheet.clearContents();
+    var headers = ['lessonTitle', 'page', 'arabic', 'th', 'en'];
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#fef3c7');
+    sheet.setFrozenRows(1);
+
+    if (list.length > 0) {
+      var rows = list.map(function(l) {
+        return [
+          String(l.lessonTitle || '').trim(),
+          Math.max(1, parseInt(l.page, 10) || 1),
+          String(l.arabic || '').trim(),
+          String(l.th || '').trim(),
+          String(l.en || '').trim()
+        ];
+      });
+      sheet.getRange(2, 1, rows.length, 5).setValues(rows);
+    }
+    return {
+      success: true,
+      message: 'تم حفظ ومزامنة ' + list.length + ' سطر في ورقة Live_Subtitles بنجاح! ✅'
+    };
   } catch (err) {
     return { success: false, message: err.message };
   }

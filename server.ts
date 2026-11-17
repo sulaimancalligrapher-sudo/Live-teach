@@ -959,6 +959,33 @@ async function startServer() {
     });
   }
 
+  // Fast free translation fallback when Gemini API key is unavailable or errors
+  async function translateViaGoogleFree(text: string, targetLang: 'th' | 'en'): Promise<string | null> {
+    try {
+      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ar&tl=${targetLang}&dt=t&q=${encodeURIComponent(text.slice(0, 800))}`;
+      const r = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; aistudio-build/1.0)' }
+      });
+      if (!r.ok) return null;
+      const json: any = await r.json();
+      if (Array.isArray(json?.[0])) {
+        const joined = json[0].map((seg: any) => seg?.[0] || '').join('').trim();
+        if (joined && joined !== text) return joined;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  function cleanJsonText(raw: string): string {
+    return String(raw || '')
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/```$/i, '')
+      .trim();
+  }
+
   // AI Single Translation Endpoint using @google/genai
   app.post("/api/translate-ai", async (req, res) => {
     try {
@@ -974,21 +1001,26 @@ async function startServer() {
       if (ai) {
         try {
           const response = await ai.models.generateContent({
-            model: "gemini-4-hydrogen",
-            contents: `Translate the following educational UI string from Arabic to natural, idiomatic ${langName}. Return ONLY the direct translation text with no markdown, quotes, or conversational explanations:\n\n${text}`
+            model: "gemini-3.1-flash-lite",
+            contents: `Translate the following educational text from Arabic to natural, idiomatic ${langName}. Return ONLY the direct translation text with no markdown, quotes, or conversational explanations:\n\n${text}`
           });
           const translated = (response.text || "").trim().replace(/^["']|["']$/g, '');
           if (translated && translated !== text) {
-            return res.json({ success: true, translated });
+            return res.json({ success: true, translated, engine: 'gemini' });
           }
         } catch (apiErr: any) {
           console.warn("Gemini translate error, using fallback:", apiErr.message);
         }
       }
 
-      // High-accuracy fallback dictionary
+      const gFallback = await translateViaGoogleFree(text, safeLang);
+      if (gFallback) {
+        return res.json({ success: true, translated: gFallback, engine: 'google-free' });
+      }
+
+      // Dictionary fallback
       const fallback = lookupFallbackTranslation(text, safeLang);
-      return res.json({ success: true, translated: fallback });
+      return res.json({ success: true, translated: fallback, engine: 'dictionary' });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }
@@ -1006,31 +1038,34 @@ async function startServer() {
       if (ai) {
         try {
           const response = await ai.models.generateContent({
-            model: "gemini-4-hydrogen",
+            model: "gemini-3.1-flash-lite",
             contents: `Translate this spoken Arabic educational sentence into natural, idiomatic Thai and English. Return ONLY a strict JSON object with keys "th" and "en" without markdown formatting or conversational text. Example: {"th": "...", "en": "..."}\n\nArabic: "${text}"`,
             config: {
               responseMimeType: "application/json"
             }
           });
-          const raw = (response.text || "").trim();
-          const parsed = JSON.parse(raw);
-          return res.json({
-            success: true,
-            th: String(parsed.th || '').trim(),
-            en: String(parsed.en || '').trim()
-          });
+          const parsed = JSON.parse(cleanJsonText(response.text || "{}"));
+          if (parsed.th || parsed.en) {
+            return res.json({
+              success: true,
+              th: String(parsed.th || '').trim(),
+              en: String(parsed.en || '').trim()
+            });
+          }
         } catch (apiErr: any) {
           console.warn("Gemini live caption translation error:", apiErr.message);
         }
       }
 
-      // Fallback translations
-      const thFallback = lookupFallbackTranslation(text, 'th');
-      const enFallback = lookupFallbackTranslation(text, 'en');
+      // Google Translate free fallback
+      const [gTh, gEn] = await Promise.all([
+        translateViaGoogleFree(text, 'th'),
+        translateViaGoogleFree(text, 'en'),
+      ]);
       return res.json({
         success: true,
-        th: thFallback,
-        en: enFallback
+        th: gTh || lookupFallbackTranslation(text, 'th'),
+        en: gEn || lookupFallbackTranslation(text, 'en')
       });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
@@ -1049,37 +1084,44 @@ async function startServer() {
       if (ai) {
         try {
           const prompt = `Translate each of the following Arabic educational phrases into natural Thai (th) and English (en).
-Return ONLY a valid JSON object matching this schema:
+Return ONLY a valid JSON object matching this exact schema (use the exact "key" values provided):
 {
   "keyName": { "th": "Thai translation", "en": "English translation" }
 }
 
 Input items:
-${JSON.stringify(items.map((i: any) => ({ key: i.key, ar: i.ar })))}
+${JSON.stringify(items.map((i: any) => ({ key: String(i.key), ar: String(i.ar || '') })))}
 `;
           const response = await ai.models.generateContent({
-            model: "gemini-4-hydrogen",
+            model: "gemini-3.1-flash-lite",
             contents: prompt,
             config: { responseMimeType: "application/json" }
           });
-          const parsed = JSON.parse(response.text || "{}");
-          if (parsed && Object.keys(parsed).length > 0) {
-            return res.json({ success: true, translations: parsed });
+          const parsed = JSON.parse(cleanJsonText(response.text || "{}"));
+          if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+            return res.json({ success: true, translations: parsed, engine: 'gemini' });
           }
         } catch (apiErr: any) {
           console.warn("Gemini batch translation error:", apiErr.message);
         }
       }
 
-      // Fallback: build translations from dictionary
+      // Real HTTP translation fallback for each item if Gemini fails
       const fallbackTranslations: Record<string, { th: string; en: string }> = {};
-      for (const item of items) {
-        fallbackTranslations[item.key] = {
-          th: lookupFallbackTranslation(item.ar || item.key, 'th'),
-          en: lookupFallbackTranslation(item.ar || item.key, 'en')
-        };
-      }
-      return res.json({ success: true, translations: fallbackTranslations });
+      await Promise.all(
+        items.map(async (item: any) => {
+          const src = String(item.ar || item.key || '').trim();
+          const [gTh, gEn] = await Promise.all([
+            translateViaGoogleFree(src, 'th'),
+            translateViaGoogleFree(src, 'en'),
+          ]);
+          fallbackTranslations[String(item.key)] = {
+            th: gTh || lookupFallbackTranslation(src, 'th'),
+            en: gEn || lookupFallbackTranslation(src, 'en')
+          };
+        })
+      );
+      return res.json({ success: true, translations: fallbackTranslations, engine: 'google-free' });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
     }

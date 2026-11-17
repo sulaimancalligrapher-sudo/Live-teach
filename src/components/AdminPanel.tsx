@@ -24,6 +24,7 @@ import {
   setupLiveDirectSheetsApi,
   setupQuizDirectSheetsApi,
   setupPdfLessonsSheetApi,
+  setupLiveSubtitlesSheetApi,
   stopAllActiveBroadcasts,
   subscribeToLiveSession
 } from '../api';
@@ -56,6 +57,7 @@ export default function AdminPanel({
   const [settingUpLiveSheets, setSettingUpLiveSheets] = useState(false);
   const [settingUpQuizSheets, setSettingUpQuizSheets] = useState(false);
   const [settingUpPdfSheets, setSettingUpPdfSheets] = useState(false);
+  const [settingUpSubtitlesSheet, setSettingUpSubtitlesSheet] = useState(false);
   const [isStreamActive, setIsStreamActive] = useState(false);
 
   const [allLiveLessons, setAllLiveLessons] = useState<LiveLessonRow[]>([]);
@@ -190,6 +192,22 @@ export default function AdminPanel({
       setNotice({ text: e.message || 'حدث خطأ أثناء التهيئة', type: 'error' });
     } finally {
       setSettingUpPdfSheets(false);
+    }
+  };
+
+  const handleSetupLiveSubtitlesSheet = async () => {
+    setSettingUpSubtitlesSheet(true);
+    try {
+      const res = await setupLiveSubtitlesSheetApi();
+      if (res.success) {
+        setNotice({ text: res.message || 'تمت تهيئة ورقة Live_Subtitles في الشيت بنجاح! 🌐', type: 'success' });
+      } else {
+        setNotice({ text: res.message || 'فشلت التهيئة، تأكد من تحديث كود Apps Script الموحد أدناه وربط الشيت', type: 'error' });
+      }
+    } catch (e: any) {
+      setNotice({ text: e.message || 'حدث خطأ أثناء التهيئة', type: 'error' });
+    } finally {
+      setSettingUpSubtitlesSheet(false);
     }
   };
 
@@ -637,7 +655,7 @@ export default function AdminPanel({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                   {/* Live Classroom Sheet Info */}
                   <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-700">
                     <div className="flex items-center justify-between mb-2">
@@ -714,6 +732,28 @@ export default function AdminPanel({
                     >
                       <Sparkles className={`w-3.5 h-3.5 ${settingUpPdfSheets ? 'animate-spin' : ''}`} />
                       {settingUpPdfSheets ? 'جارٍ التهيئة...' : 'إنشاء وتهيئة ورقة PDF بالشيت'}
+                    </button>
+                  </div>
+
+                  {/* Live Subtitles Sheet Info */}
+                  <div className="p-4 rounded-2xl bg-slate-900/90 border border-amber-500/40 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-bold text-amber-400 text-sm">السكربت والترجمة</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono">Live_Subtitles</span>
+                      </div>
+                      <p className="text-xs text-slate-400 mb-3">
+                        متصل بورقة: <br />
+                        • <b>Live_Subtitles</b>: لنصوص المحاضر العربية وترجماتها التايلندية والإنجليزية مرتبطة بصفحات PDF
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleSetupLiveSubtitlesSheet}
+                      disabled={settingUpSubtitlesSheet}
+                      className="w-full py-2 rounded-xl bg-amber-500/25 hover:bg-amber-500 text-amber-300 hover:text-slate-950 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Sparkles className={`w-3.5 h-3.5 ${settingUpSubtitlesSheet ? 'animate-spin' : ''}`} />
+                      {settingUpSubtitlesSheet ? 'جارٍ التهيئة...' : 'إنشاء وتهيئة ورقة الترجمة بالشيت'}
                     </button>
                   </div>
                 </div>

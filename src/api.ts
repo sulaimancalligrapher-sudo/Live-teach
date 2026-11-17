@@ -11,7 +11,7 @@ import {
 // Helper to get Web App URL from localStorage or environment variables
 export function getWebAppUrl(): string {
   const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbwNv7aLBgsQ72d9SCVA1tfW-kdglU_e8D_Dicfgii1wEaXQquA0zkq2y01JsuYvxr1arQ/exec';
-  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbwNv7aLBgsQ72d9SCVA1tfW-kdglU_e8D_Dicfgii1wEaXQquA0zkq2y01JsuYvxr1arQ/exec';
+  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbwakS_2H_RJGQSy6tUhWQ17S8gpoidY1fFc_Id234ubTFKuzA0k6_qa-DaeCGdbvYpwWg/exec';
 
   // 1. Check localStorage first (allows individual overrides / testing)
   const localUrl = localStorage.getItem('webAppUrl');

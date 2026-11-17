@@ -661,3 +661,26 @@ export function getQuizStudentKey(username: string, sheetNumber?: string): strin
   const s = (sheetNumber || '').trim();
   return s ? `${u}_${s}` : u;
 }
+
+// ==========================================
+// --- ADMIN & HOME ACCESS CONTROL (ورقة أدمن) ---
+// ==========================================
+
+export interface AdminSheetUser {
+  id: string;
+  rowIndex?: number;
+  name: string;               // العمود A: الاسم
+  number: string;             // العمود B: الرقم
+  allowHome: 'نعم' | 'لا';    // العمود C: الصفحة الرئيسية
+  allowAdmin: 'نعم' | 'لا';   // العمود D: لوحة التحكم
+  status: 'نعم' | 'لا';       // العمود E: الحالة
+  notes?: string;             // العمود F: ملاحظات
+}
+
+export interface AdminAccessConfig {
+  requireHomeLogin: boolean;
+  requireAdminLogin: boolean;
+  users: AdminSheetUser[];
+  updatedAt?: number;
+}
+

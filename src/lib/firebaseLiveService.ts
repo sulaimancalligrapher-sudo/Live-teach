@@ -21,11 +21,14 @@ import {
   QuizStudentAnswerDetail,
   LiveStreamConfig,
   ScriptSubtitleLine,
-  LiveSubtitleState
+  LiveSubtitleState,
+  AdminSheetUser,
+  AdminAccessConfig
 } from '../types';
 
 const LIVE_DOC_REF = doc(db, 'live_sessions', 'main');
 const SUBTITLES_DOC_REF = doc(db, 'live_sessions', 'subtitles');
+const ADMIN_ACCESS_DOC_REF = doc(db, 'live_sessions', 'admin_access');
 
 export const defaultLiveStreamConfig: LiveStreamConfig = {
   isActive: false,
@@ -2406,5 +2409,110 @@ export async function saveScriptSubtitles(lines: ScriptSubtitleLine[]): Promise<
     throw err;
   }
 }
+
+export const defaultAdminAccessConfig: AdminAccessConfig = {
+  requireHomeLogin: true,
+  requireAdminLogin: true,
+  users: [],
+  updatedAt: 0,
+};
+
+function sanitizeAdminUserList(rawUsers: any[]): AdminSheetUser[] {
+  if (!Array.isArray(rawUsers)) return [];
+  const normYesNo = (val: any, def: 'نعم' | 'لا'): 'نعم' | 'لا' => {
+    const s = String(val ?? '').trim().toLowerCase();
+    if (!s) return def;
+    if (['لا', 'no', 'false', '0', 'غير مسموح', 'موقوف', 'معطل'].includes(s)) return 'لا';
+    if (['نعم', 'yes', 'true', '1', 'مسموح', 'نشط', 'مفعل'].includes(s)) return 'نعم';
+    return def;
+  };
+  return rawUsers
+    .map((u: any, idx: number) => ({
+      id: String(u.id || `adm_${idx}_${Date.now()}`),
+      rowIndex: typeof u.rowIndex === 'number' ? u.rowIndex : idx + 2,
+      name: String(u.name || u['الاسم'] || '').trim(),
+      number: String(u.number ?? u.code ?? u['الرقم'] ?? '').trim(),
+      allowHome: normYesNo(u.allowHome ?? u['الصفحة الرئيسية'], 'نعم'),
+      allowAdmin: normYesNo(u.allowAdmin ?? u['لوحة التحكم'], 'لا'),
+      status: normYesNo(u.status ?? u['الحالة'], 'نعم'),
+      notes: String(u.notes ?? u['ملاحظات'] ?? '').trim(),
+    }))
+    .filter((u) => u.name.length > 0 && u.number.length > 0);
+}
+
+export function subscribeToAdminAccessConfig(
+  onUpdate: (cfg: AdminAccessConfig) => void
+): () => void {
+  return onSnapshot(
+    ADMIN_ACCESS_DOC_REF,
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() || {};
+        onUpdate({
+          requireHomeLogin: data.requireHomeLogin !== false,
+          requireAdminLogin: data.requireAdminLogin !== false,
+          users: sanitizeAdminUserList(data.users),
+          updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
+        });
+      } else {
+        onUpdate({ ...defaultAdminAccessConfig });
+      }
+    },
+    (err) => {
+      console.warn('Admin access snapshot listener warning:', err);
+    }
+  );
+}
+
+export async function getAdminAccessConfig(): Promise<AdminAccessConfig> {
+  try {
+    const snap = await getDoc(ADMIN_ACCESS_DOC_REF);
+    if (snap.exists()) {
+      const data = snap.data() || {};
+      return {
+        requireHomeLogin: data.requireHomeLogin !== false,
+        requireAdminLogin: data.requireAdminLogin !== false,
+        users: sanitizeAdminUserList(data.users),
+        updatedAt: typeof data.updatedAt === 'number' ? data.updatedAt : 0,
+      };
+    }
+    return { ...defaultAdminAccessConfig };
+  } catch (err) {
+    console.warn('Failed to get admin access config from Firestore:', err);
+    return { ...defaultAdminAccessConfig };
+  }
+}
+
+export async function saveAdminAccessConfig(
+  partial: Partial<AdminAccessConfig>
+): Promise<{ success: boolean }> {
+  try {
+    const existing = await getAdminAccessConfig();
+    const merged: AdminAccessConfig = {
+      requireHomeLogin:
+        partial.requireHomeLogin !== undefined
+          ? partial.requireHomeLogin
+          : existing.requireHomeLogin,
+      requireAdminLogin:
+        partial.requireAdminLogin !== undefined
+          ? partial.requireAdminLogin
+          : existing.requireAdminLogin,
+      users:
+        partial.users !== undefined
+          ? sanitizeAdminUserList(partial.users)
+          : existing.users,
+      updatedAt: Date.now(),
+    };
+    await setDoc(ADMIN_ACCESS_DOC_REF, {
+      ...merged,
+      serverUpdatedAt: serverTimestamp(),
+    });
+    return { success: true };
+  } catch (err) {
+    console.warn('Failed to save admin access config to Firestore:', err);
+    throw err;
+  }
+}
+
 
 

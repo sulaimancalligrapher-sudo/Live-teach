@@ -176,7 +176,7 @@ export default function SettingsPanel({ onClose, onSave }: SettingsPanelProps) {
 
           <ol className="list-decimal list-inside space-y-2.5 text-xs text-slate-400 leading-relaxed pr-1 mb-6">
             <li>أنشئ ملف Google Sheet جديد في حسابك.</li>
-            <li>قم بتسمية الصفحات الداخلية بنفس الأسماء الأصلية: <code className="bg-slate-950 text-amber-400 px-1.5 py-0.5 rounded border border-slate-800 font-mono">Profile</code> و <code className="bg-slate-950 text-amber-400 px-1.5 py-0.5 rounded border border-slate-800 font-mono">Contact</code> و <code className="bg-slate-950 text-amber-400 px-1.5 py-0.5 rounded border border-slate-800 font-mono">About</code> و <code className="bg-slate-950 text-amber-400 px-1.5 py-0.5 rounded border border-slate-800 font-mono">Settings</code> و <code className="bg-slate-950 text-amber-400 px-1.5 py-0.5 rounded border border-slate-800 font-mono">Answers</code> بالإضافة لصفحات أرقام الشيتات للدروس.</li>
+            <li>قم بتسمية الصفحات الداخلية بنفس الأسماء الأصلية: <code className="bg-slate-950 text-amber-400 px-1.5 py-0.5 rounded border border-slate-800 font-mono">Profile</code> و <code className="bg-slate-950 text-amber-400 px-1.5 py-0.5 rounded border border-slate-800 font-mono">Contact</code> و <code className="bg-slate-950 text-amber-400 px-1.5 py-0.5 rounded border border-slate-800 font-mono">About</code> و <code className="bg-slate-950 text-amber-400 px-1.5 py-0.5 rounded border border-slate-800 font-mono">Settings</code> و <code className="bg-slate-950 text-amber-400 px-1.5 py-0.5 rounded border border-slate-800 font-mono">Answers</code> و <code className="bg-slate-950 text-amber-400 px-1.5 py-0.5 rounded border border-slate-800 font-mono">أدمن</code> بالإضافة لصفحات أرقام الشيتات للدروس.</li>
             <li>من القائمة العلوية لـ Google Sheet، اختر <span className="text-slate-200 font-semibold">Extensions</span> ثم <span className="text-slate-200 font-semibold">Apps Script</span>.</li>
             <li>احذف أي كود موجود هناك، ثم اضغط على الزر أدناه لنسخ كود Apps Script المطور بالكامل، وألصقه في المحرر.</li>
             <li>قم بتغيير معرف الـ Spreadsheet ID في السطر رقم 14 في كود Apps Script ليتطابق مع رابط ملف الشيت الخاص بك.</li>
@@ -301,6 +301,13 @@ function RUN_SETUP_LIVE_SUBTITLES_SHEET() {
   return res;
 }
 
+// 7. إنشاء وتهيئة ورقة صلاحيات الدخول (أدمن) بنقرة واحدة
+function RUN_SETUP_ADMIN_SHEET() {
+  var res = setupAdminSheet();
+  Logger.log('نتيجة تهيئة ورقة أدمن: ' + JSON.stringify(res));
+  return res;
+}
+
 function doGet(e) {
   var action = (e && e.parameter) ? e.parameter.action : '';
   var response;
@@ -358,6 +365,12 @@ function doGet(e) {
       response = getLiveSubtitles();
     } else if (action === 'setupLiveSubtitlesSheet' || action === 'setupSubtitlesSheet') {
       response = setupLiveSubtitlesSheet();
+    } else if (action === 'setupAdminSheet') {
+      response = setupAdminSheet();
+    } else if (action === 'getAdminUsers') {
+      response = getAdminUsers();
+    } else if (action === 'verifyAdminUser') {
+      response = verifyAdminUser(e.parameter.name, e.parameter.number, e.parameter.target);
     } else if (action === 'getAdminQuestions') {
       response = getAdminQuestions();
     } else if (action === 'getAdminAnswers') {
@@ -532,6 +545,14 @@ function doPost(e) {
       response = saveLiveSubtitles(payload.lines || []);
     } else if (action === 'setupLiveSubtitlesSheet' || action === 'setupSubtitlesSheet') {
       response = setupLiveSubtitlesSheet();
+    } else if (action === 'setupAdminSheet') {
+      response = setupAdminSheet();
+    } else if (action === 'getAdminUsers') {
+      response = getAdminUsers();
+    } else if (action === 'saveAdminUsers') {
+      response = saveAdminUsers(payload.users || []);
+    } else if (action === 'verifyAdminUser') {
+      response = verifyAdminUser(payload.name, payload.number, payload.target);
     } else if (action === 'translateBatch') {
       response = translateBatchGas(payload.items || []);
     } else if (action === 'translateLiveCaption') {
@@ -4392,6 +4413,180 @@ function translateBatchGas(items) {
     return { success: true, translations: translations, engine: 'gas-languageapp' };
   } catch (err) {
     return { success: false, message: err.message, translations: {} };
+  }
+}
+
+// ==========================================
+// --- دوال ورقة صلاحيات الدخول (أدمن / Admin) ---
+// ==========================================
+
+function findAdminSheet() {
+  var ss = getSpreadsheet();
+  return ss.getSheetByName('أدمن') || ss.getSheetByName('ادمن') || ss.getSheetByName('Admin') || ss.getSheetByName('admin');
+}
+
+function getOrCreateAdminSheet() {
+  var ss = getSpreadsheet();
+  var sheet = findAdminSheet();
+  var createdNow = false;
+  if (!sheet) {
+    sheet = ss.insertSheet('أدمن');
+    createdNow = true;
+  }
+  var headers = ['الاسم', 'الرقم', 'الصفحة الرئيسية', 'لوحة التحكم', 'الحالة', 'ملاحظات'];
+  var firstRowEmpty = sheet.getLastRow() === 0 || !String(sheet.getRange(1, 1).getValue() || '').trim();
+  if (createdNow || firstRowEmpty) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#fde68a');
+    sheet.setFrozenRows(1);
+    if (sheet.getLastRow() <= 1) {
+      sheet.appendRow(['المدير', '3344', 'نعم', 'نعم', 'نعم', 'صلاحية كاملة للصفحة الرئيسية ولوحة التحكم']);
+      sheet.appendRow(['المعلم', '1122', 'نعم', 'لا', 'نعم', 'صلاحية الصفحة الرئيسية فقط']);
+    }
+  }
+  return sheet;
+}
+
+function setupAdminSheet() {
+  try {
+    var sheet = getOrCreateAdminSheet();
+    var headers = ['الاسم', 'الرقم', 'الصفحة الرئيسية', 'لوحة التحكم', 'الحالة', 'ملاحظات'];
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#fde68a');
+    sheet.setFrozenRows(1);
+    return {
+      success: true,
+      message: 'تم إنشاء وتهيئة ورقة (أدمن) لصلاحيات الدخول في الشيت بنجاح! 🔐'
+    };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+function normalizeAdminStringGas(s) {
+  return String(s || '')
+    .replace(/[٠-٩]/g, function(d) { return '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString(); })
+    .replace(/[\\u064B-\\u065F\\u0670]/g, '')
+    .replace(/[إأآٱ]/g, 'ا')
+    .replace(/ة/g, 'ه')
+    .replace(/ى/g, 'ي')
+    .replace(/\\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeAdminYesNoGas(v, defVal) {
+  var s = String(v === undefined || v === null ? '' : v).trim().toLowerCase();
+  if (!s) return defVal;
+  if (s === 'لا' || s === 'no' || s === 'false' || s === '0' || s === 'موقوف' || s === 'معطل') return 'لا';
+  if (s === 'نعم' || s === 'yes' || s === 'true' || s === '1' || s === 'نشط' || s === 'مفعل') return 'نعم';
+  return defVal;
+}
+
+function getAdminUsers() {
+  try {
+    var sheet = findAdminSheet();
+    if (!sheet) {
+      return { success: true, data: [], sheetMissing: true };
+    }
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return { success: true, data: [] };
+    var lastCol = Math.max(6, sheet.getLastColumn());
+    var values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    var users = [];
+    for (var i = 0; i < values.length; i++) {
+      var r = values[i];
+      var name = String(r[0] || '').trim();
+      var num = String(r[1] === undefined || r[1] === null ? '' : r[1])
+        .replace(/[٠-٩]/g, function(d) { return '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString(); })
+        .trim();
+      if (!name || !num) continue;
+      users.push({
+        id: 'sheet_adm_' + (i + 2),
+        rowIndex: i + 2,
+        name: name,
+        number: num,
+        allowHome: normalizeAdminYesNoGas(r[2], 'نعم'),
+        allowAdmin: normalizeAdminYesNoGas(r[3], 'لا'),
+        status: normalizeAdminYesNoGas(r[4], 'نعم'),
+        notes: String(r[5] || '').trim()
+      });
+    }
+    return { success: true, data: users };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+function saveAdminUsers(users) {
+  try {
+    var sheet = getOrCreateAdminSheet();
+    var list = Array.isArray(users) ? users : [];
+    sheet.clearContents();
+    var headers = ['الاسم', 'الرقم', 'الصفحة الرئيسية', 'لوحة التحكم', 'الحالة', 'ملاحظات'];
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#fde68a');
+    sheet.setFrozenRows(1);
+
+    if (list.length > 0) {
+      var rows = list.map(function(u) {
+        return [
+          String(u.name || '').trim(),
+          String(u.number || '').trim(),
+          normalizeAdminYesNoGas(u.allowHome, 'نعم'),
+          normalizeAdminYesNoGas(u.allowAdmin, 'لا'),
+          normalizeAdminYesNoGas(u.status, 'نعم'),
+          String(u.notes || '').trim()
+        ];
+      });
+      sheet.getRange(2, 1, rows.length, 6).setValues(rows);
+    }
+    return {
+      success: true,
+      message: 'تم حفظ ومزامنة ' + list.length + ' حساب في ورقة (أدمن) بنجاح! ✅'
+    };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+function verifyAdminUser(name, number, target) {
+  try {
+    var sheet = findAdminSheet();
+    if (!sheet) {
+      return { success: false, sheetMissing: true, message: 'ورقة (أدمن) غير موجودة في الشيت' };
+    }
+    var res = getAdminUsers();
+    var list = (res && res.data) ? res.data : [];
+    if (list.length === 0) {
+      return { success: false, sheetEmpty: true, message: 'ورقة (أدمن) فارغة من الحسابات' };
+    }
+    var targetName = normalizeAdminStringGas(name);
+    var targetNum = String(number || '')
+      .replace(/[٠-٩]/g, function(d) { return '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString(); })
+      .trim();
+    var found = null;
+    for (var i = 0; i < list.length; i++) {
+      if (normalizeAdminStringGas(list[i].name) === targetName && String(list[i].number).trim() === targetNum) {
+        found = list[i];
+        break;
+      }
+    }
+    if (!found) {
+      return { success: false, message: 'الاسم أو الرقم غير صحيح! يرجى التحقق من ورقة (أدمن).' };
+    }
+    if (found.status === 'لا') {
+      return { success: false, message: 'تم إيقاف هذا الحساب من قبل الإدارة (الحالة: لا).' };
+    }
+    if (target === 'home' && found.allowHome !== 'نعم') {
+      return { success: false, message: 'هذا الحساب غير مصرح له بالدخول إلى الصفحة الرئيسية.' };
+    }
+    if (target === 'admin' && found.allowAdmin !== 'نعم') {
+      return { success: false, message: 'هذا الحساب لا يملك صلاحية الدخول إلى لوحة التحكم المركزية.' };
+    }
+    return { success: true, user: found };
+  } catch (err) {
+    return { success: false, message: err.message };
   }
 }
 `;

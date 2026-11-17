@@ -5,13 +5,17 @@ import {
   LiveQuestionItem, LiveLessonRow, LiveAnswerRecord, LiveSessionState, LiveStudentAnswerSubmission,
   LiveDirectQuestionItem, LiveDirectLessonRow, LiveDirectAnswerRecord, LivePdfItem,
   QuizQuestionItem, QuizLessonRow, QuizAnswerRecord, QuizActiveState, QuizStudentProgress,
-  ScriptSubtitleLine, LiveSubtitleState
+  ScriptSubtitleLine, LiveSubtitleState, AdminSheetUser, AdminAccessConfig, normalizeArabicText
 } from './types';
+import {
+  getAdminAccessConfig,
+  saveAdminAccessConfig,
+} from './lib/firebaseLiveService';
 
 // Helper to get Web App URL from localStorage or environment variables
 export function getWebAppUrl(): string {
-  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbwNv7aLBgsQ72d9SCVA1tfW-kdglU_e8D_Dicfgii1wEaXQquA0zkq2y01JsuYvxr1arQ/exec';
-  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbwakS_2H_RJGQSy6tUhWQ17S8gpoidY1fFc_Id234ubTFKuzA0k6_qa-DaeCGdbvYpwWg/exec';
+  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbz1XMc_qbK3-ne2-YbnEFaxbb8gDzS1ATG39yWZQYSB1UhlY3m-3z86--9o98TLRpPbWQ/exec';
+  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbz1XMc_qbK3-ne2-YbnEFaxbb8gDzS1ATG39yWZQYSB1UhlY3m-3z86--9o98TLRpPbWQ/exec';
 
   // 1. Check localStorage first (allows individual overrides / testing)
   const localUrl = localStorage.getItem('webAppUrl');
@@ -2511,6 +2515,10 @@ export {
   subscribeToScriptSubtitles,
   getScriptSubtitles,
   saveScriptSubtitles,
+  subscribeToAdminAccessConfig,
+  getAdminAccessConfig,
+  saveAdminAccessConfig,
+  defaultAdminAccessConfig,
 } from './lib/firebaseLiveService';
 
 export {
@@ -2990,3 +2998,332 @@ export async function fetchTtsAudio(
     return { success: false, fallback: 'browser' };
   }
 }
+
+// ==========================================
+// ADMIN & HOME ACCESS CONTROL (ورقة أدمن + Firestore)
+// ==========================================
+
+function normalizeDigitString(val: string): string {
+  return String(val || '')
+    .replace(/[٠-٩]/g, (d) => '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString())
+    .trim();
+}
+
+function normalizeYesNoCell(val: any, def: 'نعم' | 'لا'): 'نعم' | 'لا' {
+  const s = String(val ?? '').trim().toLowerCase();
+  if (!s) return def;
+  if (['لا', 'no', 'false', '0', 'غير مسموح', 'موقوف', 'معطل'].includes(s)) return 'لا';
+  if (['نعم', 'yes', 'true', '1', 'مسموح', 'نشط', 'مفعل'].includes(s)) return 'نعم';
+  return def;
+}
+
+function mapRawAdminUsers(rawArr: any[]): AdminSheetUser[] {
+  if (!Array.isArray(rawArr)) return [];
+  return rawArr
+    .map((row: any, idx: number) => ({
+      id: String(row.id || `adm_${idx + 2}`),
+      rowIndex: typeof row.rowIndex === 'number' ? row.rowIndex : idx + 2,
+      name: String(row.name || row['الاسم'] || '').trim(),
+      number: normalizeDigitString(String(row.number ?? row.code ?? row['الرقم'] ?? '')),
+      allowHome: normalizeYesNoCell(row.allowHome ?? row['الصفحة الرئيسية'], 'نعم'),
+      allowAdmin: normalizeYesNoCell(row.allowAdmin ?? row['لوحة التحكم'], 'لا'),
+      status: normalizeYesNoCell(row.status ?? row['الحالة'], 'نعم'),
+      notes: String(row.notes ?? row['ملاحظات'] ?? '').trim(),
+    }))
+    .filter((u) => u.name.length > 0 && u.number.length > 0);
+}
+
+export async function setupAdminSheetApi(): Promise<{
+  success: boolean;
+  users?: AdminSheetUser[];
+  message?: string;
+}> {
+  if (!isApiConfigured()) {
+    return { success: false, message: 'لم يتم تكوين رابط Google Sheets في الإعدادات بعد' };
+  }
+  try {
+    let res = await fetchGas({ action: 'setupAdminSheet' }, 'GET');
+    if (!res || res.success !== true) {
+      res = await fetchGas({ action: 'setupAdminSheet' }, 'POST', { action: 'setupAdminSheet' });
+    }
+    if (res && res.success === true) {
+      const fetched = await fetchAdminUsersFromSheet();
+      return {
+        success: true,
+        users: fetched.data,
+        message: res.message || 'تم إنشاء وتهيئة ورقة (أدمن) في الشيت بنجاح! 🔐',
+      };
+    }
+    return {
+      success: false,
+      message:
+        res?.message && res.message !== 'الإجراء المطلوب غير معروف'
+          ? res.message
+          : 'كود Apps Script المنشور حالياً على الشيت قديم! انسخ الكود المحدث من تبويب الإعدادات ⚙️ ثم اعمل نشر إصدار جديد في Apps Script.',
+    };
+  } catch (err: any) {
+    console.error('Error setting up أدمن sheet:', err);
+    return { success: false, message: err?.message || 'تعذر الاتصال بخادم Google Apps Script' };
+  }
+}
+
+export async function fetchAdminUsersFromSheet(): Promise<{
+  success: boolean;
+  data: AdminSheetUser[];
+  source: 'sheet' | 'firestore';
+  message?: string;
+}> {
+  if (isApiConfigured()) {
+    try {
+      let res = await fetchGas({ action: 'getAdminUsers' }, 'GET');
+      if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success !== true) {
+        try {
+          res = await fetchGas({ action: 'getAdminUsers' }, 'POST', { action: 'getAdminUsers' });
+        } catch {}
+      }
+      const rawArr = Array.isArray(res)
+        ? res
+        : res?.success === true && Array.isArray(res?.data)
+        ? res.data
+        : null;
+
+      if (rawArr) {
+        const mapped = mapRawAdminUsers(rawArr);
+        try {
+          await saveAdminAccessConfig({ users: mapped });
+        } catch {}
+        return { success: true, data: mapped, source: 'sheet' };
+      }
+
+      const isOutdated =
+        res?.message === 'الإجراء المطلوب غير معروف' ||
+        (res && typeof res === 'object' && ('profile' in res || 'header' in res));
+      if (isOutdated) {
+        const fsCfg = await getAdminAccessConfig();
+        return {
+          success: false,
+          data: fsCfg.users || [],
+          source: 'firestore',
+          message:
+            'كود Apps Script المنشور على الشيت قديم ولا يحتوي على دوال ورقة (أدمن)! حدّث الكود من تبويب الإعدادات ⚙️ ثم انشر إصداراً جديداً.',
+        };
+      }
+    } catch (err: any) {
+      console.warn('fetchAdminUsersFromSheet error:', err);
+    }
+  }
+
+  const fsCfg = await getAdminAccessConfig();
+  return { success: true, data: fsCfg.users || [], source: 'firestore' };
+}
+
+export async function saveAdminUsersToSheet(
+  users: AdminSheetUser[],
+  flags?: Partial<Pick<AdminAccessConfig, 'requireHomeLogin' | 'requireAdminLogin'>>
+): Promise<{ success: boolean; sheetSynced: boolean; message: string }> {
+  const sanitized = mapRawAdminUsers(users);
+  await saveAdminAccessConfig({
+    users: sanitized,
+    ...(flags || {}),
+  });
+
+  if (!isApiConfigured()) {
+    return {
+      success: true,
+      sheetSynced: false,
+      message: 'تم الحفظ في النظام، ولم يتم تكوين رابط Google Sheets بعد.',
+    };
+  }
+
+  try {
+    const res = await fetchGas({ action: 'saveAdminUsers' }, 'POST', {
+      action: 'saveAdminUsers',
+      users: sanitized,
+    });
+    if (res && res.success === true) {
+      return {
+        success: true,
+        sheetSynced: true,
+        message: res.message || `تم حفظ ومزامنة ${sanitized.length} حساب في ورقة (أدمن) والنظام بنجاح ✅`,
+      };
+    }
+    const isOutdated =
+      !res ||
+      res.message === 'الإجراء المطلوب غير معروف' ||
+      ('profile' in res && res.success !== true);
+    return {
+      success: true,
+      sheetSynced: false,
+      message: isOutdated
+        ? 'تم الحفظ في النظام ⚡، لكن كود Apps Script في الشيت قديم! حدّث الكود من تبويب الإعدادات للمزامنة التلقائية مع ورقة (أدمن).'
+        : (res?.message || 'تم الحفظ في النظام وتعذر التحديث في الشيت'),
+    };
+  } catch (err: any) {
+    return {
+      success: true,
+      sheetSynced: false,
+      message: `تم الحفظ في النظام، وتعذر الوصول للشيت: ${err?.message || ''}`,
+    };
+  }
+}
+
+export function matchAdminUserFromList(
+  users: AdminSheetUser[],
+  name: string,
+  number: string,
+  target: 'home' | 'admin'
+): { success: boolean; user?: AdminSheetUser; message?: string } {
+  const cleanName = normalizeArabicText(name);
+  const cleanNum = normalizeDigitString(number);
+
+  const matched = users.find(
+    (u) =>
+      normalizeArabicText(u.name) === cleanName &&
+      normalizeDigitString(u.number) === cleanNum
+  );
+
+  if (!matched) {
+    return {
+      success: false,
+      message: 'الاسم أو الرقم غير صحيح! يرجى التأكد من البيانات في ورقة (أدمن).',
+    };
+  }
+
+  if (matched.status === 'لا') {
+    return {
+      success: false,
+      message: 'تم إيقاف هذا الحساب من قبل الإدارة (الحالة: لا).',
+    };
+  }
+
+  if (target === 'home' && matched.allowHome !== 'نعم') {
+    return {
+      success: false,
+      message: 'هذا الحساب غير مصرح له بالدخول إلى الصفحة الرئيسية.',
+    };
+  }
+
+  if (target === 'admin' && matched.allowAdmin !== 'نعم') {
+    return {
+      success: false,
+      message: 'هذا الحساب لا يملك صلاحية الدخول إلى لوحة التحكم المركزية.',
+    };
+  }
+
+  return { success: true, user: matched };
+}
+
+export async function verifyAdminCredentials(
+  name: string,
+  number: string,
+  target: 'home' | 'admin'
+): Promise<{
+  success: boolean;
+  user?: AdminSheetUser;
+  message?: string;
+  source?: 'sheet' | 'firestore' | 'bootstrap';
+}> {
+  const rawName = (name || '').trim();
+  const rawNum = normalizeDigitString(number || '');
+
+  if (!rawName || !rawNum) {
+    return { success: false, message: 'يرجى إدخال الاسم والرقم معاً.' };
+  }
+
+  // 1. Try Google Sheets (أدمن) directly via GAS if configured
+  if (isApiConfigured()) {
+    try {
+      const gasRes = await fetchGas(
+        {
+          action: 'verifyAdminUser',
+          name: rawName,
+          number: rawNum,
+          target,
+        },
+        'POST',
+        {
+          action: 'verifyAdminUser',
+          name: rawName,
+          number: rawNum,
+          target,
+        }
+      );
+
+      if (gasRes && typeof gasRes.success === 'boolean') {
+        const isOutdatedOrMissing =
+          gasRes.sheetMissing === true ||
+          gasRes.sheetEmpty === true ||
+          gasRes.message === 'الإجراء المطلوب غير معروف';
+
+        if (!isOutdatedOrMissing) {
+          if (gasRes.success && gasRes.user) {
+            const mappedUser = mapRawAdminUsers([gasRes.user])[0];
+            // Quietly refresh Firestore cache with latest sheet users
+            fetchAdminUsersFromSheet().catch(() => {});
+            return { success: true, user: mappedUser, source: 'sheet' };
+          }
+          return {
+            success: false,
+            message: gasRes.message || 'الاسم أو الرقم غير صحيح!',
+            source: 'sheet',
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('verifyAdminUser GAS check failed, checking Firestore fallback:', err);
+    }
+  }
+
+  // 2. Check Firestore synced registry
+  const fsCfg = await getAdminAccessConfig();
+  if (fsCfg.users && fsCfg.users.length > 0) {
+    const check = matchAdminUserFromList(fsCfg.users, rawName, rawNum, target);
+    return { ...check, source: 'firestore' };
+  }
+
+  // 3. Initial bootstrap fallback ONLY when neither Sheet nor Firestore has configured users yet
+  const normName = normalizeArabicText(rawName);
+  const bootstrapHomeAccounts = [
+    { name: 'المدير', number: '3344', allowHome: 'نعم' as const, allowAdmin: 'نعم' as const },
+    { name: 'المعلم', number: '1122', allowHome: 'نعم' as const, allowAdmin: 'لا' as const },
+    { name: 'admin', number: '3344', allowHome: 'نعم' as const, allowAdmin: 'نعم' as const },
+    { name: 'teacher', number: '1122', allowHome: 'نعم' as const, allowAdmin: 'لا' as const },
+  ];
+
+  const foundBootstrap = bootstrapHomeAccounts.find(
+    (b) => normalizeArabicText(b.name) === normName && b.number === rawNum
+  );
+
+  if (foundBootstrap) {
+    if (target === 'admin' && foundBootstrap.allowAdmin !== 'نعم') {
+      return {
+        success: false,
+        message: 'هذا الحساب الافتراضي مخصص للصفحة الرئيسية فقط. للدخول للوحة التحكم استخدم حساب المدير (3344).',
+        source: 'bootstrap',
+      };
+    }
+    return {
+      success: true,
+      user: {
+        id: 'bootstrap',
+        name: rawName,
+        number: rawNum,
+        allowHome: foundBootstrap.allowHome,
+        allowAdmin: foundBootstrap.allowAdmin,
+        status: 'نعم',
+        notes: 'دخول افتراضي مبدئي قبل تهيئة ورقة أدمن',
+      },
+      source: 'bootstrap',
+    };
+  }
+
+  return {
+    success: false,
+    message:
+      target === 'admin'
+        ? 'بيانات لوحة التحكم غير صحيحة! الافتراضي قبل تهيئة ورقة (أدمن): الاسم «المدير» والرقم «3344».'
+        : 'بيانات الصفحة الرئيسية غير صحيحة! الافتراضي قبل تهيئة ورقة (أدمن): الاسم «المعلم» والرقم «1122» أو «المدير» والرقم «3344».',
+    source: 'bootstrap',
+  };
+}
+

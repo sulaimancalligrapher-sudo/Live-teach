@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
 import { 
@@ -6,10 +6,11 @@ import {
   Sun, Moon, Users, 
   Copy, ArrowLeft, Monitor,
   Radio, LayoutGrid, Film, Power, QrCode, Link as LinkIcon,
-  X, Clock, CheckCircle2, Check, ListVideo,
-  BookOpen, Video, Captions
+  X, Clock, CheckCircle2, Check,
+  BookOpen, Video, Captions, MessageSquare, ExternalLink,
+  LogOut, KeyRound, Eye, EyeOff, Loader2, User, Hash, AlertCircle
 } from 'lucide-react';
-import { HeaderConfig, LiveLessonRow, LiveSessionState } from './types';
+import { HeaderConfig, LiveLessonRow, LiveSessionState, AdminSheetUser, AdminAccessConfig } from './types';
 import { 
   fetchHeaderConfig, 
   getWebAppUrl, 
@@ -18,11 +19,20 @@ import {
   subscribeToLiveSession,
   startLiveProgram,
   endLiveProgram,
-  toggleLiveAccessMode
+  toggleLiveAccessMode,
+  replyToStudentMessage,
+  deleteStudentMessage,
+  clearAllStudentMessages,
+  toggleShowChatInRoom,
+  sendTeacherBroadcastMessage,
+  verifyAdminCredentials,
+  subscribeToAdminAccessConfig,
+  matchAdminUserFromList,
+  defaultAdminAccessConfig,
+  fetchAdminUsersFromSheet
 } from './api';
 import { showAppConfirm } from './components/AppDialog';
 import AdminPanel from './components/AdminPanel';
-import AdminPasswordModal from './components/AdminPasswordModal';
 import LiveTeacherRoom from './components/LiveTeacherRoom';
 import LiveStudentView from './components/LiveStudentView';
 import LiveDirectDisplayRoom from './components/LiveDirectDisplayRoom';
@@ -36,6 +46,7 @@ import QuizManagerPanel from './components/QuizManagerPanel';
 import LiveClassManager from './components/LiveClassManager';
 import LiveDirectManager from './components/LiveDirectManager';
 import LiveCameraManager from './components/LiveCameraManager';
+import LiveChatModal from './components/LiveChatModal';
 import { useLanguage } from './translations';
 
 export default function App() {
@@ -63,19 +74,57 @@ export default function App() {
     return 'student';
   });
 
-  const [isAdminUnlocked, setIsAdminUnlocked] = useState(() => localStorage.getItem('isAdminUnlocked') === 'true');
-  const [adminName, setAdminName] = useState(() => localStorage.getItem('adminName') || 'الأستاذ المشرف');
+  // Separate Authentication States: Home Page vs Central Admin Panel (backed by ورقة أدمن + Firestore)
+  const [adminAccessConfig, setAdminAccessConfig] = useState<AdminAccessConfig>(defaultAdminAccessConfig);
+
+  const [homeAuthUser, setHomeAuthUser] = useState<AdminSheetUser | null>(() => {
+    try {
+      const raw = localStorage.getItem('homeAuthUser');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [homeInputName, setHomeInputName] = useState('');
+  const [homeInputNumber, setHomeInputNumber] = useState('');
+  const [homeShowNumber, setHomeShowNumber] = useState(false);
+  const [homeAuthError, setHomeAuthError] = useState<string | null>(null);
+  const [isVerifyingHome, setIsVerifyingHome] = useState(false);
+
+  const [adminAuthUser, setAdminAuthUser] = useState<AdminSheetUser | null>(() => {
+    try {
+      const raw = localStorage.getItem('adminAuthUser');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+  const isAdminUnlocked = Boolean(adminAuthUser) || adminAccessConfig.requireAdminLogin === false;
   const [adminInputName, setAdminInputName] = useState(() => localStorage.getItem('adminName') || '');
+  const [adminInputPassword, setAdminInputPassword] = useState('');
+  const [adminShowNumber, setAdminShowNumber] = useState(false);
+  const [isVerifyingAdmin, setIsVerifyingAdmin] = useState(false);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [showAdminPassModal, setShowAdminPassModal] = useState(false);
-  const [adminInputPassword, setAdminInputPassword] = useState('');
   const [adminPassError, setAdminPassError] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
 
   // Master Quick-Control Bar & Stackable Open Cards (ordered by opening)
-  type QuickPanelId = 'screen' | 'start' | 'login' | 'quiz' | 'video-questions' | 'live-direct' | 'pdf' | 'camera' | 'translation';
+  type QuickPanelId = 'screen' | 'start' | 'login' | 'video-questions' | 'live-direct' | 'quiz' | 'pdf' | 'camera' | 'translation' | 'chat';
   const [openPanels, setOpenPanels] = useState<QuickPanelId[]>([]);
   const [loginFilterView, setLoginFilterView] = useState<'live' | 'unanswered' | 'answers'>('live');
+
+  // Unread student chat notifications (highlights Chat button & shows top alert banner)
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [chatTopNotice, setChatTopNotice] = useState<{
+    visible: boolean;
+    count: number;
+    latestSender: string;
+    latestText: string;
+  }>({ visible: false, count: 0, latestSender: '', latestText: '' });
+  const lastSeenStudentMsgCountRef = useRef(0);
+  const openPanelsRef = useRef<QuickPanelId[]>([]);
+  openPanelsRef.current = openPanels;
 
   const toggleQuickPanel = (id: QuickPanelId) => {
     setOpenPanels((prev) =>
@@ -134,8 +183,99 @@ export default function App() {
     const unsub = subscribeToLiveSession((st) => {
       setLiveSession(st);
     });
-    return () => unsub();
+    const unsubAdmin = subscribeToAdminAccessConfig((cfg) => {
+      setAdminAccessConfig(cfg);
+    });
+    // Quietly sync ورقة أدمن from Google Sheet on load so Sheet edits apply immediately
+    fetchAdminUsersFromSheet().catch(() => {});
+
+    return () => {
+      unsub();
+      unsubAdmin();
+    };
   }, [webAppUrl, isConfigured]);
+
+  // Auto-revalidate cached Home/Admin sessions when ورقة أدمن user list updates
+  useEffect(() => {
+    if (!adminAccessConfig.users || adminAccessConfig.users.length === 0) return;
+
+    if (homeAuthUser) {
+      const checkHome = matchAdminUserFromList(
+        adminAccessConfig.users,
+        homeAuthUser.name,
+        homeAuthUser.number,
+        'home'
+      );
+      if (!checkHome.success) {
+        setHomeAuthUser(null);
+        localStorage.removeItem('homeAuthUser');
+      }
+    }
+
+    if (adminAuthUser) {
+      const checkAdmin = matchAdminUserFromList(
+        adminAccessConfig.users,
+        adminAuthUser.name,
+        adminAuthUser.number,
+        'admin'
+      );
+      if (!checkAdmin.success) {
+        setAdminAuthUser(null);
+        localStorage.removeItem('adminAuthUser');
+        setIsAdminPanelOpen(false);
+      }
+    }
+  }, [adminAccessConfig.users]);
+
+  // Open Admin gate automatically when routed via ?page=admin
+  useEffect(() => {
+    if (pageMode === 'admin') {
+      if (isAdminUnlocked) {
+        setIsAdminPanelOpen(true);
+      } else {
+        setShowAdminPassModal(true);
+      }
+    }
+  }, [pageMode, isAdminUnlocked]);
+
+  // Track incoming student chat messages -> highlight Chat button + show top notification banner
+  useEffect(() => {
+    const msgs = liveSession?.messages || [];
+    const studentMsgs = msgs.filter(
+      (m) => !m.senderName?.includes('الأستاذ') && !m.id?.startsWith('teach_')
+    );
+    const isChatOpen = openPanels.includes('chat');
+
+    if (studentMsgs.length < lastSeenStudentMsgCountRef.current) {
+      lastSeenStudentMsgCountRef.current = studentMsgs.length;
+      if (studentMsgs.length === 0) {
+        setUnreadChatCount(0);
+        setChatTopNotice((prev) => ({ ...prev, visible: false, count: 0 }));
+      }
+      return;
+    }
+
+    if (isChatOpen) {
+      lastSeenStudentMsgCountRef.current = studentMsgs.length;
+      setUnreadChatCount(0);
+      setChatTopNotice((prev) => (prev.visible ? { ...prev, visible: false, count: 0 } : prev));
+      return;
+    }
+
+    if (studentMsgs.length > lastSeenStudentMsgCountRef.current) {
+      const addedCount = studentMsgs.length - lastSeenStudentMsgCountRef.current;
+      const latest = studentMsgs[studentMsgs.length - 1];
+      lastSeenStudentMsgCountRef.current = studentMsgs.length;
+
+      setUnreadChatCount((prev) => prev + addedCount);
+      setChatTopNotice((prev) => ({
+        visible: true,
+        count: prev.visible ? prev.count + addedCount : addedCount,
+        latestSender: latest?.senderName || 'طالب',
+        latestText: latest?.text || 'أرسل رسالة أو تفاعلاً جديداً',
+      }));
+    }
+  }, [liveSession?.messages, openPanels]);
 
   // Generate QR code when modal opens OR when live PIN changes
   const effectivePin = liveSession?.sessionPin ? liveSession.sessionPin.trim() : '';
@@ -143,6 +283,10 @@ export default function App() {
     typeof window !== 'undefined'
       ? `${window.location.origin}/?page=live-student${effectivePin ? `&pin=${encodeURIComponent(effectivePin)}` : ''}`
       : '';
+  const chatStandaloneUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}${window.location.pathname}?mode=chat`
+      : '?mode=chat';
 
   useEffect(() => {
     if (!studentJoinUrl) return;
@@ -222,22 +366,68 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  const handleAdminUnlock = (e: React.FormEvent) => {
+  const handleHomeLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setHomeAuthError(null);
+    if (!homeInputName.trim() || !homeInputNumber.trim()) {
+      setHomeAuthError('يرجى إدخال الاسم والرقم للدخول.');
+      return;
+    }
+    setIsVerifyingHome(true);
+    try {
+      const res = await verifyAdminCredentials(homeInputName, homeInputNumber, 'home');
+      if (res.success && res.user) {
+        setHomeAuthUser(res.user);
+        localStorage.setItem('homeAuthUser', JSON.stringify(res.user));
+        setHomeInputNumber('');
+      } else {
+        setHomeAuthError(res.message || 'الاسم أو الرقم غير صحيح!');
+      }
+    } catch (err: any) {
+      setHomeAuthError(err?.message || 'تعذر التحقق من بيانات الدخول');
+    } finally {
+      setIsVerifyingHome(false);
+    }
+  };
+
+  const handleHomeLogout = () => {
+    setHomeAuthUser(null);
+    localStorage.removeItem('homeAuthUser');
+    setHomeAuthError(null);
+    setOpenPanels([]);
+  };
+
+  const handleAdminUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
     setAdminPassError(null);
-    const validCodes = ['1122', '3344', 'أستاذ2026', 'إدارة2026', 'teacher2026', 'admin2026'];
-    if (validCodes.includes(adminInputPassword.trim())) {
-      setIsAdminUnlocked(true);
-      localStorage.setItem('isAdminUnlocked', 'true');
-      const savedName = adminInputName.trim() || 'الأستاذ المشرف';
-      localStorage.setItem('adminName', savedName);
-      setAdminName(savedName);
-      setAdminInputPassword('');
-      setShowAdminPassModal(false);
-      setIsAdminPanelOpen(true);
-    } else {
-      setAdminPassError('رمز الدخول غير صحيح! الرمز الافتراضي: 1122 أو 3344');
+    if (!adminInputName.trim() || !adminInputPassword.trim()) {
+      setAdminPassError('يرجى إدخال الاسم والرقم الخاص بلوحة التحكم.');
+      return;
     }
+    setIsVerifyingAdmin(true);
+    try {
+      const res = await verifyAdminCredentials(adminInputName, adminInputPassword, 'admin');
+      if (res.success && res.user) {
+        setAdminAuthUser(res.user);
+        localStorage.setItem('adminAuthUser', JSON.stringify(res.user));
+        localStorage.setItem('adminName', res.user.name);
+        setAdminInputPassword('');
+        setShowAdminPassModal(false);
+        setIsAdminPanelOpen(true);
+      } else {
+        setAdminPassError(res.message || 'الاسم أو الرقم غير مصرح له بلوحة التحكم المركزية.');
+      }
+    } catch (err: any) {
+      setAdminPassError(err?.message || 'تعذر التحقق من صلاحية لوحة التحكم');
+    } finally {
+      setIsVerifyingAdmin(false);
+    }
+  };
+
+  const handleAdminLock = () => {
+    setAdminAuthUser(null);
+    localStorage.removeItem('adminAuthUser');
+    setIsAdminPanelOpen(false);
   };
 
   const handleSaveStudentProfile = (e: React.FormEvent) => {
@@ -375,24 +565,53 @@ export default function App() {
           </div>
 
           {/* Quick Controls */}
-          <div className="flex items-center gap-2">
-            
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Signed-in Home User Badge & Logout */}
+            {homeAuthUser && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-300 text-xs font-bold">
+                <User className="w-3.5 h-3.5 shrink-0" />
+                <span className="max-w-[120px] truncate">{homeAuthUser.name}</span>
+                {adminAccessConfig.requireHomeLogin !== false && (
+                  <button
+                    type="button"
+                    onClick={handleHomeLogout}
+                    title="تسجيل الخروج من الصفحة الرئيسية"
+                    className="p-1 rounded-lg hover:bg-rose-500/20 text-slate-400 hover:text-rose-500 transition cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Admin Access Button */}
             {isAdminUnlocked ? (
-              <button
-                onClick={() => setIsAdminPanelOpen(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/10 transition cursor-pointer"
-              >
-                <ShieldCheck className="w-4 h-4 text-slate-950" />
-                <span>لوحة التحكم المركزية</span>
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setIsAdminPanelOpen(true)}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/10 transition cursor-pointer"
+                >
+                  <ShieldCheck className="w-4 h-4 text-slate-950" />
+                  <span>لوحة التحكم المركزية</span>
+                </button>
+                {adminAuthUser && adminAccessConfig.requireAdminLogin !== false && (
+                  <button
+                    type="button"
+                    onClick={handleAdminLock}
+                    title="قفل لوحة التحكم المركزية"
+                    className="p-1.5 rounded-xl bg-slate-200/80 hover:bg-rose-500/20 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-rose-500 transition cursor-pointer"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             ) : (
               <button
                 onClick={() => setShowAdminPassModal(true)}
                 className="px-3 py-1.5 rounded-xl bg-slate-200/80 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
               >
                 <Lock className="w-3.5 h-3.5 text-amber-500" />
-                <span>دخول الإدارة / المعلم</span>
+                <span>دخول لوحة التحكم</span>
               </button>
             )}
 
@@ -409,7 +628,123 @@ export default function App() {
         </div>
       </header>
 
-      {/* ----------------- MAIN CONTENT ----------------- */}
+      {/* ----------------- HOME LOGIN GATE OR MAIN CONTENT ----------------- */}
+      {adminAccessConfig.requireHomeLogin !== false && !homeAuthUser ? (
+        <main className="flex-grow flex items-center justify-center px-4 py-10">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-full max-w-md bg-white dark:bg-slate-900 border border-amber-200/70 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl text-right space-y-5"
+          >
+            <div className="text-center space-y-2">
+              {headerConfig?.loginLogoUrl || headerConfig?.logoUrl ? (
+                <img
+                  src={headerConfig.loginLogoUrl || headerConfig.logoUrl}
+                  alt="Logo"
+                  className="w-16 h-16 rounded-2xl object-cover mx-auto shadow-md border border-amber-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                />
+              ) : (
+                <div className="w-14 h-14 rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center mx-auto">
+                  <KeyRound className="w-7 h-7" />
+                </div>
+              )}
+              <h2 className="text-xl font-black text-slate-900 dark:text-white">
+                تسجيل الدخول — الصفحة الرئيسية
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                أدخل الاسم والرقم الخاص بك المسجل في ورقة <span className="font-bold text-amber-600 dark:text-amber-400">«أدمن»</span> لفتح أدوات العرض والتحكم بالحصص.
+              </p>
+            </div>
+
+            <form onSubmit={handleHomeLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  الاسم:
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={homeInputName}
+                    onChange={(e) => setHomeInputName(e.target.value)}
+                    placeholder="أدخل الاسم المسجل..."
+                    className="w-full pr-10 pl-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                  />
+                  <User className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  الرقم:
+                </label>
+                <div className="relative">
+                  <input
+                    type={homeShowNumber ? 'text' : 'password'}
+                    required
+                    value={homeInputNumber}
+                    onChange={(e) => setHomeInputNumber(e.target.value)}
+                    placeholder="أدخل الرقم السري..."
+                    className="w-full pr-10 pl-10 py-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-center font-mono text-base font-bold tracking-widest text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                  />
+                  <Hash className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+                  <button
+                    type="button"
+                    onClick={() => setHomeShowNumber((v) => !v)}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    {homeShowNumber ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {homeAuthError && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{homeAuthError}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isVerifyingHome}
+                className="w-full py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition cursor-pointer disabled:opacity-60"
+              >
+                {isVerifyingHome ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>جاري التحقق من ورقة «أدمن»...</span>
+                  </>
+                ) : (
+                  <>
+                    <KeyRound className="w-4 h-4" />
+                    <span>دخول الصفحة الرئيسية</span>
+                  </>
+                )}
+              </button>
+            </form>
+
+            {(!adminAccessConfig.users || adminAccessConfig.users.length === 0) && (
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                الدخول المبدئي قبل تهيئة ورقة <b className="text-amber-600 dark:text-amber-400">أدمن</b>:
+                الاسم <span className="font-mono font-bold text-slate-800 dark:text-slate-200">المعلم</span> والرقم <span className="font-mono font-bold text-slate-800 dark:text-slate-200">1122</span> (أو المدير / 3344).
+              </div>
+            )}
+
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-center">
+              <button
+                type="button"
+                onClick={() => setShowAdminPassModal(true)}
+                className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>دخول لوحة التحكم المركزية مباشرة</span>
+              </button>
+            </div>
+          </motion.div>
+        </main>
+      ) : (
       <main className="flex-grow max-w-5xl mx-auto w-full px-4 py-6 sm:py-8 space-y-4">
         {(() => {
           const connectedList = liveSession?.connectedStudents || [];
@@ -436,6 +771,7 @@ export default function App() {
             label: string;
             renderIcon: (isOpen: boolean) => React.ReactNode;
             activeClass: string;
+            inactiveOverrideClass?: string;
             badge?: React.ReactNode;
           }> = [
             {
@@ -459,7 +795,7 @@ export default function App() {
             },
             {
               id: 'login',
-              label: 'تسجيل الدخول',
+              label: 'تسجيل',
               renderIcon: (isOpen) => <Users className={`w-4 h-4 ${isOpen ? 'text-white' : 'text-blue-500'}`} />,
               activeClass: 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-600/20',
               badge: (
@@ -469,18 +805,9 @@ export default function App() {
               ),
             },
             {
-              id: 'quiz',
-              label: 'تحدي الكويز',
-              renderIcon: (isOpen) => <Trophy className={`w-4 h-4 ${isOpen ? 'text-white' : 'text-purple-500'}`} />,
-              activeClass: 'bg-purple-600 text-white border-purple-500 shadow-md shadow-purple-600/20',
-              badge: isQuizLiveActive ? (
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              ) : undefined,
-            },
-            {
               id: 'video-questions',
-              label: 'أسئلة الفيديو',
-              renderIcon: (isOpen) => <ListVideo className={`w-4 h-4 ${isOpen ? 'text-slate-950' : 'text-orange-500'}`} />,
+              label: 'فيديو',
+              renderIcon: (isOpen) => <Film className={`w-4 h-4 ${isOpen ? 'text-slate-950' : 'text-orange-500'}`} />,
               activeClass: 'bg-orange-500 text-slate-950 border-orange-400 shadow-md shadow-orange-500/20',
               badge: isVideoQuestionActive ? (
                 <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
@@ -488,11 +815,20 @@ export default function App() {
             },
             {
               id: 'live-direct',
-              label: 'البث المباشر',
+              label: 'البث',
               renderIcon: (isOpen) => <Radio className={`w-4 h-4 ${isOpen ? 'text-white' : 'text-rose-500'}`} />,
               activeClass: 'bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-600/20',
               badge: liveSession?.mode === 'direct' && isVideoQuestionActive ? (
                 <span className="w-2 h-2 rounded-full bg-amber-300 animate-ping" />
+              ) : undefined,
+            },
+            {
+              id: 'quiz',
+              label: 'تحدي',
+              renderIcon: (isOpen) => <Trophy className={`w-4 h-4 ${isOpen ? 'text-white' : 'text-purple-500'}`} />,
+              activeClass: 'bg-purple-600 text-white border-purple-500 shadow-md shadow-purple-600/20',
+              badge: isQuizLiveActive ? (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
               ) : undefined,
             },
             {
@@ -516,20 +852,118 @@ export default function App() {
             {
               id: 'translation',
               label: 'الترجمة',
-              renderIcon: (isOpen) => <Captions className={`w-4 h-4 ${isOpen ? 'text-slate-950' : 'text-indigo-500'}`} />,
+              renderIcon: (isOpen) => <Captions className={`w-4 h-4 ${isOpen ? 'text-white' : 'text-indigo-500'}`} />,
               activeClass: 'bg-indigo-500 text-white border-indigo-400 shadow-md shadow-indigo-500/20',
               badge: isSubtitlesShown ? (
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               ) : undefined,
             },
+            {
+              id: 'chat',
+              label: 'المحادثة',
+              renderIcon: (isOpen) => (
+                <MessageSquare
+                  className={`w-4 h-4 ${
+                    isOpen || unreadChatCount > 0 ? 'text-white' : 'text-pink-500'
+                  }`}
+                />
+              ),
+              activeClass: 'bg-pink-600 text-white border-pink-500 shadow-md shadow-pink-600/20',
+              inactiveOverrideClass:
+                unreadChatCount > 0
+                  ? 'bg-gradient-to-r from-rose-600 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-white border-rose-400 shadow-lg shadow-rose-500/30 animate-pulse'
+                  : undefined,
+              badge:
+                unreadChatCount > 0 ? (
+                  <span className="px-1.5 py-0.5 rounded-full bg-white text-rose-600 font-mono text-[10px] font-black shadow-sm">
+                    {unreadChatCount}
+                  </span>
+                ) : (liveSession?.messages || []).length > 0 ? (
+                  <span className="px-1.5 py-0.5 rounded-md bg-black/15 dark:bg-white/10 font-mono text-[10px] font-black">
+                    {(liveSession?.messages || []).length}
+                  </span>
+                ) : undefined,
+            },
           ];
 
           return (
             <>
+              {/* ========== TOP CHAT NOTIFICATION BANNER ABOVE HOME PAGE ========== */}
+              <AnimatePresence>
+                {chatTopNotice.visible && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -12 }}
+                    className="rounded-2xl bg-gradient-to-r from-rose-600 via-pink-600 to-amber-500 p-[1px] shadow-xl shadow-rose-500/20"
+                  >
+                    <div className="rounded-2xl bg-slate-950/95 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-slate-100">
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="w-9 h-9 rounded-xl bg-rose-500/20 border border-rose-400/40 text-rose-400 flex items-center justify-center shrink-0">
+                          <MessageSquare className="w-4 h-4 animate-bounce" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-black text-amber-300">
+                              {chatTopNotice.count > 1
+                                ? `رسائل جديدة من الطلاب (${chatTopNotice.count})`
+                                : 'رسالة جديدة من طالب'}
+                            </span>
+                            <span className="text-xs font-bold text-white">
+                              • {chatTopNotice.latestSender}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-300 truncate mt-0.5">
+                            {chatTopNotice.latestText}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!openPanels.includes('chat')) {
+                              toggleQuickPanel('chat');
+                            }
+                            setUnreadChatCount(0);
+                            setChatTopNotice((prev) => ({ ...prev, visible: false, count: 0 }));
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs cursor-pointer transition shadow-sm"
+                        >
+                          فتح المحادثة
+                        </button>
+                        <a
+                          href={chatStandaloneUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => {
+                            setUnreadChatCount(0);
+                            setChatTopNotice((prev) => ({ ...prev, visible: false, count: 0 }));
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs flex items-center gap-1 transition cursor-pointer"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+                          <span>رابط المحادثة</span>
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => setChatTopNotice((prev) => ({ ...prev, visible: false, count: 0 }))}
+                          title="إغلاق التنبيه"
+                          className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* ========== MASTER CARD: TOP QUICK-CONTROL BUTTON BAR ========== */}
               <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-3.5 sm:p-4">
                 <div className="flex flex-wrap items-center justify-between gap-2.5">
-                  <div className="flex flex-wrap items-center gap-2.5 flex-1">
+                  <div className="flex flex-wrap items-center gap-2 flex-1">
                     {mainButtons.map((btn) => {
                       const isOpen = openPanels.includes(btn.id);
                       return (
@@ -537,9 +971,11 @@ export default function App() {
                           key={btn.id}
                           type="button"
                           onClick={() => toggleQuickPanel(btn.id)}
-                          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 border transition-all cursor-pointer active:scale-[0.98] ${
+                          className={`px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 border transition-all cursor-pointer active:scale-[0.98] ${
                             isOpen
                               ? btn.activeClass
+                              : btn.inactiveOverrideClass
+                              ? btn.inactiveOverrideClass
                               : 'bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800'
                           }`}
                         >
@@ -614,7 +1050,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => {
-                            if (isAdminUnlocked) {
+                            if (homeAuthUser || isAdminUnlocked) {
                               navigateToPage('live-teacher');
                             } else {
                               setShowAdminPassModal(true);
@@ -676,7 +1112,7 @@ export default function App() {
                       </div>
 
                       <div className="p-4 flex flex-wrap items-center gap-2.5">
-                        {/* 1. Start / End + Access Mode Toggle + PIN + Copy PIN */}
+                        {/* 1. Start / End + PIN + Copy PIN */}
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <button
                             type="button"
@@ -690,38 +1126,6 @@ export default function App() {
                           >
                             <Power className={`w-3.5 h-3.5 ${isTogglingProgram ? 'animate-spin' : ''}`} />
                             <span>{isTogglingProgram ? 'جارٍ...' : isProgramRunning ? 'إنهاء' : 'ابدأ'}</span>
-                          </button>
-
-                          {/* Toggle Verification (تحقيق / إلغاء التحقق) */}
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const nextMode = liveSession?.accessMode === 'open' ? 'restricted' : 'open';
-                              setLiveSession((prev) => (prev ? { ...prev, accessMode: nextMode } : prev));
-                              await toggleLiveAccessMode(nextMode);
-                            }}
-                            className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition cursor-pointer active:scale-[0.98] border ${
-                              liveSession?.accessMode === 'open'
-                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400/50'
-                                : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-400'
-                            }`}
-                            title={
-                              liveSession?.accessMode === 'open'
-                                ? 'الدخول حالياً مفتوح للجميع بدون قيود. اضغط على "تحقيق" لتفعيل التحقق'
-                                : 'التحقق مفعل حالياً. اضغط على "إلغاء التحقق" لجعل الدخول مفتوحاً بدون قيود'
-                            }
-                          >
-                            {liveSession?.accessMode === 'open' ? (
-                              <>
-                                <Lock className="w-3.5 h-3.5" />
-                                <span>تحقيق 🔒</span>
-                              </>
-                            ) : (
-                              <>
-                                <Unlock className="w-3.5 h-3.5" />
-                                <span>إلغاء التحقق 🔓</span>
-                              </>
-                            )}
                           </button>
 
                           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-2.5 py-1.5 rounded-xl font-mono text-xs">
@@ -767,6 +1171,38 @@ export default function App() {
                         >
                           <QrCode className="w-3.5 h-3.5 text-amber-500" />
                           <span>رمز الدخول السريع (QR Code)</span>
+                        </button>
+
+                        {/* 4. Toggle Verification (تحقيق / إلغاء التحقق) after QR Code */}
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const nextMode = liveSession?.accessMode === 'open' ? 'restricted' : 'open';
+                            setLiveSession((prev) => (prev ? { ...prev, accessMode: nextMode } : prev));
+                            await toggleLiveAccessMode(nextMode);
+                          }}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition cursor-pointer active:scale-[0.98] border ${
+                            liveSession?.accessMode === 'open'
+                              ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400/50'
+                              : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-400'
+                          }`}
+                          title={
+                            liveSession?.accessMode === 'open'
+                              ? 'الدخول حالياً مفتوح للجميع بدون قيود. اضغط على "تحقيق" لتفعيل التحقق'
+                              : 'التحقق مفعل حالياً. اضغط على "إلغاء التحقق" لجعل الدخول مفتوحاً بدون قيود'
+                          }
+                        >
+                          {liveSession?.accessMode === 'open' ? (
+                            <>
+                              <Lock className="w-3.5 h-3.5" />
+                              <span>تحقيق 🔒</span>
+                            </>
+                          ) : (
+                            <>
+                              <Unlock className="w-3.5 h-3.5" />
+                              <span>إلغاء التحقق 🔓</span>
+                            </>
+                          )}
                         </button>
                       </div>
                     </section>
@@ -961,10 +1397,10 @@ export default function App() {
                       <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3 bg-slate-950/60">
                         <div className="flex items-center gap-2.5">
                           <div className="w-8 h-8 rounded-xl bg-orange-500/15 text-orange-400 flex items-center justify-center shrink-0">
-                            <ListVideo className="w-4 h-4" />
+                            <Film className="w-4 h-4" />
                           </div>
                           <span className="text-sm sm:text-base font-black text-white">
-                            أسئلة الفيديو
+                            فيديو
                           </span>
                         </div>
                         <button
@@ -996,7 +1432,7 @@ export default function App() {
                             <Radio className="w-4 h-4" />
                           </div>
                           <span className="text-sm sm:text-base font-black text-white">
-                            البث المباشر — قائمة الدروس وبنك الأسئلة المباشرة
+                            البث — قائمة الدروس وبنك الأسئلة المباشرة
                           </span>
                         </div>
                         <button
@@ -1080,7 +1516,7 @@ export default function App() {
                       </div>
 
                       <div className="p-4">
-                        <LiveCameraManager />
+                        <LiveCameraManager embeddedCompact={true} />
                       </div>
                     </section>
                   );
@@ -1118,12 +1554,99 @@ export default function App() {
                   );
                 }
 
+                if (panelId === 'chat') {
+                  return (
+                    <section
+                      key="chat"
+                      className="rounded-2xl bg-slate-900 border border-slate-800 shadow-lg overflow-hidden text-slate-100"
+                    >
+                      <div className="px-4 py-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2.5 bg-slate-950/60">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-pink-500/15 text-pink-400 flex items-center justify-center shrink-0">
+                            <MessageSquare className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm sm:text-base font-black text-white">
+                            المحادثة — التواصل المباشر مع الطلاب
+                          </span>
+                          <span className="px-2 py-0.5 rounded-lg bg-slate-800 text-slate-300 font-mono text-[11px] font-bold">
+                            {(liveSession?.messages || []).length}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <a
+                            href={chatStandaloneUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                            title="فتح صفحة المحادثة في نافذة مستقلة"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>فتح رابط المحادثة</span>
+                          </a>
+
+                          <button
+                            type="button"
+                            onClick={() => copyLink(chatStandaloneUrl, 'home-chat-link')}
+                            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                            title="نسخ رابط صفحة المحادثة"
+                          >
+                            {copiedLink === 'home-chat-link' ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5 text-slate-400" />
+                            )}
+                            <span>{copiedLink === 'home-chat-link' ? 'تم النسخ' : 'نسخ الرابط'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => closeQuickPanel('chat')}
+                            title="إغلاق"
+                            className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition cursor-pointer"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="p-3 sm:p-4">
+                        <LiveChatModal
+                          isOpen={true}
+                          embeddedInline={true}
+                          onClose={() => closeQuickPanel('chat')}
+                          messages={liveSession?.messages || []}
+                          connectedStudents={liveSession?.connectedStudents || []}
+                          isTeacher={true}
+                          showChatInRoom={Boolean(liveSession?.showChatInRoom)}
+                          onToggleShowInRoom={async (show) => {
+                            await toggleShowChatInRoom(show);
+                          }}
+                          onReply={async (messageId, replyText, replyType) => {
+                            await replyToStudentMessage(messageId, replyText, replyType);
+                          }}
+                          onDeleteMessage={async (messageId) => {
+                            await deleteStudentMessage(messageId);
+                          }}
+                          onClearAll={async () => {
+                            await clearAllStudentMessages();
+                          }}
+                          onSendTeacherBroadcast={async (text, recipientStudent, recipientSheet) => {
+                            await sendTeacherBroadcastMessage({ text, recipientStudent, recipientSheet });
+                          }}
+                        />
+                      </div>
+                    </section>
+                  );
+                }
+
                 return null;
               })}
             </>
           );
         })()}
       </main>
+      )}
 
       {/* ----------------- MODAL: QUICK ENTRY QR CODE ----------------- */}
       <AnimatePresence>
@@ -1235,7 +1758,7 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {/* ----------------- MODAL: ADMIN PASSWORD ----------------- */}
+      {/* ----------------- MODAL: ADMIN ACCESS LOGIN (الاسم والرقم من ورقة أدمن) ----------------- */}
       <AnimatePresence>
         {showAdminPassModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
@@ -1246,54 +1769,81 @@ export default function App() {
               className="w-full max-w-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-2xl text-right"
             >
               <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-500 flex items-center justify-center mb-3">
-                <Lock className="w-6 h-6" />
+                <ShieldCheck className="w-6 h-6" />
               </div>
 
               <h3 className="text-base font-black text-slate-900 dark:text-white mb-1">
-                تسجيل دخول الإدارة والمعلم
+                تسجيل الدخول — لوحة التحكم المركزية
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-                أدخل رمز المرور الإداري (الرمز الافتراضي: <span className="font-mono font-bold text-amber-500">1122</span> أو <span className="font-mono font-bold text-amber-500">3344</span>)
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
+                أدخل الاسم والرقم المصرح لهما بدخول لوحة التحكم من ورقة <span className="font-bold text-amber-500">«أدمن»</span>.
               </p>
 
               <form onSubmit={handleAdminUnlock} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    اسم المعلم / الإداري:
+                    الاسم:
                   </label>
                   <input
                     type="text"
+                    required
+                    autoFocus
                     value={adminInputName}
                     onChange={(e) => setAdminInputName(e.target.value)}
-                    placeholder="مثال: أستاذ أحمد..."
-                    className="w-full px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-right text-xs focus:outline-none focus:border-amber-500"
+                    placeholder="مثال: المدير"
+                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-right text-sm font-bold focus:outline-none focus:border-amber-500"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    رمز المرور الإداري:
+                    الرقم:
                   </label>
-                  <input
-                    type="password"
-                    autoFocus
-                    required
-                    value={adminInputPassword}
-                    onChange={(e) => setAdminInputPassword(e.target.value)}
-                    placeholder="رمز المرور الإداري..."
-                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-center font-mono text-base focus:outline-none focus:border-amber-500"
-                  />
+                  <div className="relative">
+                    <input
+                      type={adminShowNumber ? 'text' : 'password'}
+                      required
+                      value={adminInputPassword}
+                      onChange={(e) => setAdminInputPassword(e.target.value)}
+                      placeholder="••••"
+                      className="w-full px-10 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-center font-mono text-base font-bold tracking-widest focus:outline-none focus:border-amber-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setAdminShowNumber((v) => !v)}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                    >
+                      {adminShowNumber ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
                   {adminPassError && (
-                    <p className="text-xs text-rose-500 font-bold mt-1.5">{adminPassError}</p>
+                    <p className="text-xs text-rose-500 font-bold mt-2 flex items-center gap-1.5">
+                      <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>{adminPassError}</span>
+                    </p>
                   )}
                 </div>
+
+                {(!adminAccessConfig.users || adminAccessConfig.users.length === 0) && (
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800">
+                    الدخول المبدئي قبل تهيئة ورقة أدمن: الاسم <span className="font-mono font-bold text-amber-500">المدير</span> والرقم <span className="font-mono font-bold text-amber-500">3344</span>
+                  </p>
+                )}
 
                 <div className="flex items-center gap-2">
                   <button
                     type="submit"
-                    className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition cursor-pointer"
+                    disabled={isVerifyingAdmin}
+                    className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-60"
                   >
-                    دخول
+                    {isVerifyingAdmin ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>جاري التحقق...</span>
+                      </>
+                    ) : (
+                      <span>دخول لوحة التحكم</span>
+                    )}
                   </button>
                   <button
                     type="button"
@@ -1317,6 +1867,8 @@ export default function App() {
       <AnimatePresence>
         {isAdminPanelOpen && (
           <AdminPanel
+            adminUserName={adminAuthUser?.name}
+            onLockAdmin={adminAuthUser ? handleAdminLock : undefined}
             onClose={() => setIsAdminPanelOpen(false)}
             onStartTeacherTheater={(lesson) => {
               setActiveLiveLesson(lesson);

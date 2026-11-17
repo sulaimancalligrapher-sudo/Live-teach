@@ -25,6 +25,7 @@ interface LiveChatModalProps {
   connectedStudents?: LiveConnectedStudent[]; // Connected students list for teacher to message individually
   onSendStudentMessage?: (type: 'question' | 'hand' | 'agree' | 'disagree' | 'clap', text?: string) => Promise<void>;
   onSendTeacherBroadcast?: (text: string, recipientStudent?: string, recipientSheet?: string) => Promise<void>;
+  embeddedInline?: boolean;
 }
 
 const COMMON_EMOJIS = ['😊', '👏', '👍', '🌟', '🎯', '💯', '✨', ' ممتاز!', 'بارك الله فيك', 'أحسنت', 'أعد التفكير', 'سؤال رائع 💡'];
@@ -44,6 +45,7 @@ export default function LiveChatModal({
   connectedStudents = [],
   onSendStudentMessage,
   onSendTeacherBroadcast,
+  embeddedInline = false,
 }: LiveChatModalProps) {
   const { t } = useLanguage();
   const [selectedMessage, setSelectedMessage] = useState<LiveStudentMessage | null>(null);
@@ -247,12 +249,16 @@ export default function LiveChatModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+    <div className={embeddedInline ? 'w-full' : 'fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200'}>
       <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        initial={embeddedInline ? false : { opacity: 0, scale: 0.95, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 10 }}
-        className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden"
+        exit={embeddedInline ? undefined : { opacity: 0, scale: 0.95, y: 10 }}
+        className={
+          embeddedInline
+            ? 'w-full bg-slate-950/70 border border-slate-800 rounded-2xl flex flex-col max-h-[600px] overflow-hidden'
+            : 'w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden'
+        }
         dir="rtl"
       >
         {/* Header */}
@@ -316,13 +322,15 @@ export default function LiveChatModal({
             )}
 
             {/* Close Button */}
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-750 transition-all cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            {!embeddedInline && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 text-slate-400 hover:text-white rounded-xl bg-slate-800 hover:bg-slate-750 transition-all cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
           </div>
         </div>
 

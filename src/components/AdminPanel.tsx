@@ -5,7 +5,7 @@ import {
   ExternalLink, Copy, CheckCircle2, ShieldCheck, 
   Sparkles, KeyRound, Globe, Users, ArrowUpRight, 
   FileSpreadsheet, Play, QrCode, Sliders, Palette, Square,
-  Video, Radio, MessageSquare, Bell, Camera, Captions
+  Video, Radio, MessageSquare, Bell, Camera, Captions, Lock
 } from 'lucide-react';
 import { LiveLessonRow, HeaderConfig } from '../types';
 import LiveClassManager from './LiveClassManager';
@@ -14,6 +14,7 @@ import LiveCameraManager from './LiveCameraManager';
 import QuizManagerPanel from './QuizManagerPanel';
 import SettingsPanel from './SettingsPanel';
 import ScriptPrompterPanel from './ScriptPrompterPanel';
+import AdminAccessManagerPanel from './AdminAccessManagerPanel';
 import { 
   getLiveSessionState, 
   updateLivePin, 
@@ -25,6 +26,7 @@ import {
   setupQuizDirectSheetsApi,
   setupPdfLessonsSheetApi,
   setupLiveSubtitlesSheetApi,
+  setupAdminSheetApi,
   stopAllActiveBroadcasts,
   subscribeToLiveSession
 } from '../api';
@@ -33,6 +35,8 @@ import TranslationEditor from './TranslationEditor';
 
 interface AdminPanelProps {
   onClose: () => void;
+  onLockAdmin?: () => void;
+  adminUserName?: string;
   onStartTeacherTheater?: (lesson: LiveLessonRow) => void;
   onOpenLiveDirectDisplay?: () => void;
   onOpenQuizArenaDisplay?: () => void;
@@ -42,6 +46,8 @@ interface AdminPanelProps {
 
 export default function AdminPanel({ 
   onClose, 
+  onLockAdmin,
+  adminUserName,
   onStartTeacherTheater, 
   onOpenLiveDirectDisplay,
   onOpenQuizArenaDisplay,
@@ -58,6 +64,7 @@ export default function AdminPanel({
   const [settingUpQuizSheets, setSettingUpQuizSheets] = useState(false);
   const [settingUpPdfSheets, setSettingUpPdfSheets] = useState(false);
   const [settingUpSubtitlesSheet, setSettingUpSubtitlesSheet] = useState(false);
+  const [settingUpAdminSheet, setSettingUpAdminSheet] = useState(false);
   const [isStreamActive, setIsStreamActive] = useState(false);
 
   const [allLiveLessons, setAllLiveLessons] = useState<LiveLessonRow[]>([]);
@@ -211,6 +218,22 @@ export default function AdminPanel({
     }
   };
 
+  const handleSetupAdminSheet = async () => {
+    setSettingUpAdminSheet(true);
+    try {
+      const res = await setupAdminSheetApi();
+      if (res.success) {
+        setNotice({ text: res.message || 'تمت تهيئة ورقة (أدمن) في الشيت بنجاح! 🔐', type: 'success' });
+      } else {
+        setNotice({ text: res.message || 'فشلت التهيئة، تأكد من تحديث كود Apps Script وربط الشيت', type: 'error' });
+      }
+    } catch (e: any) {
+      setNotice({ text: e.message || 'حدث خطأ أثناء التهيئة', type: 'error' });
+    } finally {
+      setSettingUpAdminSheet(false);
+    }
+  };
+
   const handleStopAllBroadcasts = async () => {
     const ok = await showAppConfirm(
       'هل تريد إيقاف وتصفير كافة البثوث المباشرة وإعادتها لحالة الخمول؟',
@@ -259,7 +282,24 @@ export default function AdminPanel({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            {adminUserName && (
+              <span className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 text-amber-300 border border-slate-700 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
+                <span>{adminUserName}</span>
+              </span>
+            )}
+            {onLockAdmin && (
+              <button
+                type="button"
+                onClick={onLockAdmin}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-800 hover:bg-rose-500/20 text-slate-300 hover:text-rose-300 border border-slate-700 hover:border-rose-500/40 flex items-center gap-1.5 transition cursor-pointer"
+                title="قفل وتسجيل الخروج من لوحة التحكم"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>قفل اللوحة</span>
+              </button>
+            )}
             {isStreamActive && (
               <button
                 type="button"
@@ -655,7 +695,7 @@ export default function AdminPanel({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {/* Live Classroom Sheet Info */}
                   <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-700">
                     <div className="flex items-center justify-between mb-2">
@@ -756,8 +796,35 @@ export default function AdminPanel({
                       {settingUpSubtitlesSheet ? 'جارٍ التهيئة...' : 'إنشاء وتهيئة ورقة الترجمة بالشيت'}
                     </button>
                   </div>
+
+                  {/* Admin Access Sheet Info */}
+                  <div className="p-4 rounded-2xl bg-slate-900/90 border border-rose-500/40 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-bold text-amber-400 text-sm">صلاحيات الدخول والأدمن</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-mono">أدمن</span>
+                      </div>
+                      <p className="text-xs text-slate-400 mb-3">
+                        متصل بورقة: <br />
+                        • <b>أدمن</b>: الاسم والرقم وصلاحية الدخول للصفحة الرئيسية ولوحة التحكم المركزية
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleSetupAdminSheet}
+                      disabled={settingUpAdminSheet}
+                      className="w-full py-2 rounded-xl bg-rose-500/25 hover:bg-rose-500 text-rose-200 hover:text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Sparkles className={`w-3.5 h-3.5 ${settingUpAdminSheet ? 'animate-spin' : ''}`} />
+                      {settingUpAdminSheet ? 'جارٍ التهيئة...' : 'إنشاء وتهيئة ورقة «أدمن» بالشيت'}
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              {/* Admin & Home Access Permissions Table & Sync */}
+              <AdminAccessManagerPanel
+                onNotice={(text, type) => setNotice({ text, type })}
+              />
 
               {/* Advanced Settings & Header Customization */}
               <div className="bg-slate-800/60 border border-slate-700 rounded-3xl p-6">

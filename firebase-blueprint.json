@@ -27,6 +27,15 @@
         "lines": { "type": "array" },
         "updatedAt": { "type": "number" }
       }
+    },
+    "AdminAccessRegistry": {
+      "collection": "live_sessions",
+      "fields": {
+        "requireHomeLogin": { "type": "boolean" },
+        "requireAdminLogin": { "type": "boolean" },
+        "users": { "type": "array" },
+        "updatedAt": { "type": "number" }
+      }
     }
   }
 }

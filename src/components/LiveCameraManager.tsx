@@ -17,9 +17,10 @@ import {
 
 interface LiveCameraManagerProps {
   onClose?: () => void;
+  embeddedCompact?: boolean;
 }
 
-export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
+export default function LiveCameraManager({ onClose, embeddedCompact = false }: LiveCameraManagerProps) {
   const [sessionState, setSessionState] = useState<LiveSessionState | null>(null);
   const [streamConfig, setStreamConfig] = useState<LiveStreamConfig>(defaultLiveStreamConfig);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -309,9 +310,11 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
                   </span>
                 )}
               </div>
-              <p className="text-xs sm:text-sm text-slate-400 mt-1">
-                بث فيديو وشاشة المعلم أو صوت مباشر فائق السرعة للطلاب بنقرة واحدة عبر تقنية WebRTC السحابية.
-              </p>
+              {!embeddedCompact && (
+                <p className="text-xs sm:text-sm text-slate-400 mt-1">
+                  بث فيديو وشاشة المعلم أو صوت مباشر فائق السرعة للطلاب بنقرة واحدة عبر تقنية WebRTC السحابية.
+                </p>
+              )}
             </div>
           </div>
 
@@ -420,6 +423,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
           </div>
 
           {/* Live Subtitles / Closed Captions Switch */}
+          {!embeddedCompact && (
           <div className="pt-2 border-t border-slate-800/60 space-y-2.5">
             <div className="flex items-center justify-between">
               <div>
@@ -514,6 +518,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
               </div>
             )}
           </div>
+          )}
         </div>
 
         {/* Card 2: Stream Security & Keys */}
@@ -594,51 +599,55 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
 
       {/* Broadcast Launch Options: Browser vs OBS Studio */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-xl space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
-          <div className="flex items-center gap-2">
-            <Radio className="w-5 h-5 text-amber-400 animate-pulse" />
-            <h3 className="text-base font-black text-white">طريقة بث المعلم (اختر ما يناسبك)</h3>
-          </div>
+        {!embeddedCompact && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+            <div className="flex items-center gap-2">
+              <Radio className="w-5 h-5 text-amber-400 animate-pulse" />
+              <h3 className="text-base font-black text-white">طريقة بث المعلم (اختر ما يناسبك)</h3>
+            </div>
 
-          {/* Method selector toggle */}
-          <div className="flex items-center bg-slate-950 p-1 rounded-2xl border border-slate-800">
-            <button
-              type="button"
-              onClick={() => setActiveBroadcastMethod('browser')}
-              className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                activeBroadcastMethod === 'browser'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              بث مباشر من المتصفح 🚀
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveBroadcastMethod('obs')}
-              className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                activeBroadcastMethod === 'obs'
-                  ? 'bg-amber-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              برنامج خارجي (OBS Studio) 📡
-            </button>
+            {/* Method selector toggle */}
+            <div className="flex items-center bg-slate-950 p-1 rounded-2xl border border-slate-800">
+              <button
+                type="button"
+                onClick={() => setActiveBroadcastMethod('browser')}
+                className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  activeBroadcastMethod === 'browser'
+                    ? 'bg-amber-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                بث مباشر من المتصفح 🚀
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveBroadcastMethod('obs')}
+                className={`px-4 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  activeBroadcastMethod === 'obs'
+                    ? 'bg-amber-500 text-slate-950 shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                برنامج خارجي (OBS Studio) 📡
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* METHOD 1: Direct Browser Broadcast (In-Page or Pop-up) */}
-        {activeBroadcastMethod === 'browser' && (
+        {(embeddedCompact || activeBroadcastMethod === 'browser') && (
           <div className="space-y-4">
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 text-xs text-amber-200 leading-relaxed flex items-start gap-3">
-              <Sparkles className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold">البث المباشر بدون برامج:</span> يمكنك فتح كاميرا الحاسوب أو كاميرا الهاتف أو مشاركة شاشتك مباشرة بنقرة زر واحدة دون الحاجة لتثبيت أي برامج على جهازك!
-                <div className="mt-1 text-slate-300">
-                  💡 <b>تنبيه لتفادي تعارض البث:</b> يمكنك البث إما عبر <b>النافذة المنبثقة المستقلة</b> (الموصى بها) أو عبر <b>المعاينة المدمجة هنا</b>. اختر أحدهما فقط حتى لا يظهر لك تنبيه أن المعرف قيد الاستخدام.
+            {!embeddedCompact && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 text-xs text-amber-200 leading-relaxed flex items-start gap-3">
+                <Sparkles className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold">البث المباشر بدون برامج:</span> يمكنك فتح كاميرا الحاسوب أو كاميرا الهاتف أو مشاركة شاشتك مباشرة بنقرة زر واحدة دون الحاجة لتثبيت أي برامج على جهازك!
+                  <div className="mt-1 text-slate-300">
+                    💡 <b>تنبيه لتفادي تعارض البث:</b> يمكنك البث إما عبر <b>النافذة المنبثقة المستقلة</b> (الموصى بها) أو عبر <b>المعاينة المدمجة هنا</b>. اختر أحدهما فقط حتى لا يظهر لك تنبيه أن المعرف قيد الاستخدام.
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -700,7 +709,7 @@ export default function LiveCameraManager({ onClose }: LiveCameraManagerProps) {
         )}
 
         {/* METHOD 2: OBS Studio or External Mixer */}
-        {activeBroadcastMethod === 'obs' && (
+        {!embeddedCompact && activeBroadcastMethod === 'obs' && (
           <div className="space-y-4">
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300 leading-relaxed space-y-2">
               <div className="font-bold text-amber-400 flex items-center gap-1.5 text-sm">

@@ -71,15 +71,18 @@ interface QuizManagerPanelProps {
   sessionState?: LiveSessionState | null;
   onOpenArenaDisplay?: () => void;
   onOpenSettings?: () => void;
+  embeddedControlOnly?: boolean;
 }
 
 export default function QuizManagerPanel({
   sessionState,
   onOpenArenaDisplay,
   onOpenSettings,
+  embeddedControlOnly = false,
 }: QuizManagerPanelProps) {
   // Tabs: 'control' | 'questions' | 'answers'
   const [activeTab, setActiveTab] = useState<'control' | 'questions' | 'answers'>('control');
+  const effectiveTab = embeddedControlOnly ? 'control' : activeTab;
 
   // Real-time live session listener so panel always has live students and scores!
   const [internalLiveSessionState, setInternalLiveSessionState] = useState<LiveSessionState | null>(sessionState || null);
@@ -437,51 +440,53 @@ export default function QuizManagerPanel({
   });
 
   return (
-    <div className="w-full bg-slate-900 border border-slate-800 rounded-3xl p-4 md:p-6 space-y-6 shadow-2xl text-slate-100 font-sans select-none">
+    <div className={embeddedControlOnly ? 'w-full space-y-4 text-slate-100 font-sans select-none' : 'w-full bg-slate-900 border border-slate-800 rounded-3xl p-4 md:p-6 space-y-6 shadow-2xl text-slate-100 font-sans select-none'}>
       {/* Header bar */}
-      <div className="flex flex-col gap-3.5 pb-4 border-b border-slate-800">
-        {/* Row 1: Title Only */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 to-orange-500 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-amber-500/20 shrink-0">
-            <Trophy className="w-5 h-5 animate-pulse" />
+      {!embeddedControlOnly && (
+        <div className="flex flex-col gap-3.5 pb-4 border-b border-slate-800">
+          {/* Row 1: Title Only */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 to-orange-500 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-amber-500/20 shrink-0">
+              <Trophy className="w-5 h-5 animate-pulse" />
+            </div>
+            <h2 className="text-base sm:text-lg font-black text-slate-100 tracking-tight">
+              إدارة مسابقات كويز السريعة
+            </h2>
           </div>
-          <h2 className="text-base sm:text-lg font-black text-slate-100 tracking-tight">
-            إدارة مسابقات كويز السريعة
-          </h2>
-        </div>
 
-        {/* Row 2: Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
-          {onOpenArenaDisplay && (
+          {/* Row 2: Action Buttons */}
+          <div className="flex flex-wrap items-center gap-2">
+            {onOpenArenaDisplay && (
+              <button
+                onClick={onOpenArenaDisplay}
+                className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center gap-2 transition-all cursor-pointer"
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span>شاشة العرض الكبرى (Arena)</span>
+              </button>
+            )}
+
             <button
-              onClick={onOpenArenaDisplay}
-              className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center gap-2 transition-all cursor-pointer"
+              onClick={() => setIsScriptModalOpen(true)}
+              className="px-3.5 py-2.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 font-bold text-xs rounded-xl border border-purple-500/40 flex items-center gap-1.5 transition-all cursor-pointer"
+              title="عرض ونسخ كود Apps Script المحدث لربط ورقتي Questions-Qui و Answers-Qui"
             >
-              <ExternalLink className="w-4 h-4" />
-              <span>شاشة العرض الكبرى (Arena)</span>
+              <Copy className="w-4 h-4 text-purple-400" />
+              <span>كود Apps Script للشيت 📋</span>
             </button>
-          )}
 
-          <button
-            onClick={() => setIsScriptModalOpen(true)}
-            className="px-3.5 py-2.5 bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 font-bold text-xs rounded-xl border border-purple-500/40 flex items-center gap-1.5 transition-all cursor-pointer"
-            title="عرض ونسخ كود Apps Script المحدث لربط ورقتي Questions-Qui و Answers-Qui"
-          >
-            <Copy className="w-4 h-4 text-purple-400" />
-            <span>كود Apps Script للشيت 📋</span>
-          </button>
-
-          <button
-            onClick={handleSetupSheets}
-            disabled={isSettingUpSheets}
-            className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-            title="إنشاء وتهيئة ورقتي Questions-Qui و Answers-Qui في الشيت تلقائياً"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-            <span>{isSettingUpSheets ? 'جاري التهيئة...' : 'تهيئة الأوراق بالشيت ⚡'}</span>
-          </button>
+            <button
+              onClick={handleSetupSheets}
+              disabled={isSettingUpSheets}
+              className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+              title="إنشاء وتهيئة ورقتي Questions-Qui و Answers-Qui في الشيت تلقائياً"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+              <span>{isSettingUpSheets ? 'جاري التهيئة...' : 'تهيئة الأوراق بالشيت ⚡'}</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Notice Banner (Errors, Warnings, Unknown Action guidance) */}
       {noticeBanner && (
@@ -560,51 +565,53 @@ export default function QuizManagerPanel({
       )}
 
       {/* Sub-Tabs Navigation (1. التحكم | 2. الأسئلة | 3. الإجابات) */}
-      <div className="flex items-center gap-2 p-1.5 bg-slate-950/80 rounded-2xl border border-slate-800">
-        <button
-          onClick={() => setActiveTab('control')}
-          className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
-            activeTab === 'control'
-              ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-md'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
-          }`}
-        >
-          <Settings2 className="w-4 h-4" />
-          <span>1. غرفة التحكم المباشرة</span>
-          {isQuizActive && (
-            <span className="w-2 h-2 rounded-full bg-red-600 animate-ping" />
-          )}
-        </button>
+      {!embeddedControlOnly && (
+        <div className="flex items-center gap-2 p-1.5 bg-slate-950/80 rounded-2xl border border-slate-800">
+          <button
+            onClick={() => setActiveTab('control')}
+            className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'control'
+                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-md'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+            }`}
+          >
+            <Settings2 className="w-4 h-4" />
+            <span>1. غرفة التحكم المباشرة</span>
+            {isQuizActive && (
+              <span className="w-2 h-2 rounded-full bg-red-600 animate-ping" />
+            )}
+          </button>
 
-        <button
-          onClick={() => setActiveTab('questions')}
-          className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
-            activeTab === 'questions'
-              ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-md'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
-          }`}
-        >
-          <HelpCircle className="w-4 h-4" />
-          <span>2. بنك الأسئلة (Questions-Qui)</span>
-        </button>
+          <button
+            onClick={() => setActiveTab('questions')}
+            className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'questions'
+                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-md'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+            }`}
+          >
+            <HelpCircle className="w-4 h-4" />
+            <span>2. بنك الأسئلة (Questions-Qui)</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('answers')}
-          className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
-            activeTab === 'answers'
-              ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-md'
-              : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
-          }`}
-        >
-          <Award className="w-4 h-4" />
-          <span>3. سجل الإجابات والنتائج (Answers-Qui)</span>
-        </button>
-      </div>
+          <button
+            onClick={() => setActiveTab('answers')}
+            className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black flex items-center justify-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'answers'
+                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-md'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+            }`}
+          >
+            <Award className="w-4 h-4" />
+            <span>3. سجل الإجابات والنتائج (Answers-Qui)</span>
+          </button>
+        </div>
+      )}
 
       {/* ============================================================== */}
       {/* SUB-SECTION 1: CONTROL ROOM (قسم التحكم المباشر) */}
       {/* ============================================================== */}
-      {activeTab === 'control' && (
+      {effectiveTab === 'control' && (
         <div className="space-y-6">
           {/* Main Action Control Box */}
           <div className="p-6 bg-slate-950/70 border border-slate-800 rounded-3xl space-y-5">
@@ -987,7 +994,7 @@ export default function QuizManagerPanel({
       {/* ============================================================== */}
       {/* SUB-SECTION 2: QUESTIONS (قسم الأسئلة Questions-Qui) */}
       {/* ============================================================== */}
-      {activeTab === 'questions' && (
+      {effectiveTab === 'questions' && (
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
@@ -1259,7 +1266,7 @@ export default function QuizManagerPanel({
       {/* ============================================================== */}
       {/* SUB-SECTION 3: ANSWERS (قسم الإجابات Answers-Qui) */}
       {/* ============================================================== */}
-      {activeTab === 'answers' && (
+      {effectiveTab === 'answers' && (
         <div className="space-y-6">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>

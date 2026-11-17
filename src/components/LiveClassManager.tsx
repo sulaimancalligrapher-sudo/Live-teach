@@ -31,8 +31,9 @@ import LiveChatModal from './LiveChatModal';
 import { showAppAlert, showAppConfirm } from './AppDialog';
 
 interface LiveClassManagerProps {
-  onStartTeacherTheater: (lesson: LiveLessonRow) => void;
+  onStartTeacherTheater?: (lesson: LiveLessonRow) => void;
   onBackToAdmin?: () => void;
+  embeddedVideoQuestionsOnly?: boolean;
 }
 
 // Helper to calculate exact column letters for each 5-column question block starting at C
@@ -65,6 +66,7 @@ function getQuestionColumnInfo(idx: number) {
 export default function LiveClassManager({
   onStartTeacherTheater,
   onBackToAdmin,
+  embeddedVideoQuestionsOnly = false,
 }: LiveClassManagerProps) {
   const [activeTab, setActiveTab] = useState<'students' | 'lessons' | 'answers' | 'qrcode'>('students');
   const [lessons, setLessons] = useState<LiveLessonRow[]>([]);
@@ -1249,6 +1251,430 @@ export default function LiveClassManager({
 
   const isProgramRunning = Boolean(sessionState?.isProgramActive);
 
+  const renderLessonPickerControl = () => (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 p-1.5 rounded-xl shadow-sm">
+        <div title="قائمة الدروس" className="p-1 text-amber-400">
+          <ListVideo className="w-4 h-4 text-amber-400" />
+        </div>
+        <select
+          value={selectedLessonTitle || sessionState?.lessonTitle || ''}
+          onChange={(e) => {
+            const val = e.target.value;
+            setSelectedLessonTitle(val);
+            if (val) {
+              handleSelectLesson(val);
+            }
+          }}
+          className="bg-slate-950 border border-slate-750 hover:border-amber-500/50 text-slate-100 text-xs font-bold rounded-lg px-2.5 py-1.5 outline-none cursor-pointer focus:border-amber-400 transition-colors shadow-sm min-w-[200px]"
+          title="اختيار الدرس المعروض حالياً على شاشة العرض وللطلاب"
+        >
+          <option value="">-- اختر الدرس للبدء --</option>
+          {lessons.map((l, i) => (
+            <option key={i} value={l.title}>
+              {l.title}
+            </option>
+          ))}
+        </select>
+
+        {/* زر إظهار وإخفاء قائمة الدروس بشاشة العرض (أيقونة العين فقط بدون نص) */}
+        <button
+          type="button"
+          onClick={() => handleToggleLessonsList(!sessionState?.showLessonsListInRoom)}
+          disabled={isUpdatingLessonsVisibility}
+          title={sessionState?.showLessonsListInRoom ? 'إخفاء قائمة الدروس من شاشة العرض' : 'إظهار قائمة الدروس في شاشة العرض'}
+          className={`p-1.5 rounded-lg transition-all cursor-pointer border ${
+            sessionState?.showLessonsListInRoom
+              ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+              : 'bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-800'
+          }`}
+        >
+          {sessionState?.showLessonsListInRoom ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderTimingsAndQuestionControls = () => (
+    <>
+      {/* 3. توقيت الأسئلة (الخاص بالمعلم والإدارة) */}
+      <div className="pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-1.5 text-xs text-slate-300 font-bold ml-1">
+          <Clock className="w-3.5 h-3.5 text-amber-400" />
+          <span>توقيت الأسئلة:</span>
+        </div>
+        {activeLesson && activeLesson.questions && activeLesson.questions.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto py-0.5">
+            {activeLesson.questions.map((q, idx) => {
+              const isActive = sessionState?.currentQuestionIndex === idx && sessionState?.status === 'question_active';
+              const isRevealed = sessionState?.currentQuestionIndex === idx && sessionState?.status === 'revealed';
+
+              return (
+                <button
+                  key={idx}
+                  onClick={() => handleTriggerQuestionFromAdmin(q, idx)}
+                  title={`سؤال ${idx + 1}: ${formatSecondsToTime(q.time)} - ${q.question} (انقر لطرح السؤال فورياً)`}
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-bold font-mono transition-all flex items-center gap-1.5 cursor-pointer border ${
+                    isActive
+                      ? 'bg-amber-500 border-amber-400 text-slate-950 font-black shadow-lg shadow-amber-500/20 ring-2 ring-amber-300 animate-pulse'
+                      : isRevealed
+                      ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
+                      : 'bg-slate-900 hover:bg-slate-850 border-slate-800 text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <span>س{idx + 1}</span>
+                  <span className="text-[11px] opacity-80">({formatSecondsToTime(q.time)})</span>
+                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />}
+                </button>
+              );
+            })}
+          </div>
+        ) : activeLesson ? (
+          <span className="text-[11px] text-slate-400 italic">
+            لا توجد أسئلة محددة التوقيت لهذا الدرس (يمكنك إضافة توقيت بالثواني من ورقة Questions-T).
+          </span>
+        ) : (
+          <span className="text-[11px] text-amber-400/80 italic">
+            اختر درساً من القائمة أعلاه لعرض توقيت أسئلته.
+          </span>
+        )}
+      </div>
+
+      {/* 4. أزرار التحكم في السؤال وإظهار الإجابات في شاشة العرض */}
+      <div className="pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2.5">
+        {/* أزرار الإجابة وتخطي مع التحكم في إظهارها في شاشة العرض */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* زر الإجابة مع زر الإظهار/الإخفاء (أيقونة العين بدون نص) */}
+          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 p-1.5 rounded-xl shadow-sm">
+            <button
+              type="button"
+              onClick={handleRevealAnswerFromAdmin}
+              disabled={isRevealingAnswer || sessionState?.status === 'revealed' || sessionState?.status !== 'question_active'}
+              title="كشف الإجابة الصحيحة للطلاب"
+              className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-lg text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95 disabled:opacity-40"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>{sessionState?.status === 'revealed' ? 'تم كشف الإجابة' : 'الإجابة'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleRevealVisibility(!sessionState?.showRevealInRoom)}
+              disabled={isUpdatingRevealVisibility}
+              title={sessionState?.showRevealInRoom ? 'إخفاء زر الإجابة من شاشة العرض' : 'إظهار زر الإجابة في شاشة العرض'}
+              className={`p-1.5 rounded-lg transition-all cursor-pointer border ${
+                sessionState?.showRevealInRoom
+                  ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                  : 'bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-800'
+              }`}
+            >
+              {sessionState?.showRevealInRoom ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {/* زر متابعة تشغيل الفيديو (يعمل بعد النقر على زر الإجابة) */}
+          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 p-1.5 rounded-xl shadow-sm">
+            <button
+              type="button"
+              onClick={handleResumeVideoFromAdmin}
+              disabled={isResumingVideo || sessionState?.status !== 'revealed'}
+              title={sessionState?.status === 'revealed' ? 'متابعة تشغيل الفيديو واستئناف العرض' : 'متابعة الفيديو (متاح بعد كشف الإجابة)'}
+              className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95 disabled:opacity-40 ${
+                sessionState?.status === 'revealed'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white animate-pulse'
+                  : 'bg-slate-950 text-slate-400 border border-slate-800'
+              }`}
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>{isResumingVideo ? 'جارٍ المتابعة...' : 'متابعة الفيديو'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleResumeVisibility(!sessionState?.showResumeInRoom)}
+              disabled={isUpdatingResumeVisibility}
+              title={sessionState?.showResumeInRoom ? 'إخفاء زر متابعة الفيديو من شاشة العرض' : 'إظهار زر متابعة الفيديو في شاشة العرض'}
+              className={`p-1.5 rounded-lg transition-all cursor-pointer border ${
+                sessionState?.showResumeInRoom
+                  ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                  : 'bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-800'
+              }`}
+            >
+              {sessionState?.showResumeInRoom ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {/* زر تخطي (يعمل عند ظهور السؤال) */}
+          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 p-1.5 rounded-xl shadow-sm">
+            <button
+              type="button"
+              onClick={handleSkipQuestionFromAdmin}
+              disabled={isSkippingQuestion || (sessionState?.status !== 'question_active' && sessionState?.status !== 'revealed')}
+              title="تخطي السؤال الحالي ومتابعة الفيديو فوراً"
+              className="px-3 py-1.5 bg-slate-950 hover:bg-slate-850 text-slate-200 border border-slate-750 hover:border-slate-600 rounded-lg text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95 disabled:opacity-40"
+            >
+              <FastForward className="w-3.5 h-3.5 text-amber-400" />
+              <span>تخطي</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleSkipVisibility(!sessionState?.showSkipInRoom)}
+              disabled={isUpdatingSkipVisibility}
+              title={sessionState?.showSkipInRoom ? 'إخفاء زر تخطي من شاشة العرض' : 'إظهار زر تخطي في شاشة العرض'}
+              className={`p-1.5 rounded-lg transition-all cursor-pointer border ${
+                sessionState?.showSkipInRoom
+                  ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                  : 'bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-800'
+              }`}
+            >
+              {sessionState?.showSkipInRoom ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {/* زر تشغيل / إيقاف واستئناف الفيديو في شاشة العرض */}
+          <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 p-1.5 rounded-xl shadow-sm">
+            <button
+              type="button"
+              onClick={handleToggleVideoPlayFromAdmin}
+              disabled={
+                isTogglingVideoPlay || 
+                (!sessionState?.videoUrl && !activeLesson?.videoUrl && lessons.length === 0)
+              }
+              title={
+                sessionState?.status === 'question_active' || sessionState?.status === 'revealed'
+                  ? 'متابعة واستئناف تشغيل الفيديو وتجاوز السؤال'
+                  : sessionState?.videoPlaying 
+                    ? 'إيقاف الفيديو مؤقتاً في شاشة العرض' 
+                    : 'تشغيل الفيديو في شاشة العرض'
+              }
+              className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95 disabled:opacity-40 ${
+                sessionState?.videoPlaying
+                  ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
+                  : 'bg-slate-950 hover:bg-slate-850 text-slate-200 border border-slate-750'
+              }`}
+            >
+              {sessionState?.videoPlaying ? (
+                <>
+                  <Pause className="w-3.5 h-3.5 fill-current" />
+                  <span>إيقاف الفيديو</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
+                  <span>تشغيل الفيديو</span>
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTogglePlayPauseVisibility(!sessionState?.showPlayPauseInRoom)}
+              disabled={isUpdatingPlayPauseVisibility}
+              title={sessionState?.showPlayPauseInRoom ? 'إخفاء زر تشغيل الفيديو من شاشة العرض' : 'إظهار زر تشغيل الفيديو في شاشة العرض'}
+              className={`p-1.5 rounded-lg transition-all cursor-pointer border ${
+                sessionState?.showPlayPauseInRoom
+                  ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
+                  : 'bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-800'
+              }`}
+            >
+              {sessionState?.showPlayPauseInRoom ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {/* صندوق التحكم الصوتي لشاشة العرض والبروجكتر */}
+          <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-1.5 rounded-xl shadow-sm">
+            <button
+              type="button"
+              onClick={() => {
+                if (masterBroadcastVolume > 0) {
+                  handleBroadcastVolumeChange(0);
+                } else {
+                  handleBroadcastVolumeChange(0.85);
+                }
+              }}
+              className={`p-1 rounded-lg transition-all cursor-pointer ${
+                masterBroadcastVolume === 0
+                  ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                  : 'text-amber-400 hover:text-amber-300'
+              }`}
+              title={masterBroadcastVolume === 0 ? 'إلغاء كتم الصوت (رفع الصوت إلى 85%)' : 'كتم صوت الفيديو'}
+            >
+              {masterBroadcastVolume === 0 ? (
+                <VolumeX className="w-3.5 h-3.5" />
+              ) : (
+                <Volume2 className="w-3.5 h-3.5" />
+              )}
+            </button>
+            <span className="text-[11px] font-bold text-slate-300">صوت الفيديو:</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={masterBroadcastVolume}
+              onChange={(e) => handleBroadcastVolumeChange(parseFloat(e.target.value))}
+              className="w-18 sm:w-24 h-1.5 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-amber-500"
+              title="التحكم في مستوى صوت الفيديو بشاشة العرض"
+            />
+            <span className="text-[10px] text-amber-400 font-mono font-bold w-8 text-left">
+              {masterBroadcastVolume === 0 ? 'مكتوم' : `${Math.round(masterBroadcastVolume * 100)}%`}
+            </span>
+          </div>
+        </div>
+
+        {/* أزرار التحكم في إظهار وإخفاء عناصر الإجابات في شاشة العرض */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* زر إظهار/إخفاء عدد الأشخاص الذين اختاروا في أحد الخيارات (افتراضياً مخفي) */}
+          <button
+            type="button"
+            onClick={() => handleToggleOptionCountsVisibility(!sessionState?.showOptionCountsInRoom)}
+            disabled={isUpdatingOptionCountsVisibility}
+            title={sessionState?.showOptionCountsInRoom ? 'عدد المصوتين بالخيارات ظاهر بشاشة العرض - انقر للإخفاء' : 'عدد المصوتين بالخيارات مخفي بشاشة العرض - انقر للإظهار'}
+            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border shadow-sm ${
+              sessionState?.showOptionCountsInRoom
+                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25'
+                : 'bg-slate-900 border-slate-750 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            {sessionState?.showOptionCountsInRoom ? (
+              <>
+                <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                <span>أعداد الخيارات: إظهار</span>
+              </>
+            ) : (
+              <>
+                <EyeOff className="w-3.5 h-3.5 text-slate-500" />
+                <span>أعداد الخيارات: إخفاء</span>
+              </>
+            )}
+          </button>
+
+          {/* زر إظهار/إخفاء نصوص إجابات الطلاب (صح/خطأ وحرة - افتراضياً مخفي) */}
+          <button
+            type="button"
+            onClick={() => handleToggleStudentAnswersVisibility(!sessionState?.showStudentTextAnswersInRoom)}
+            disabled={isUpdatingStudentAnswersVisibility}
+            title={sessionState?.showStudentTextAnswersInRoom ? 'نصوص وإجابات الطلاب معروضة بشاشة العرض - انقر للإخفاء' : 'نصوص وإجابات الطلاب مخفية بشاشة العرض - انقر للإظهار'}
+            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border shadow-sm ${
+              sessionState?.showStudentTextAnswersInRoom
+                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25'
+                : 'bg-slate-900 border-slate-750 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            {sessionState?.showStudentTextAnswersInRoom ? (
+              <>
+                <Eye className="w-3.5 h-3.5 text-emerald-400" />
+                <span>إجابات الطلاب: إظهار</span>
+              </>
+            ) : (
+              <>
+                <EyeOff className="w-3.5 h-3.5 text-slate-500" />
+                <span>إجابات الطلاب: إخفاء</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+
+  const renderPendingLessonSwitchModal = () => (
+    <AnimatePresence>
+      {pendingLessonSwitchTitle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 text-right"
+            dir="rtl"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-100">تأكيد الانتقال للدرس الجديد</h3>
+                <p className="text-xs text-amber-400 font-medium">توجد إجابات مسجلة للطلاب في الدرس السابق</p>
+              </div>
+            </div>
+
+            <div className="text-sm text-slate-300 leading-relaxed bg-slate-950/70 border border-slate-800 p-4 rounded-2xl space-y-2">
+              <p>
+                الدرس الحالي (<b>{sessionState?.lessonTitle}</b>) يحتوي على إجابات طلاب مسجلة.
+              </p>
+              <p className="text-xs text-slate-400">
+                هل تود حفظ إجاباتهم في ورقة <b>Answers-T</b> قبل الانتقال للدرس الجديد (<b>{pendingLessonSwitchTitle}</b>)؟
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                type="button"
+                disabled={isSavingAndSwitchingLesson}
+                onClick={async () => {
+                  const next = pendingLessonSwitchTitle;
+                  if (!next) return;
+                  await executeLessonSwitch(next, true);
+                  setPendingLessonSwitchTitle(null);
+                }}
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-black bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {isSavingAndSwitchingLesson ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )}
+                <span>{isSavingAndSwitchingLesson ? 'جارٍ حفظ الإجابات والانتقال للدرس الجديد...' : 'حفظ إجابات الدرس السابق والانتقال ✅'}</span>
+              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isSavingAndSwitchingLesson}
+                  onClick={async () => {
+                    const next = pendingLessonSwitchTitle;
+                    if (!next) return;
+                    await executeLessonSwitch(next, false);
+                    setPendingLessonSwitchTitle(null);
+                  }}
+                  className="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-750 text-rose-300 hover:text-rose-200 border border-rose-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer text-center disabled:opacity-50"
+                >
+                  الانتقال بدون حفظ
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingAndSwitchingLesson}
+                  onClick={() => setPendingLessonSwitchTitle(null)}
+                  className="py-2 px-4 bg-slate-800 hover:bg-slate-750 text-slate-400 hover:text-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer text-center disabled:opacity-50"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+
+  if (embeddedVideoQuestionsOnly) {
+    return (
+      <div className="space-y-3 text-slate-100">
+        {programToast && (
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-6 py-3 bg-slate-900 border-2 border-amber-500 rounded-2xl shadow-2xl text-amber-300 font-bold text-sm flex items-center gap-2 animate-bounce">
+            <Sparkles className="w-5 h-5 text-amber-400" />
+            <span>{programToast}</span>
+          </div>
+        )}
+        <div className="p-3.5 sm:p-4 bg-slate-950/70 border border-slate-800/90 rounded-2xl space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {renderLessonPickerControl()}
+          </div>
+          {renderTimingsAndQuestionControls()}
+        </div>
+        {renderPendingLessonSwitchModal()}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 text-slate-100">
       {/* Toast Notification */}
@@ -1429,7 +1855,7 @@ export default function LiveClassManager({
                     </span>
 
                     <button
-                      onClick={() => onStartTeacherTheater(lesson)}
+                      onClick={() => onStartTeacherTheater?.(lesson)}
                       className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black py-2 px-3.5 rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/10 active:scale-95 transition-all cursor-pointer"
                       title="بدء الدرس المباشر"
                     >
@@ -1919,47 +2345,7 @@ export default function LiveClassManager({
             <div className="p-3.5 sm:p-4 bg-slate-950/70 border border-slate-800/90 rounded-2xl space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 {/* 1. قائمة الدروس (أيقونة فقط + قائمة منسدلة + زر العين لإظهار/إخفاء في شاشة العرض) */}
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 p-1.5 rounded-xl shadow-sm">
-                    <div title="قائمة الدروس" className="p-1 text-amber-400">
-                      <ListVideo className="w-4 h-4 text-amber-400" />
-                    </div>
-                    <select
-                      value={selectedLessonTitle || sessionState?.lessonTitle || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setSelectedLessonTitle(val);
-                        if (val) {
-                          handleSelectLesson(val);
-                        }
-                      }}
-                      className="bg-slate-950 border border-slate-750 hover:border-amber-500/50 text-slate-100 text-xs font-bold rounded-lg px-2.5 py-1.5 outline-none cursor-pointer focus:border-amber-400 transition-colors shadow-sm min-w-[200px]"
-                      title="اختيار الدرس المعروض حالياً على شاشة العرض وللطلاب"
-                    >
-                      <option value="">-- اختر الدرس للبدء --</option>
-                      {lessons.map((l, i) => (
-                        <option key={i} value={l.title}>
-                          {l.title}
-                        </option>
-                      ))}
-                    </select>
-
-                    {/* زر إظهار وإخفاء قائمة الدروس بشاشة العرض (أيقونة العين فقط بدون نص) */}
-                    <button
-                      type="button"
-                      onClick={() => handleToggleLessonsList(!sessionState?.showLessonsListInRoom)}
-                      disabled={isUpdatingLessonsVisibility}
-                      title={sessionState?.showLessonsListInRoom ? 'إخفاء قائمة الدروس من شاشة العرض' : 'إظهار قائمة الدروس في شاشة العرض'}
-                      className={`p-1.5 rounded-lg transition-all cursor-pointer border ${
-                        sessionState?.showLessonsListInRoom
-                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
-                          : 'bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-800'
-                      }`}
-                    >
-                      {sessionState?.showLessonsListInRoom ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
+                {renderLessonPickerControl()}
 
                 {/* 2. زر إنهاء الدرس مع زر إظهار وإخفاء في شاشة العرض (أيقونة العين فقط بدون نص) */}
                 <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 p-1.5 rounded-xl shadow-sm">
@@ -2059,281 +2445,7 @@ export default function LiveClassManager({
                 </div>
               </div>
 
-              {/* 3. توقيت الأسئلة (الخاص بالمعلم والإدارة) */}
-              <div className="pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center gap-2">
-                <div className="flex items-center gap-1.5 text-xs text-slate-300 font-bold ml-1">
-                  <Clock className="w-3.5 h-3.5 text-amber-400" />
-                  <span>توقيت الأسئلة:</span>
-                </div>
-                {activeLesson && activeLesson.questions && activeLesson.questions.length > 0 ? (
-                  <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto py-0.5">
-                    {activeLesson.questions.map((q, idx) => {
-                      const isActive = sessionState?.currentQuestionIndex === idx && sessionState?.status === 'question_active';
-                      const isRevealed = sessionState?.currentQuestionIndex === idx && sessionState?.status === 'revealed';
-
-                      return (
-                        <button
-                          key={idx}
-                          onClick={() => handleTriggerQuestionFromAdmin(q, idx)}
-                          title={`سؤال ${idx + 1}: ${formatSecondsToTime(q.time)} - ${q.question} (انقر لطرح السؤال فورياً)`}
-                          className={`px-2.5 py-1.5 rounded-xl text-xs font-bold font-mono transition-all flex items-center gap-1.5 cursor-pointer border ${
-                            isActive
-                              ? 'bg-amber-500 border-amber-400 text-slate-950 font-black shadow-lg shadow-amber-500/20 ring-2 ring-amber-300 animate-pulse'
-                              : isRevealed
-                              ? 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300'
-                              : 'bg-slate-900 hover:bg-slate-850 border-slate-800 text-slate-300 hover:border-slate-700'
-                          }`}
-                        >
-                          <span>س{idx + 1}</span>
-                          <span className="text-[11px] opacity-80">({formatSecondsToTime(q.time)})</span>
-                          {isActive && <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : activeLesson ? (
-                  <span className="text-[11px] text-slate-400 italic">
-                    لا توجد أسئلة محددة التوقيت لهذا الدرس (يمكنك إضافة توقيت بالثواني من ورقة Questions-T).
-                  </span>
-                ) : (
-                  <span className="text-[11px] text-amber-400/80 italic">
-                    اختر درساً من القائمة أعلاه لعرض توقيت أسئلته.
-                  </span>
-                )}
-              </div>
-
-              {/* 4. أزرار التحكم في السؤال وإظهار الإجابات في شاشة العرض */}
-              <div className="pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2.5">
-                {/* أزرار الإجابة وتخطي مع التحكم في إظهارها في شاشة العرض */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* زر الإجابة مع زر الإظهار/الإخفاء (أيقونة العين بدون نص) */}
-                  <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 p-1.5 rounded-xl shadow-sm">
-                    <button
-                      type="button"
-                      onClick={handleRevealAnswerFromAdmin}
-                      disabled={isRevealingAnswer || sessionState?.status === 'revealed' || sessionState?.status !== 'question_active'}
-                      title="كشف الإجابة الصحيحة للطلاب"
-                      className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-lg text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95 disabled:opacity-40"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>{sessionState?.status === 'revealed' ? 'تم كشف الإجابة' : 'الإجابة'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleRevealVisibility(!sessionState?.showRevealInRoom)}
-                      disabled={isUpdatingRevealVisibility}
-                      title={sessionState?.showRevealInRoom ? 'إخفاء زر الإجابة من شاشة العرض' : 'إظهار زر الإجابة في شاشة العرض'}
-                      className={`p-1.5 rounded-lg transition-all cursor-pointer border ${
-                        sessionState?.showRevealInRoom
-                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
-                          : 'bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-800'
-                      }`}
-                    >
-                      {sessionState?.showRevealInRoom ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                    </button>
-                  </div>
-
-                  {/* زر متابعة تشغيل الفيديو (يعمل بعد النقر على زر الإجابة) */}
-                  <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 p-1.5 rounded-xl shadow-sm">
-                    <button
-                      type="button"
-                      onClick={handleResumeVideoFromAdmin}
-                      disabled={isResumingVideo || sessionState?.status !== 'revealed'}
-                      title={sessionState?.status === 'revealed' ? 'متابعة تشغيل الفيديو واستئناف العرض' : 'متابعة الفيديو (متاح بعد كشف الإجابة)'}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95 disabled:opacity-40 ${
-                        sessionState?.status === 'revealed'
-                          ? 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white animate-pulse'
-                          : 'bg-slate-950 text-slate-400 border border-slate-800'
-                      }`}
-                    >
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                      <span>{isResumingVideo ? 'جارٍ المتابعة...' : 'متابعة الفيديو'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleResumeVisibility(!sessionState?.showResumeInRoom)}
-                      disabled={isUpdatingResumeVisibility}
-                      title={sessionState?.showResumeInRoom ? 'إخفاء زر متابعة الفيديو من شاشة العرض' : 'إظهار زر متابعة الفيديو في شاشة العرض'}
-                      className={`p-1.5 rounded-lg transition-all cursor-pointer border ${
-                        sessionState?.showResumeInRoom
-                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
-                          : 'bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-800'
-                      }`}
-                    >
-                      {sessionState?.showResumeInRoom ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                    </button>
-                  </div>
-
-                  {/* زر تخطي (يعمل عند ظهور السؤال) */}
-                  <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 p-1.5 rounded-xl shadow-sm">
-                    <button
-                      type="button"
-                      onClick={handleSkipQuestionFromAdmin}
-                      disabled={isSkippingQuestion || (sessionState?.status !== 'question_active' && sessionState?.status !== 'revealed')}
-                      title="تخطي السؤال الحالي ومتابعة الفيديو فوراً"
-                      className="px-3 py-1.5 bg-slate-950 hover:bg-slate-850 text-slate-200 border border-slate-750 hover:border-slate-600 rounded-lg text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95 disabled:opacity-40"
-                    >
-                      <FastForward className="w-3.5 h-3.5 text-amber-400" />
-                      <span>تخطي</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleToggleSkipVisibility(!sessionState?.showSkipInRoom)}
-                      disabled={isUpdatingSkipVisibility}
-                      title={sessionState?.showSkipInRoom ? 'إخفاء زر تخطي من شاشة العرض' : 'إظهار زر تخطي في شاشة العرض'}
-                      className={`p-1.5 rounded-lg transition-all cursor-pointer border ${
-                        sessionState?.showSkipInRoom
-                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
-                          : 'bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-800'
-                      }`}
-                    >
-                      {sessionState?.showSkipInRoom ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                    </button>
-                  </div>
-
-                  {/* زر تشغيل / إيقاف واستئناف الفيديو في شاشة العرض */}
-                  <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 p-1.5 rounded-xl shadow-sm">
-                    <button
-                      type="button"
-                      onClick={handleToggleVideoPlayFromAdmin}
-                      disabled={
-                        isTogglingVideoPlay || 
-                        (!sessionState?.videoUrl && !activeLesson?.videoUrl && lessons.length === 0)
-                      }
-                      title={
-                        sessionState?.status === 'question_active' || sessionState?.status === 'revealed'
-                          ? 'متابعة واستئناف تشغيل الفيديو وتجاوز السؤال'
-                          : sessionState?.videoPlaying 
-                            ? 'إيقاف الفيديو مؤقتاً في شاشة العرض' 
-                            : 'تشغيل الفيديو في شاشة العرض'
-                      }
-                      className={`px-3 py-1.5 rounded-lg text-xs font-black flex items-center gap-1.5 shadow-sm transition-all cursor-pointer active:scale-95 disabled:opacity-40 ${
-                        sessionState?.videoPlaying
-                          ? 'bg-amber-500 hover:bg-amber-400 text-slate-950'
-                          : 'bg-slate-950 hover:bg-slate-850 text-slate-200 border border-slate-750'
-                      }`}
-                    >
-                      {sessionState?.videoPlaying ? (
-                        <>
-                          <Pause className="w-3.5 h-3.5 fill-current" />
-                          <span>إيقاف الفيديو</span>
-                        </>
-                      ) : (
-                        <>
-                          <Play className="w-3.5 h-3.5 fill-current text-emerald-400" />
-                          <span>تشغيل الفيديو</span>
-                        </>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleTogglePlayPauseVisibility(!sessionState?.showPlayPauseInRoom)}
-                      disabled={isUpdatingPlayPauseVisibility}
-                      title={sessionState?.showPlayPauseInRoom ? 'إخفاء زر تشغيل الفيديو من شاشة العرض' : 'إظهار زر تشغيل الفيديو في شاشة العرض'}
-                      className={`p-1.5 rounded-lg transition-all cursor-pointer border ${
-                        sessionState?.showPlayPauseInRoom
-                          ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
-                          : 'bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-800'
-                      }`}
-                    >
-                      {sessionState?.showPlayPauseInRoom ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                    </button>
-                  </div>
-
-                  {/* صندوق التحكم الصوتي لشاشة العرض والبروجكتر */}
-                  <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-1.5 rounded-xl shadow-sm">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (masterBroadcastVolume > 0) {
-                          handleBroadcastVolumeChange(0);
-                        } else {
-                          handleBroadcastVolumeChange(0.85);
-                        }
-                      }}
-                      className={`p-1 rounded-lg transition-all cursor-pointer ${
-                        masterBroadcastVolume === 0
-                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                          : 'text-amber-400 hover:text-amber-300'
-                      }`}
-                      title={masterBroadcastVolume === 0 ? 'إلغاء كتم الصوت (رفع الصوت إلى 85%)' : 'كتم صوت الفيديو'}
-                    >
-                      {masterBroadcastVolume === 0 ? (
-                        <VolumeX className="w-3.5 h-3.5" />
-                      ) : (
-                        <Volume2 className="w-3.5 h-3.5" />
-                      )}
-                    </button>
-                    <span className="text-[11px] font-bold text-slate-300">صوت الفيديو:</span>
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={masterBroadcastVolume}
-                      onChange={(e) => handleBroadcastVolumeChange(parseFloat(e.target.value))}
-                      className="w-18 sm:w-24 h-1.5 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-amber-500"
-                      title="التحكم في مستوى صوت الفيديو بشاشة العرض"
-                    />
-                    <span className="text-[10px] text-amber-400 font-mono font-bold w-8 text-left">
-                      {masterBroadcastVolume === 0 ? 'مكتوم' : `${Math.round(masterBroadcastVolume * 100)}%`}
-                    </span>
-                  </div>
-                </div>
-
-                {/* أزرار التحكم في إظهار وإخفاء عناصر الإجابات في شاشة العرض */}
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* زر إظهار/إخفاء عدد الأشخاص الذين اختاروا في أحد الخيارات (افتراضياً مخفي) */}
-                  <button
-                    type="button"
-                    onClick={() => handleToggleOptionCountsVisibility(!sessionState?.showOptionCountsInRoom)}
-                    disabled={isUpdatingOptionCountsVisibility}
-                    title={sessionState?.showOptionCountsInRoom ? 'عدد المصوتين بالخيارات ظاهر بشاشة العرض - انقر للإخفاء' : 'عدد المصوتين بالخيارات مخفي بشاشة العرض - انقر للإظهار'}
-                    className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border shadow-sm ${
-                      sessionState?.showOptionCountsInRoom
-                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25'
-                        : 'bg-slate-900 border-slate-750 text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    {sessionState?.showOptionCountsInRoom ? (
-                      <>
-                        <Eye className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>أعداد الخيارات: إظهار</span>
-                      </>
-                    ) : (
-                      <>
-                        <EyeOff className="w-3.5 h-3.5 text-slate-500" />
-                        <span>أعداد الخيارات: إخفاء</span>
-                      </>
-                    )}
-                  </button>
-
-                  {/* زر إظهار/إخفاء نصوص إجابات الطلاب (صح/خطأ وحرة - افتراضياً مخفي) */}
-                  <button
-                    type="button"
-                    onClick={() => handleToggleStudentAnswersVisibility(!sessionState?.showStudentTextAnswersInRoom)}
-                    disabled={isUpdatingStudentAnswersVisibility}
-                    title={sessionState?.showStudentTextAnswersInRoom ? 'نصوص وإجابات الطلاب معروضة بشاشة العرض - انقر للإخفاء' : 'نصوص وإجابات الطلاب مخفية بشاشة العرض - انقر للإظهار'}
-                    className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border shadow-sm ${
-                      sessionState?.showStudentTextAnswersInRoom
-                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25'
-                        : 'bg-slate-900 border-slate-750 text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    {sessionState?.showStudentTextAnswersInRoom ? (
-                      <>
-                        <Eye className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>إجابات الطلاب: إظهار</span>
-                      </>
-                    ) : (
-                      <>
-                        <EyeOff className="w-3.5 h-3.5 text-slate-500" />
-                        <span>إجابات الطلاب: إخفاء</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
+              {renderTimingsAndQuestionControls()}
             </div>
 
             {resetSuccess && (
@@ -3198,83 +3310,7 @@ export default function LiveClassManager({
       </AnimatePresence>
 
       {/* Confirmation Modal when Switching Lesson with Unsaved Student Answers */}
-      <AnimatePresence>
-        {pendingLessonSwitchTitle && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 text-right"
-              dir="rtl"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0">
-                  <AlertCircle className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-lg font-black text-slate-100">تأكيد الانتقال للدرس الجديد</h3>
-                  <p className="text-xs text-amber-400 font-medium">توجد إجابات مسجلة للطلاب في الدرس السابق</p>
-                </div>
-              </div>
-
-              <div className="text-sm text-slate-300 leading-relaxed bg-slate-950/70 border border-slate-800 p-4 rounded-2xl space-y-2">
-                <p>
-                  الدرس الحالي (<b>{sessionState?.lessonTitle}</b>) يحتوي على إجابات طلاب مسجلة.
-                </p>
-                <p className="text-xs text-slate-400">
-                  هل تود حفظ إجاباتهم في ورقة <b>Answers-T</b> قبل الانتقال للدرس الجديد (<b>{pendingLessonSwitchTitle}</b>)؟
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-2 pt-2">
-                <button
-                  type="button"
-                  disabled={isSavingAndSwitchingLesson}
-                  onClick={async () => {
-                    const next = pendingLessonSwitchTitle;
-                    if (!next) return;
-                    await executeLessonSwitch(next, true);
-                    setPendingLessonSwitchTitle(null);
-                  }}
-                  className="w-full py-2.5 px-4 rounded-xl text-xs font-black bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {isSavingAndSwitchingLesson ? (
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Check className="w-4 h-4" />
-                  )}
-                  <span>{isSavingAndSwitchingLesson ? 'جارٍ حفظ الإجابات والانتقال للدرس الجديد...' : 'حفظ إجابات الدرس السابق والانتقال ✅'}</span>
-                </button>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={isSavingAndSwitchingLesson}
-                    onClick={async () => {
-                      const next = pendingLessonSwitchTitle;
-                      if (!next) return;
-                      await executeLessonSwitch(next, false);
-                      setPendingLessonSwitchTitle(null);
-                    }}
-                    className="flex-1 py-2 px-3 bg-slate-800 hover:bg-slate-750 text-rose-300 hover:text-rose-200 border border-rose-500/20 rounded-xl text-xs font-bold transition-all cursor-pointer text-center disabled:opacity-50"
-                  >
-                    الانتقال بدون حفظ
-                  </button>
-                  <button
-                    type="button"
-                    disabled={isSavingAndSwitchingLesson}
-                    onClick={() => setPendingLessonSwitchTitle(null)}
-                    className="py-2 px-4 bg-slate-800 hover:bg-slate-750 text-slate-400 hover:text-slate-200 rounded-xl text-xs font-bold transition-all cursor-pointer text-center disabled:opacity-50"
-                  >
-                    إلغاء
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {renderPendingLessonSwitchModal()}
       {/* Student Chat & Messages Modal (Teacher Administration) */}
       <LiveChatModal
         isOpen={showChatModal}

@@ -6,7 +6,7 @@ import {
   Sun, Moon, Users, 
   Copy, ArrowLeft, Monitor,
   Radio, LayoutGrid, Film, Power, QrCode, Link as LinkIcon,
-  ChevronDown, ChevronUp, X, Clock, CheckCircle2, Check
+  X, Clock, CheckCircle2, Check, ListVideo
 } from 'lucide-react';
 import { HeaderConfig, LiveLessonRow, LiveSessionState } from './types';
 import { 
@@ -30,6 +30,8 @@ import StudentQuizView from './components/StudentQuizView';
 import LanguageSelector from './components/LanguageSelector';
 import StandaloneChatRoom from './components/StandaloneChatRoom';
 import ScriptPrompterPanel from './components/ScriptPrompterPanel';
+import QuizManagerPanel from './components/QuizManagerPanel';
+import LiveClassManager from './components/LiveClassManager';
 import { useLanguage } from './translations';
 
 export default function App() {
@@ -66,11 +68,20 @@ export default function App() {
   const [adminPassError, setAdminPassError] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
 
-  // Collapsible Home Quick-Control Cards (الشاشة / ابدأ / تسجيل الدخول)
-  const [openScreenCard, setOpenScreenCard] = useState(false);
-  const [openStartCard, setOpenStartCard] = useState(false);
-  const [openLoginCard, setOpenLoginCard] = useState(false);
-  const [loginFilterView, setLoginFilterView] = useState<'live' | 'quiz' | 'unanswered' | 'answers'>('live');
+  // Master Quick-Control Bar & Stackable Open Cards (ordered by opening)
+  type QuickPanelId = 'screen' | 'start' | 'login' | 'quiz' | 'video-questions';
+  const [openPanels, setOpenPanels] = useState<QuickPanelId[]>([]);
+  const [loginFilterView, setLoginFilterView] = useState<'live' | 'unanswered' | 'answers'>('live');
+
+  const toggleQuickPanel = (id: QuickPanelId) => {
+    setOpenPanels((prev) =>
+      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+    );
+  };
+
+  const closeQuickPanel = (id: QuickPanelId) => {
+    setOpenPanels((prev) => prev.filter((item) => item !== id));
+  };
 
   // Live Session Controls & QR Modal State
   const [liveSession, setLiveSession] = useState<LiveSessionState | null>(null);
@@ -122,12 +133,15 @@ export default function App() {
     return () => unsub();
   }, [webAppUrl, isConfigured]);
 
-  // Generate QR code when modal opens
+  // Generate QR code when modal opens OR when live PIN changes
+  const effectivePin = liveSession?.sessionPin ? liveSession.sessionPin.trim() : '';
   const studentJoinUrl =
-    typeof window !== 'undefined' ? `${window.location.origin}/?page=live-student` : '';
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/?page=live-student${effectivePin ? `&pin=${encodeURIComponent(effectivePin)}` : ''}`
+      : '';
 
   useEffect(() => {
-    if (!showQrModal || !studentJoinUrl) return;
+    if (!studentJoinUrl) return;
     QRCode.toDataURL(studentJoinUrl, { width: 240, margin: 1 })
       .then((url) => setQrDataUrl(url))
       .catch(() => {});
@@ -392,7 +406,7 @@ export default function App() {
       </header>
 
       {/* ----------------- MAIN CONTENT ----------------- */}
-      <main className="flex-grow max-w-4xl mx-auto w-full px-4 py-6 sm:py-8 space-y-3.5">
+      <main className="flex-grow max-w-5xl mx-auto w-full px-4 py-6 sm:py-8 space-y-4">
         {(() => {
           const connectedList = liveSession?.connectedStudents || [];
           const answersMap = liveSession?.answersForCurrentQuestion || {};
@@ -403,373 +417,501 @@ export default function App() {
           const unansweredList = connectedList.filter(
             (s) => !answeredNames.has(String(s.username || '').trim().toLowerCase())
           );
-          const quizParticipants = Object.values(liveSession?.quizState?.participants || {});
           const isProgramRunning = Boolean(liveSession?.isProgramActive);
-          const currentPin = liveSession?.sessionPin || '';
+          const currentPin = effectivePin;
+          const isQuizLiveActive = Boolean(
+            liveSession?.quizState?.isActive &&
+            (liveSession?.quizState?.quizStatus === 'in_progress' || liveSession?.quizState?.quizStatus === 'waiting')
+          );
+          const isVideoQuestionActive = liveSession?.status === 'question_active';
+
+          const mainButtons: Array<{
+            id: QuickPanelId;
+            label: string;
+            renderIcon: (isOpen: boolean) => React.ReactNode;
+            activeClass: string;
+            badge?: React.ReactNode;
+          }> = [
+            {
+              id: 'screen',
+              label: 'الشاشة',
+              renderIcon: (isOpen) => <Monitor className={`w-4 h-4 ${isOpen ? 'text-slate-950' : 'text-amber-500'}`} />,
+              activeClass: 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20',
+            },
+            {
+              id: 'start',
+              label: 'ابدأ',
+              renderIcon: (isOpen) => (
+                <Power className={`w-4 h-4 ${isOpen ? 'text-white' : isProgramRunning ? 'text-emerald-500' : 'text-indigo-500'}`} />
+              ),
+              activeClass: 'bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-600/20',
+              badge: isProgramRunning && currentPin ? (
+                <span className="px-1.5 py-0.5 rounded-md bg-black/20 font-mono text-[10px] font-black">
+                  {currentPin}
+                </span>
+              ) : undefined,
+            },
+            {
+              id: 'login',
+              label: 'تسجيل الدخول',
+              renderIcon: (isOpen) => <Users className={`w-4 h-4 ${isOpen ? 'text-white' : 'text-blue-500'}`} />,
+              activeClass: 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-600/20',
+              badge: (
+                <span className="px-1.5 py-0.5 rounded-md bg-black/15 dark:bg-white/10 font-mono text-[10px] font-black">
+                  {connectedList.length}
+                </span>
+              ),
+            },
+            {
+              id: 'quiz',
+              label: 'تحدي الكويز',
+              renderIcon: (isOpen) => <Trophy className={`w-4 h-4 ${isOpen ? 'text-white' : 'text-purple-500'}`} />,
+              activeClass: 'bg-purple-600 text-white border-purple-500 shadow-md shadow-purple-600/20',
+              badge: isQuizLiveActive ? (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+              ) : undefined,
+            },
+            {
+              id: 'video-questions',
+              label: 'أسئلة الفيديو',
+              renderIcon: (isOpen) => <ListVideo className={`w-4 h-4 ${isOpen ? 'text-slate-950' : 'text-orange-500'}`} />,
+              activeClass: 'bg-orange-500 text-slate-950 border-orange-400 shadow-md shadow-orange-500/20',
+              badge: isVideoQuestionActive ? (
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+              ) : undefined,
+            },
+          ];
 
           return (
             <>
-              {/* ========== CARD 1: الشاشة (Collapsible) ========== */}
-              <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setOpenScreenCard((v) => !v)}
-                  className="w-full px-4 py-3.5 flex items-center justify-between gap-3 text-right hover:bg-slate-50 dark:hover:bg-slate-800/60 transition cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center shrink-0">
-                      <Monitor className="w-4 h-4" />
-                    </div>
-                    <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
-                      الشاشة
-                    </span>
+              {/* ========== MASTER CARD: TOP QUICK-CONTROL BUTTON BAR ========== */}
+              <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-3.5 sm:p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2.5 flex-1">
+                    {mainButtons.map((btn) => {
+                      const isOpen = openPanels.includes(btn.id);
+                      return (
+                        <button
+                          key={btn.id}
+                          type="button"
+                          onClick={() => toggleQuickPanel(btn.id)}
+                          className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 border transition-all cursor-pointer active:scale-[0.98] ${
+                            isOpen
+                              ? btn.activeClass
+                              : 'bg-slate-50 dark:bg-slate-950 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-800'
+                          }`}
+                        >
+                          {btn.renderIcon(isOpen)}
+                          <span>{btn.label}</span>
+                          {btn.badge}
+                        </button>
+                      );
+                    })}
                   </div>
-                  {openScreenCard ? (
-                    <ChevronUp className="w-4 h-4 text-slate-400" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-slate-400" />
+
+                  {openPanels.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setOpenPanels([])}
+                      className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-500/15 text-slate-500 hover:text-rose-500 text-xs font-bold flex items-center gap-1 border border-slate-200 dark:border-slate-700 transition cursor-pointer shrink-0"
+                      title="إغلاق جميع البطاقات المفتوحة"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                      <span>إغلاق الكل</span>
+                    </button>
                   )}
-                </button>
-
-                {openScreenCard && (
-                  <div className="px-4 pb-4 pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => navigateToPage('display')}
-                      className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer active:scale-[0.98]"
-                    >
-                      <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
-                      <span>جميع الشاشات</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => navigateToPage('live-direct-display')}
-                      className="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-700 dark:text-amber-300 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer active:scale-[0.98]"
-                    >
-                      <Film className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                      <span>فيديو مباشر</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (isAdminUnlocked) {
-                          navigateToPage('live-teacher');
-                        } else {
-                          setShowAdminPassModal(true);
-                        }
-                      }}
-                      className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer active:scale-[0.98]"
-                    >
-                      <Radio className="w-3.5 h-3.5 shrink-0" />
-                      <span>بث مباشر</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => navigateToPage('quiz-arena')}
-                      className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer active:scale-[0.98]"
-                    >
-                      <Trophy className="w-3.5 h-3.5 shrink-0" />
-                      <span>التحدي</span>
-                    </button>
-                  </div>
-                )}
+                </div>
               </section>
 
-              {/* ========== CARD 2: ابدأ (Collapsible) ========== */}
-              <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setOpenStartCard((v) => !v)}
-                  className="w-full px-4 py-3.5 flex items-center justify-between gap-3 text-right hover:bg-slate-50 dark:hover:bg-slate-800/60 transition cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                        isProgramRunning
-                          ? 'bg-emerald-500/15 text-emerald-500'
-                          : 'bg-indigo-500/15 text-indigo-500'
-                      }`}
+              {/* ========== STACKABLE OPEN CARDS BELOW MASTER CARD ========== */}
+              {openPanels.map((panelId) => {
+                if (panelId === 'screen') {
+                  return (
+                    <section
+                      key="screen"
+                      className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden"
                     >
-                      <Power className="w-4 h-4" />
-                    </div>
-                    <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
-                      ابدأ
-                    </span>
-                    {isProgramRunning && currentPin && (
-                      <span className="px-2 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-mono text-[11px] font-black border border-emerald-500/30">
-                        PIN: {currentPin}
-                      </span>
-                    )}
-                  </div>
-                  {openStartCard ? (
-                    <ChevronUp className="w-4 h-4 text-slate-400" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-slate-400" />
-                  )}
-                </button>
-
-                {openStartCard && (
-                  <div className="px-4 pb-4 pt-2 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2.5">
-                    {/* 1. Start / End + PIN + Copy PIN */}
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={handleToggleProgramHome}
-                        disabled={isTogglingProgram}
-                        className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition cursor-pointer active:scale-[0.98] disabled:opacity-50 ${
-                          isProgramRunning
-                            ? 'bg-rose-600 hover:bg-rose-500 text-white'
-                            : 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                        }`}
-                      >
-                        <Power className={`w-3.5 h-3.5 ${isTogglingProgram ? 'animate-spin' : ''}`} />
-                        <span>{isTogglingProgram ? 'جارٍ...' : isProgramRunning ? 'إنهاء' : 'ابدأ'}</span>
-                      </button>
-
-                      <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-2.5 py-1.5 rounded-xl font-mono text-xs">
-                        <span className="text-slate-500 dark:text-slate-400">PIN:</span>
-                        <span className="font-black text-amber-600 dark:text-amber-300">
-                          {currentPin || '----'}
-                        </span>
+                      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-500 flex items-center justify-center shrink-0">
+                            <Monitor className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                            الشاشة
+                          </span>
+                        </div>
                         <button
                           type="button"
-                          onClick={() => currentPin && copyLink(currentPin, 'pin-code')}
-                          disabled={!currentPin}
-                          title="نسخ رقم PIN"
-                          className="p-0.5 text-slate-500 hover:text-amber-500 transition cursor-pointer disabled:opacity-40"
+                          onClick={() => closeQuickPanel('screen')}
+                          title="إغلاق"
+                          className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-500/15 text-slate-500 hover:text-rose-500 transition cursor-pointer"
                         >
-                          {copiedLink === 'pin-code' ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-500" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
+                          <X className="w-4 h-4" />
                         </button>
                       </div>
-                    </div>
 
-                    {/* 2. Copy Student Join Link */}
-                    <button
-                      type="button"
-                      onClick={() => copyLink(studentJoinUrl, 'home-student-link')}
-                      className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-bold text-xs flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                      <div className="p-4 flex flex-wrap items-center gap-2.5">
+                        <button
+                          type="button"
+                          onClick={() => navigateToPage('display')}
+                          className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer active:scale-[0.98]"
+                        >
+                          <LayoutGrid className="w-3.5 h-3.5 shrink-0" />
+                          <span>جميع الشاشات</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => navigateToPage('live-direct-display')}
+                          className="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-700 dark:text-amber-300 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer active:scale-[0.98]"
+                        >
+                          <Film className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <span>فيديو مباشر</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isAdminUnlocked) {
+                              navigateToPage('live-teacher');
+                            } else {
+                              setShowAdminPassModal(true);
+                            }
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer active:scale-[0.98]"
+                        >
+                          <Radio className="w-3.5 h-3.5 shrink-0" />
+                          <span>بث مباشر</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => navigateToPage('quiz-arena')}
+                          className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer active:scale-[0.98]"
+                        >
+                          <Trophy className="w-3.5 h-3.5 shrink-0" />
+                          <span>التحدي</span>
+                        </button>
+                      </div>
+                    </section>
+                  );
+                }
+
+                if (panelId === 'start') {
+                  return (
+                    <section
+                      key="start"
+                      className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden"
                     >
-                      {copiedLink === 'home-student-link' ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                      ) : (
-                        <LinkIcon className="w-3.5 h-3.5 text-indigo-500" />
-                      )}
-                      <span>{copiedLink === 'home-student-link' ? 'تم النسخ' : 'نسخ رابط'}</span>
-                    </button>
-
-                    {/* 3. Quick QR Code Modal */}
-                    <button
-                      type="button"
-                      onClick={() => setShowQrModal(true)}
-                      className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-bold text-xs flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 transition cursor-pointer"
-                    >
-                      <QrCode className="w-3.5 h-3.5 text-amber-500" />
-                      <span>رمز الدخول السريع (QR Code)</span>
-                    </button>
-                  </div>
-                )}
-              </section>
-
-              {/* ========== CARD 3: تسجيل الدخول (Collapsible) ========== */}
-              <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-                <button
-                  type="button"
-                  onClick={() => setOpenLoginCard((v) => !v)}
-                  className="w-full px-4 py-3.5 flex items-center justify-between gap-3 text-right hover:bg-slate-50 dark:hover:bg-slate-800/60 transition cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-blue-500/15 text-blue-500 flex items-center justify-center shrink-0">
-                      <Users className="w-4 h-4" />
-                    </div>
-                    <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
-                      تسجيل الدخول
-                    </span>
-                    <span className="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[11px] font-bold">
-                      {connectedList.length}
-                    </span>
-                  </div>
-                  {openLoginCard ? (
-                    <ChevronUp className="w-4 h-4 text-slate-400" />
-                  ) : (
-                    <ChevronDown className="w-4 h-4 text-slate-400" />
-                  )}
-                </button>
-
-                {openLoginCard && (
-                  <div className="px-4 pb-4 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
-                    {/* Primary Buttons: المباشر + دخول تحدي + Counters */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setLoginFilterView('live')}
-                        className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition cursor-pointer ${
-                          loginFilterView === 'live'
-                            ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
-                        }`}
-                      >
-                        <Users className="w-3.5 h-3.5" />
-                        <span>المباشر (فيديو / بث مباشر)</span>
-                        <span className="px-1.5 py-0.2 rounded bg-black/20 font-mono text-[10px]">
-                          {connectedList.length}
-                        </span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setLoginFilterView('quiz')}
-                        className={`px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition cursor-pointer ${
-                          loginFilterView === 'quiz'
-                            ? 'bg-purple-600 text-white border-purple-500 shadow-sm'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
-                        }`}
-                      >
-                        <Trophy className="w-3.5 h-3.5" />
-                        <span>دخول تحدي</span>
-                        <span className="px-1.5 py-0.2 rounded bg-black/20 font-mono text-[10px]">
-                          {quizParticipants.length}
-                        </span>
-                      </button>
-                    </div>
-
-                    {/* Attached Data Fields: عدد المتصلون / الذين لم يجاوبوا / إجابات الطلاب */}
-                    <div className="grid grid-cols-3 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setLoginFilterView('live')}
-                        className={`p-2.5 rounded-xl border text-right transition cursor-pointer ${
-                          loginFilterView === 'live'
-                            ? 'bg-indigo-50 dark:bg-indigo-950/50 border-indigo-400/60'
-                            : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
-                        }`}
-                      >
-                        <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                          عدد المتصلون
+                      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                              isProgramRunning
+                                ? 'bg-emerald-500/15 text-emerald-500'
+                                : 'bg-indigo-500/15 text-indigo-500'
+                            }`}
+                          >
+                            <Power className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                            ابدأ
+                          </span>
+                          {isProgramRunning && currentPin && (
+                            <span className="px-2 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-mono text-[11px] font-black border border-emerald-500/30">
+                              PIN: {currentPin}
+                            </span>
+                          )}
                         </div>
-                        <div className="text-base font-black text-indigo-600 dark:text-indigo-400 font-mono">
-                          {connectedList.length}
-                        </div>
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => closeQuickPanel('start')}
+                          title="إغلاق"
+                          className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-500/15 text-slate-500 hover:text-rose-500 transition cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
 
-                      <button
-                        type="button"
-                        onClick={() => setLoginFilterView('unanswered')}
-                        className={`p-2.5 rounded-xl border text-right transition cursor-pointer ${
-                          loginFilterView === 'unanswered'
-                            ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-400/60'
-                            : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
-                        }`}
-                      >
-                        <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                          <Clock className="w-3 h-3 text-amber-500" />
-                          <span>الذين لم يجاوبوا</span>
-                        </div>
-                        <div className="text-base font-black text-amber-600 dark:text-amber-400 font-mono">
-                          {unansweredList.length}
-                        </div>
-                      </button>
+                      <div className="p-4 flex flex-wrap items-center gap-2.5">
+                        {/* 1. Start / End + PIN + Copy PIN */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={handleToggleProgramHome}
+                            disabled={isTogglingProgram}
+                            className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition cursor-pointer active:scale-[0.98] disabled:opacity-50 ${
+                              isProgramRunning
+                                ? 'bg-rose-600 hover:bg-rose-500 text-white'
+                                : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                            }`}
+                          >
+                            <Power className={`w-3.5 h-3.5 ${isTogglingProgram ? 'animate-spin' : ''}`} />
+                            <span>{isTogglingProgram ? 'جارٍ...' : isProgramRunning ? 'إنهاء' : 'ابدأ'}</span>
+                          </button>
 
-                      <button
-                        type="button"
-                        onClick={() => setLoginFilterView('answers')}
-                        className={`p-2.5 rounded-xl border text-right transition cursor-pointer ${
-                          loginFilterView === 'answers'
-                            ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-400/60'
-                            : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
-                        }`}
-                      >
-                        <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                          <span>إجابات الطلاب</span>
-                        </div>
-                        <div className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                          {answerEntries.length}
-                        </div>
-                      </button>
-                    </div>
-
-                    {/* Active Roster / Data List */}
-                    <div className="max-h-56 overflow-y-auto rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-2.5 space-y-1.5 text-xs">
-                      {loginFilterView === 'live' && (
-                        connectedList.length === 0 ? (
-                          <div className="text-center text-slate-400 py-3">لا يوجد طلاب متصلون حالياً</div>
-                        ) : (
-                          connectedList.map((s, idx) => (
-                            <div
-                              key={`${s.username}_${s.sheetNumber}_${idx}`}
-                              className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800"
+                          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-2.5 py-1.5 rounded-xl font-mono text-xs">
+                            <span className="text-slate-500 dark:text-slate-400">PIN:</span>
+                            <span className="font-black text-amber-600 dark:text-amber-300">
+                              {currentPin || '----'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => currentPin && copyLink(currentPin, 'pin-code')}
+                              disabled={!currentPin}
+                              title="نسخ رقم PIN"
+                              className="p-0.5 text-slate-500 hover:text-amber-500 transition cursor-pointer disabled:opacity-40"
                             >
-                              <span className="font-bold text-slate-800 dark:text-slate-100">{s.username}</span>
-                              {s.sheetNumber && (
-                                <span className="font-mono text-[11px] text-slate-500">#{s.sheetNumber}</span>
+                              {copiedLink === 'pin-code' ? (
+                                <Check className="w-3.5 h-3.5 text-emerald-500" />
+                              ) : (
+                                <Copy className="w-3.5 h-3.5" />
                               )}
-                            </div>
-                          ))
-                        )
-                      )}
+                            </button>
+                          </div>
+                        </div>
 
-                      {loginFilterView === 'quiz' && (
-                        quizParticipants.length === 0 ? (
-                          <div className="text-center text-slate-400 py-3">لا يوجد طلاب في تحدي كويز حالياً</div>
-                        ) : (
-                          quizParticipants.map((p, idx) => (
-                            <div
-                              key={`${p.studentKey || p.studentName}_${idx}`}
-                              className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800"
-                            >
-                              <span className="font-bold text-slate-800 dark:text-slate-100">{p.studentName}</span>
-                              <span className="font-mono text-[11px] text-purple-500 font-bold">
-                                {p.totalScore || 0} نقطة
-                              </span>
-                            </div>
-                          ))
-                        )
-                      )}
+                        {/* 2. Copy Student Join Link (includes PIN automatically) */}
+                        <button
+                          type="button"
+                          onClick={() => copyLink(studentJoinUrl, 'home-student-link')}
+                          className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-bold text-xs flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                        >
+                          {copiedLink === 'home-student-link' ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                          ) : (
+                            <LinkIcon className="w-3.5 h-3.5 text-indigo-500" />
+                          )}
+                          <span>{copiedLink === 'home-student-link' ? 'تم النسخ' : 'نسخ رابط'}</span>
+                        </button>
 
-                      {loginFilterView === 'unanswered' && (
-                        unansweredList.length === 0 ? (
-                          <div className="text-center text-slate-400 py-3">لا يوجد طلاب منتظرون للإجابة</div>
-                        ) : (
-                          unansweredList.map((s, idx) => (
-                            <div
-                              key={`${s.username}_${s.sheetNumber}_${idx}`}
-                              className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-amber-500/20"
-                            >
-                              <span className="font-bold text-slate-800 dark:text-slate-100">{s.username}</span>
-                              <span className="text-[11px] text-amber-500 font-bold">لم يجب بعد</span>
-                            </div>
-                          ))
-                        )
-                      )}
+                        {/* 3. Quick QR Code Modal (embeds live PIN dynamically) */}
+                        <button
+                          type="button"
+                          onClick={() => setShowQrModal(true)}
+                          className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 font-bold text-xs flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                        >
+                          <QrCode className="w-3.5 h-3.5 text-amber-500" />
+                          <span>رمز الدخول السريع (QR Code)</span>
+                        </button>
+                      </div>
+                    </section>
+                  );
+                }
 
-                      {loginFilterView === 'answers' && (
-                        answerEntries.length === 0 ? (
-                          <div className="text-center text-slate-400 py-3">لا توجد إجابات مسجلة للسؤال الحالي</div>
-                        ) : (
-                          answerEntries.map((sub, idx) => (
-                            <div
-                              key={`${sub.username}_${idx}`}
-                              className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-emerald-500/20"
-                            >
-                              <span className="font-bold text-slate-800 dark:text-slate-100">{sub.username}</span>
-                              <span className="font-bold text-emerald-600 dark:text-emerald-400 truncate max-w-[55%]">
-                                {sub.answer}
-                              </span>
+                if (panelId === 'login') {
+                  return (
+                    <section
+                      key="login"
+                      className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden"
+                    >
+                      <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-blue-500/15 text-blue-500 flex items-center justify-center shrink-0">
+                            <Users className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                            تسجيل الدخول
+                          </span>
+                          <span className="px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[11px] font-bold">
+                            {connectedList.length}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => closeQuickPanel('login')}
+                          title="إغلاق"
+                          className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-rose-500/15 text-slate-500 hover:text-rose-500 transition cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="p-4 space-y-3">
+                        {/* Clean Direct Metrics without sub-tabs: عدد المتصلون / الذين لم يجاوبوا / إجابات الطلاب */}
+                        <div className="grid grid-cols-3 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setLoginFilterView('live')}
+                            className={`p-2.5 rounded-xl border text-right transition cursor-pointer ${
+                              loginFilterView === 'live'
+                                ? 'bg-indigo-50 dark:bg-indigo-950/50 border-indigo-400/60'
+                                : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
+                            }`}
+                          >
+                            <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
+                              عدد المتصلون
                             </div>
-                          ))
-                        )
-                      )}
-                    </div>
-                  </div>
-                )}
-              </section>
+                            <div className="text-base font-black text-indigo-600 dark:text-indigo-400 font-mono">
+                              {connectedList.length}
+                            </div>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setLoginFilterView('unanswered')}
+                            className={`p-2.5 rounded-xl border text-right transition cursor-pointer ${
+                              loginFilterView === 'unanswered'
+                                ? 'bg-amber-50 dark:bg-amber-950/50 border-amber-400/60'
+                                : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
+                            }`}
+                          >
+                            <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-amber-500" />
+                              <span>الذين لم يجاوبوا</span>
+                            </div>
+                            <div className="text-base font-black text-amber-600 dark:text-amber-400 font-mono">
+                              {unansweredList.length}
+                            </div>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setLoginFilterView('answers')}
+                            className={`p-2.5 rounded-xl border text-right transition cursor-pointer ${
+                              loginFilterView === 'answers'
+                                ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-400/60'
+                                : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
+                            }`}
+                          >
+                            <div className="text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                              <span>إجابات الطلاب</span>
+                            </div>
+                            <div className="text-base font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                              {answerEntries.length}
+                            </div>
+                          </button>
+                        </div>
+
+                        {/* Active Roster / Data List */}
+                        <div className="max-h-56 overflow-y-auto rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 p-2.5 space-y-1.5 text-xs">
+                          {loginFilterView === 'live' && (
+                            connectedList.length === 0 ? (
+                              <div className="text-center text-slate-400 py-3">لا يوجد طلاب متصلون حالياً</div>
+                            ) : (
+                              connectedList.map((s, idx) => (
+                                <div
+                                  key={`${s.username}_${s.sheetNumber}_${idx}`}
+                                  className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800"
+                                >
+                                  <span className="font-bold text-slate-800 dark:text-slate-100">{s.username}</span>
+                                  {s.sheetNumber && (
+                                    <span className="font-mono text-[11px] text-slate-500">#{s.sheetNumber}</span>
+                                  )}
+                                </div>
+                              ))
+                            )
+                          )}
+
+                          {loginFilterView === 'unanswered' && (
+                            unansweredList.length === 0 ? (
+                              <div className="text-center text-slate-400 py-3">لا يوجد طلاب منتظرون للإجابة</div>
+                            ) : (
+                              unansweredList.map((s, idx) => (
+                                <div
+                                  key={`${s.username}_${s.sheetNumber}_${idx}`}
+                                  className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-amber-500/20"
+                                >
+                                  <span className="font-bold text-slate-800 dark:text-slate-100">{s.username}</span>
+                                  <span className="text-[11px] text-amber-500 font-bold">لم يجب بعد</span>
+                                </div>
+                              ))
+                            )
+                          )}
+
+                          {loginFilterView === 'answers' && (
+                            answerEntries.length === 0 ? (
+                              <div className="text-center text-slate-400 py-3">لا توجد إجابات مسجلة للسؤال الحالي</div>
+                            ) : (
+                              answerEntries.map((sub, idx) => (
+                                <div
+                                  key={`${sub.username}_${idx}`}
+                                  className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-emerald-500/20"
+                                >
+                                  <span className="font-bold text-slate-800 dark:text-slate-100">{sub.username}</span>
+                                  <span className="font-bold text-emerald-600 dark:text-emerald-400 truncate max-w-[55%]">
+                                    {sub.answer}
+                                  </span>
+                                </div>
+                              ))
+                            )
+                          )}
+                        </div>
+                      </div>
+                    </section>
+                  );
+                }
+
+                if (panelId === 'quiz') {
+                  return (
+                    <section
+                      key="quiz"
+                      className="rounded-2xl bg-slate-900 border border-slate-800 shadow-lg overflow-hidden text-slate-100"
+                    >
+                      <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3 bg-slate-950/60">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center shrink-0">
+                            <Trophy className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm sm:text-base font-black text-white">
+                            تحدي الكويز — غرفة التحكم المباشرة
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => closeQuickPanel('quiz')}
+                          title="إغلاق"
+                          className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="p-4">
+                        <QuizManagerPanel
+                          sessionState={liveSession}
+                          embeddedControlOnly={true}
+                        />
+                      </div>
+                    </section>
+                  );
+                }
+
+                if (panelId === 'video-questions') {
+                  return (
+                    <section
+                      key="video-questions"
+                      className="rounded-2xl bg-slate-900 border border-slate-800 shadow-lg overflow-hidden text-slate-100"
+                    >
+                      <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3 bg-slate-950/60">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-orange-500/15 text-orange-400 flex items-center justify-center shrink-0">
+                            <ListVideo className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm sm:text-base font-black text-white">
+                            أسئلة الفيديو
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => closeQuickPanel('video-questions')}
+                          title="إغلاق"
+                          className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="p-4">
+                        <LiveClassManager embeddedVideoQuestionsOnly={true} />
+                      </div>
+                    </section>
+                  );
+                }
+
+                return null;
+              })}
             </>
           );
         })()}
@@ -806,8 +948,13 @@ export default function App() {
                 )}
               </div>
               <div className="font-mono text-base font-black text-amber-600 dark:text-amber-400 tracking-widest bg-slate-100 dark:bg-slate-950 p-2 rounded-xl border border-slate-200 dark:border-slate-800">
-                PIN: {liveSession?.sessionPin || '----'}
+                PIN: {effectivePin || '----'}
               </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                {effectivePin
+                  ? 'رمز PIN مدمج تلقائياً داخل هذا الباركود ورابط النسخ للدخول السريع.'
+                  : 'اضغط على زر "ابدأ" لتوليد رقم PIN ودمجه تلقائياً في الباركود.'}
+              </p>
             </motion.div>
           </div>
         )}

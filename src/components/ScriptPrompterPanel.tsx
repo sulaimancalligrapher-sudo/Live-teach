@@ -26,11 +26,13 @@ import { showAppConfirm } from './AppDialog';
 interface ScriptPrompterPanelProps {
   isStandalone?: boolean;
   onBack?: () => void;
+  embeddedTranslationQuickOnly?: boolean;
 }
 
 export default function ScriptPrompterPanel({
   isStandalone = false,
   onBack,
+  embeddedTranslationQuickOnly = false,
 }: ScriptPrompterPanelProps) {
   const [subTab, setSubTab] = useState<'prompter' | 'editor'>('prompter');
   const [sessionState, setSessionState] = useState<LiveSessionState | null>(null);
@@ -618,6 +620,87 @@ export default function ScriptPrompterPanel({
     setPasteText('');
     showToast(`تم استيراد ${parsed.length} سطر في المحرر السريع!`, 'success');
   };
+
+  if (embeddedTranslationQuickOnly) {
+    return (
+      <div className="space-y-3 text-slate-100" dir="rtl">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* 1. Student Visibility Toggle */}
+          <button
+            type="button"
+            onClick={handleToggleShowToStudents}
+            className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-2 border transition cursor-pointer shadow-sm ${
+              showToStudents
+                ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 border-emerald-400 shadow-emerald-500/20'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+            }`}
+          >
+            {showToStudents ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            <span>{showToStudents ? 'الترجمة ظاهرة للطلاب' : 'الترجمة مخفية عن الطلاب'}</span>
+          </button>
+
+          {/* 2. Voice Speech Tracker Button */}
+          <button
+            type="button"
+            onClick={() => (isListening ? stopSpeechTracking() : startSpeechTracking())}
+            className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-2 border transition cursor-pointer shadow-sm ${
+              isListening
+                ? 'bg-rose-600 hover:bg-rose-500 text-white border-rose-400 animate-pulse'
+                : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-400'
+            }`}
+          >
+            {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            <span>{isListening ? 'إيقاف تتبع الصوت' : 'تتبع الصوت التلقائي'}</span>
+          </button>
+
+          {/* 3. Standalone Window Link */}
+          <a
+            href="?page=script-prompter"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+            title="فتح قارئ السكربت في نافذة مستقلة"
+          >
+            <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+            <span>نافذة مستقلة</span>
+          </a>
+        </div>
+
+        {notice && (
+          <div
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-between border ${
+              notice.type === 'success'
+                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                : notice.type === 'error'
+                ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                : 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+            }`}
+          >
+            <span>{notice.text}</span>
+            <button onClick={() => setNotice(null)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
+          </div>
+        )}
+
+        {speechError && (
+          <div className="px-3.5 py-2 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-bold flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{speechError}</span>
+          </div>
+        )}
+
+        {(isListening || lastHeardText) && (
+          <div className="px-3 py-2 rounded-xl bg-slate-950/70 border border-slate-800 text-xs flex items-center justify-between gap-2">
+            <span className="text-slate-400 truncate">
+              {lastHeardText ? `آخر عبارة مسموعة: «${lastHeardText}»` : 'جاري الاستماع لصوت المحاضر...'}
+            </span>
+            <span className="text-[11px] font-mono text-emerald-400 shrink-0">
+              ص {effectivePage} • {lines.length} سطر
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div

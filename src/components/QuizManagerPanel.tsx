@@ -612,33 +612,35 @@ export default function QuizManagerPanel({
       {/* SUB-SECTION 1: CONTROL ROOM (قسم التحكم المباشر) */}
       {/* ============================================================== */}
       {effectiveTab === 'control' && (
-        <div className="space-y-6">
+        <div className={embeddedControlOnly ? 'space-y-2.5' : 'space-y-6'}>
           {/* Main Action Control Box */}
-          <div className="p-6 bg-slate-950/70 border border-slate-800 rounded-3xl space-y-5">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className={embeddedControlOnly ? 'p-3 bg-slate-950/70 border border-slate-800 rounded-2xl space-y-2.5' : 'p-6 bg-slate-950/70 border border-slate-800 rounded-3xl space-y-5'}>
+            <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between ${embeddedControlOnly ? 'gap-2' : 'gap-4'}`}>
               <div>
-                <h3 className="text-base font-black text-slate-100 flex items-center gap-2">
-                  <Play className="w-5 h-5 text-amber-400" />
+                <h3 className={`${embeddedControlOnly ? 'text-sm' : 'text-base'} font-black text-slate-100 flex items-center gap-2`}>
+                  <Play className={`${embeddedControlOnly ? 'w-4 h-4' : 'w-5 h-5'} text-amber-400`} />
                   <span>إطلاق وإدارة التحدي المباشر</span>
                 </h3>
-                <p className="text-xs text-slate-400 mt-1">
-                  اختر موضوع المسابقة واضبط الخيارات، ثم اضغط "ابدأ التحدي" لتنطلق الأسئلة لجميع الطلاب فوراً.
-                </p>
+                {!embeddedControlOnly && (
+                  <p className="text-xs text-slate-400 mt-1">
+                    اختر موضوع المسابقة واضبط الخيارات، ثم اضغط "ابدأ التحدي" لتنطلق الأسئلة لجميع الطلاب فوراً.
+                  </p>
+                )}
               </div>
 
               {/* Status Badge */}
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border shrink-0">
+              <div className={embeddedControlOnly ? 'shrink-0' : 'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border shrink-0'}>
                 {isQuizActive ? (
-                  <span className="flex items-center gap-1.5 text-emerald-400 bg-emerald-500/10 border-emerald-500/30">
+                  <span className={`flex items-center gap-1.5 text-emerald-400 bg-emerald-500/10 border-emerald-500/30 ${embeddedControlOnly ? 'px-2.5 py-1 rounded-full text-[11px] font-bold border' : ''}`}>
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
                     المسابقة جارية الآن 🚀
                   </span>
                 ) : currentQuizState?.quizStatus === 'ended' ? (
-                  <span className="text-amber-400 bg-amber-500/10 border-amber-500/30">
+                  <span className={`text-amber-400 bg-amber-500/10 border-amber-500/30 ${embeddedControlOnly ? 'px-2.5 py-1 rounded-full text-[11px] font-bold border inline-block' : ''}`}>
                     انتهت المسابقة (منصة التتويج نشطة) 🏆
                   </span>
                 ) : (
-                  <span className="text-slate-400 bg-slate-800 border-slate-700">
+                  <span className={`text-slate-400 bg-slate-800 border-slate-700 ${embeddedControlOnly ? 'px-2.5 py-1 rounded-full text-[11px] font-bold border inline-block' : ''}`}>
                     المسابقة في وضع الاستعداد ⏸️
                   </span>
                 )}
@@ -646,13 +648,15 @@ export default function QuizManagerPanel({
             </div>
 
             {/* Quiz Selector */}
-            <div className="space-y-2">
+            <div className={embeddedControlOnly ? 'space-y-1' : 'space-y-2'}>
               <label className="text-xs font-bold text-slate-300">اختر موضوع المسابقة من بنك الأسئلة:</label>
               <select
                 value={selectedQuizIdx}
                 onChange={(e) => setSelectedQuizIdx(Number(e.target.value))}
                 disabled={isQuizActive}
-                className="w-full px-4 py-3 bg-slate-900 border border-slate-800 rounded-2xl text-slate-200 text-xs font-bold outline-none focus:border-amber-500 transition-all"
+                className={`w-full bg-slate-900 border border-slate-800 text-slate-200 text-xs font-bold outline-none focus:border-amber-500 transition-all ${
+                  embeddedControlOnly ? 'px-3 py-2 rounded-xl' : 'px-4 py-3 rounded-2xl'
+                }`}
               >
                 {quizzes.map((q, idx) => (
                   <option key={idx} value={idx}>
@@ -663,21 +667,29 @@ export default function QuizManagerPanel({
             </div>
 
             {/* Quick Action Buttons (4-Step Workflow) */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+            <div className={embeddedControlOnly ? 'flex flex-wrap items-center gap-1.5 pt-0.5' : 'grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2'}>
               {currentQuizState?.isActive && currentQuizState.quizStatus === 'waiting' ? (
                 <>
                   <button
                     onClick={handleLaunchQuestionsNow}
-                    className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer animate-pulse"
+                    className={
+                      embeddedControlOnly
+                        ? 'px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-xl text-xs shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer animate-pulse'
+                        : 'w-full py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-amber-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer animate-pulse'
+                    }
                   >
-                    <Play className="w-4 h-4 fill-slate-950" />
+                    <Play className="w-3.5 h-3.5 fill-slate-950" />
                     <span>ابدأ ({Object.keys(currentQuizState.participants || {}).length})</span>
                   </button>
                   <button
                     onClick={handleEndQuiz}
-                    className="w-full py-3.5 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    className={
+                      embeddedControlOnly
+                        ? 'px-3 py-1.5 bg-rose-600/25 hover:bg-rose-600/40 border border-rose-500/50 text-rose-200 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer'
+                        : 'w-full py-3.5 bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-rose-300 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer'
+                    }
                   >
-                    <Square className="w-4 h-4" />
+                    <Square className="w-3.5 h-3.5" />
                     <span>إلغاء</span>
                   </button>
                 </>
@@ -685,49 +697,73 @@ export default function QuizManagerPanel({
                 <>
                   <button
                     onClick={handleOpenLobby}
-                    className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-indigo-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    className={
+                      embeddedControlOnly
+                        ? 'px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black rounded-xl text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer'
+                        : 'w-full py-3.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-indigo-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer'
+                    }
                   >
-                    <Users className="w-4 h-4 text-indigo-200" />
+                    <Users className="w-3.5 h-3.5 text-indigo-100" />
                     <span>استعداد</span>
                   </button>
                   <button
                     onClick={handleStartQuiz}
-                    className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-slate-950 font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    className={
+                      embeddedControlOnly
+                        ? 'px-3 py-1.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-xl text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer'
+                        : 'w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-slate-950 font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer'
+                    }
                   >
-                    <Play className="w-4 h-4 fill-slate-950" />
+                    <Play className="w-3.5 h-3.5 fill-slate-950" />
                     <span>ابدأ</span>
                   </button>
                 </>
               ) : (
                 <button
                   onClick={handleEndQuiz}
-                  className="w-full py-3.5 bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-rose-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer col-span-2"
+                  className={
+                    embeddedControlOnly
+                      ? 'px-3.5 py-1.5 bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-400 hover:to-red-500 text-white font-black rounded-xl text-xs shadow-sm flex items-center justify-center gap-1.5 transition-all cursor-pointer'
+                      : 'w-full py-3.5 bg-gradient-to-r from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 text-white font-black rounded-2xl text-xs sm:text-sm shadow-xl shadow-rose-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer col-span-2'
+                  }
                 >
-                  <Square className="w-4 h-4 fill-white" />
+                  <Square className="w-3.5 h-3.5 fill-white" />
                   <span>إنهاء المسابقة 🏆</span>
                 </button>
               )}
 
               <button
                 onClick={handleResetQuiz}
-                className="py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer border border-slate-700"
+                className={
+                  embeddedControlOnly
+                    ? 'px-3 py-1.5 bg-sky-600/20 hover:bg-sky-600/35 border border-sky-500/40 text-sky-300 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer'
+                    : 'py-3.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer border border-slate-700'
+                }
               >
-                <RotateCcw className="w-4 h-4" />
+                <RotateCcw className="w-3.5 h-3.5" />
                 <span>إعادة ضبط</span>
               </button>
 
               <button
                 onClick={handleExportBatchToSheet}
                 disabled={syncingSheet}
-                className="py-3.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                className={
+                  embeddedControlOnly
+                    ? 'px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/50 text-amber-300 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer'
+                    : 'py-3.5 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer'
+                }
               >
-                <ArrowDownToLine className="w-4 h-4 text-amber-400" />
+                <ArrowDownToLine className="w-3.5 h-3.5 text-amber-400" />
                 <span>{syncingSheet ? 'جاري التسجيل...' : 'تسجيل النتائج'}</span>
               </button>
 
               <button
                 onClick={handleStopBroadcast}
-                className="py-3 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 hover:text-rose-100 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer col-span-2 sm:col-span-4"
+                className={
+                  embeddedControlOnly
+                    ? 'px-3 py-1.5 bg-rose-950/70 hover:bg-rose-900 border border-rose-500/50 text-rose-200 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer'
+                    : 'py-3 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/40 text-rose-300 hover:text-rose-100 font-bold rounded-2xl text-xs flex items-center justify-center gap-2 transition-all cursor-pointer col-span-2 sm:col-span-4'
+                }
                 title="إيقاف البث النشط بالكامل وإعادته لحالة الخمول لمنع ظهور البث التلقائي"
               >
                 <Square className="w-3.5 h-3.5 text-rose-400 fill-rose-400/20" />
@@ -738,32 +774,34 @@ export default function QuizManagerPanel({
 
           {/* Waiting Lobby Realtime Quick Monitor for Teacher */}
           {currentQuizState?.isActive && currentQuizState.quizStatus === 'waiting' && (
-            <div className="p-5 bg-gradient-to-r from-indigo-950/60 via-slate-900 to-indigo-950/60 border border-indigo-500/30 rounded-3xl space-y-4 animate-fade-in">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2.5">
-                  <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping" />
-                  <h4 className="text-sm font-black text-slate-100">
+            <div className={`${embeddedControlOnly ? 'p-3 rounded-2xl space-y-2' : 'p-5 rounded-3xl space-y-4'} bg-gradient-to-r from-indigo-950/60 via-slate-900 to-indigo-950/60 border border-indigo-500/30 animate-fade-in`}>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+                  <h4 className={`${embeddedControlOnly ? 'text-xs' : 'text-sm'} font-black text-slate-100`}>
                     قاعة الاستعداد نشطة حالياً على شاشة العرض (البروجكتر) 👥
                   </h4>
                 </div>
-                <div className="text-xs font-bold text-amber-300 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/30">
+                <div className="text-xs font-bold text-amber-300 bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/30">
                   {Object.keys(currentQuizState.participants || {}).length} طلاب قبلوا التحدي وجاهزون
                 </div>
               </div>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                تظهر للطلاب الآن نافذة "المعلم يستعد لإطلاق مسابقة التحدي النهائي!". كل طالب يضغط على "أنا مستعد" يُسجل فوراً في القاعة وترتفع نسبة الجاهزية على شاشة العرض. عندما يكتمل العدد اضغط الزر "ابدأ".
-              </p>
+              {!embeddedControlOnly && (
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  تظهر للطلاب الآن نافذة "المعلم يستعد لإطلاق مسابقة التحدي النهائي!". كل طالب يضغط على "أنا مستعد" يُسجل فوراً في القاعة وترتفع نسبة الجاهزية على شاشة العرض. عندما يكتمل العدد اضغط الزر "ابدأ".
+                </p>
+              )}
               {/* Ready Students Mini Grid */}
-              <div className="flex flex-wrap gap-2 pt-1 max-h-40 overflow-y-auto">
+              <div className="flex flex-wrap gap-1.5 pt-0.5 max-h-36 overflow-y-auto">
                 {Object.values(currentQuizState.participants || {}).map((p) => (
-                  <div key={p.studentKey} className="px-3 py-1.5 bg-slate-900 border border-emerald-500/40 rounded-xl text-xs font-bold text-slate-200 flex items-center gap-1.5 shadow-sm">
+                  <div key={p.studentKey} className="px-2.5 py-1 bg-slate-900 border border-emerald-500/40 rounded-lg text-xs font-bold text-slate-200 flex items-center gap-1.5 shadow-sm">
                     <span className="w-2 h-2 rounded-full bg-emerald-400" />
                     <span>{p.studentName || p.username}</span>
                     {p.sheetNumber && <span className="text-[10px] text-amber-400 font-mono">#{p.sheetNumber}</span>}
                   </div>
                 ))}
                 {Object.keys(currentQuizState.participants || {}).length === 0 && (
-                  <div className="text-xs text-slate-500 italic py-2">
+                  <div className="text-xs text-slate-500 italic py-1">
                     في انتظار ضغط الطلاب على [أنا مستعد • دخول التحدي ⚡] على أجهزتهم...
                   </div>
                 )}
@@ -772,14 +810,14 @@ export default function QuizManagerPanel({
           )}
 
           {/* Settings & Toggles Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className={`grid grid-cols-1 md:grid-cols-2 ${embeddedControlOnly ? 'gap-2' : 'gap-4'}`}>
             {/* Setting 1: Timer Duration */}
-            <div className="p-4 bg-slate-950/50 border border-slate-800 rounded-2xl space-y-3">
+            <div className={`${embeddedControlOnly ? 'p-2.5 rounded-xl space-y-2' : 'p-4 rounded-2xl space-y-3'} bg-slate-950/50 border border-slate-800`}>
               <div className="flex items-center gap-2 text-xs font-black text-slate-200">
                 <Clock className="w-4 h-4 text-amber-400" />
                 <span>1. مؤقت المسابقة التنازلي:</span>
               </div>
-              <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => {
@@ -791,7 +829,7 @@ export default function QuizManagerPanel({
                       });
                     }
                   }}
-                  className={`py-2 px-3.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                  className={`py-1.5 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
                     timerMinutes === 0
                       ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md font-black'
                       : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
@@ -800,7 +838,7 @@ export default function QuizManagerPanel({
                   مفتوح بدون وقت ⏳
                 </button>
 
-                <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl">
+                <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-800 px-2.5 py-1 rounded-xl">
                   <span className="text-xs text-slate-400 font-bold">تحديد بالدقائق:</span>
                   <input
                     type="number"
@@ -819,25 +857,27 @@ export default function QuizManagerPanel({
                       }
                     }}
                     placeholder="مثال: 5"
-                    className="w-20 px-2 py-1 bg-slate-950 border border-slate-700 rounded-lg text-center text-xs font-bold font-mono text-amber-300 outline-none focus:border-amber-400"
+                    className="w-16 px-2 py-0.5 bg-slate-950 border border-slate-700 rounded-lg text-center text-xs font-bold font-mono text-amber-300 outline-none focus:border-amber-400"
                   />
                   <span className="text-xs text-slate-400">دقيقة</span>
                 </div>
               </div>
-              <p className="text-[11px] text-slate-500">
-                {timerMinutes === 0
-                  ? 'الوقت مفتوح: يستمر التحدي حتى يقوم المعلم بالضغط على إنهاء المسابقة.'
-                  : `ينتهي التحدي تلقائياً بعد ${timerMinutes} دقيقة ويعلن منصة التتويج.`}
-              </p>
+              {!embeddedControlOnly && (
+                <p className="text-[11px] text-slate-500">
+                  {timerMinutes === 0
+                    ? 'الوقت مفتوح: يستمر التحدي حتى يقوم المعلم بالضغط على إنهاء المسابقة.'
+                    : `ينتهي التحدي تلقائياً بعد ${timerMinutes} دقيقة ويعلن منصة التتويج.`}
+                </p>
+              )}
             </div>
 
             {/* Setting 2: Podium Count */}
-            <div className="p-4 bg-slate-950/50 border border-slate-800 rounded-2xl space-y-3">
+            <div className={`${embeddedControlOnly ? 'p-2.5 rounded-xl space-y-2' : 'p-4 rounded-2xl space-y-3'} bg-slate-950/50 border border-slate-800`}>
               <div className="flex items-center gap-2 text-xs font-black text-slate-200">
                 <Trophy className="w-4 h-4 text-amber-400" />
                 <span>2. عدد الفائزين في منصة التتويج:</span>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2.5">
                 <input
                   type="number"
                   min={1}
@@ -850,25 +890,29 @@ export default function QuizManagerPanel({
                       updateLiveQuizSettings({ podiumCount: val });
                     }
                   }}
-                  className="w-28 px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-center text-sm font-bold text-amber-300 outline-none focus:border-amber-400 font-mono shadow-inner"
+                  className={`${embeddedControlOnly ? 'w-20 px-2.5 py-1.5 text-xs' : 'w-28 px-3 py-2 text-sm'} bg-slate-900 border border-slate-800 rounded-xl text-center font-bold text-amber-300 outline-none focus:border-amber-400 font-mono shadow-inner`}
                 />
                 <span className="text-xs text-slate-400 font-bold">فائزين في منصة التتويج والتكريم 🏆</span>
               </div>
-              <p className="text-[11px] text-slate-500">
-                يحدد عدد المتأهلين الذين تبرز أسماؤهم ومراكزهم على منصة التكريم في نهاية التحدي (الافتراضي 3).
-              </p>
+              {!embeddedControlOnly && (
+                <p className="text-[11px] text-slate-500">
+                  يحدد عدد المتأهلين الذين تبرز أسماؤهم ومراكزهم على منصة التكريم في نهاية التحدي (الافتراضي 3).
+                </p>
+              )}
             </div>
 
             {/* Setting 3: Random Shuffle */}
-            <div className="p-4 bg-slate-950/50 border border-slate-800 rounded-2xl flex items-center justify-between gap-4">
+            <div className={`${embeddedControlOnly ? 'p-2.5 rounded-xl gap-3' : 'p-4 rounded-2xl gap-4'} bg-slate-950/50 border border-slate-800 flex items-center justify-between`}>
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-xs font-black text-slate-200">
                   <Shuffle className="w-4 h-4 text-indigo-400" />
                   <span>3. ترتيب عشوائي للأسئلة لكل طالب:</span>
                 </div>
-                <p className="text-[11px] text-slate-400">
-                  يمنع الغش باختلاف ترتيب الأسئلة بين هواتف الطلاب المجاورة.
-                </p>
+                {!embeddedControlOnly && (
+                  <p className="text-[11px] text-slate-400">
+                    يمنع الغش باختلاف ترتيب الأسئلة بين هواتف الطلاب المجاورة.
+                  </p>
+                )}
               </div>
               <button
                 onClick={() => {
@@ -878,7 +922,7 @@ export default function QuizManagerPanel({
                     updateLiveQuizSettings({ shuffleQuestions: newVal });
                   }
                 }}
-                className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
+                className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer shrink-0 ${
                   shuffleQuestions ? 'bg-indigo-600' : 'bg-slate-800'
                 }`}
               >
@@ -889,15 +933,17 @@ export default function QuizManagerPanel({
             </div>
 
             {/* Setting 4: Instant Feedback */}
-            <div className="p-4 bg-slate-950/50 border border-slate-800 rounded-2xl flex items-center justify-between gap-4">
+            <div className={`${embeddedControlOnly ? 'p-2.5 rounded-xl gap-3' : 'p-4 rounded-2xl gap-4'} bg-slate-950/50 border border-slate-800 flex items-center justify-between`}>
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-xs font-black text-slate-200">
                   <Eye className="w-4 h-4 text-emerald-400" />
                   <span>4. إظهار النتيجة فوراً بعد كل سؤال:</span>
                 </div>
-                <p className="text-[11px] text-slate-400">
-                  إظهار بطاقة صح/خطأ والنقاط فور اختيار الطالب، أو الانتقال للسؤال التالي مباشرة.
-                </p>
+                {!embeddedControlOnly && (
+                  <p className="text-[11px] text-slate-400">
+                    إظهار بطاقة صح/خطأ والنقاط فور اختيار الطالب، أو الانتقال للسؤال التالي مباشرة.
+                  </p>
+                )}
               </div>
               <button
                 onClick={() => {
@@ -907,7 +953,7 @@ export default function QuizManagerPanel({
                     updateLiveQuizSettings({ showInstantFeedback: newVal });
                   }
                 }}
-                className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
+                className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer shrink-0 ${
                   showInstantFeedback ? 'bg-emerald-600' : 'bg-slate-800'
                 }`}
               >
@@ -918,15 +964,17 @@ export default function QuizManagerPanel({
             </div>
 
             {/* Setting 5: Retry Wrong Answers */}
-            <div className="p-4 bg-slate-950/50 border border-slate-800 rounded-2xl flex items-center justify-between gap-4 md:col-span-2">
+            <div className={`${embeddedControlOnly ? 'p-2.5 rounded-xl gap-3' : 'p-4 rounded-2xl gap-4'} bg-slate-950/50 border border-slate-800 flex items-center justify-between md:col-span-2`}>
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-xs font-black text-slate-200">
                   <RefreshCw className="w-4 h-4 text-purple-400" />
                   <span>5. السماح بإعادة محاولة الأسئلة الخاطئة:</span>
                 </div>
-                <p className="text-[11px] text-slate-400">
-                  بعد إنهاء الطالب لكافة الأسئلة، تتاح له جولة إضافية لإعادة حل الأسئلة التي أخطأ فيها لتعزيز التعلم.
-                </p>
+                {!embeddedControlOnly && (
+                  <p className="text-[11px] text-slate-400">
+                    بعد إنهاء الطالب لكافة الأسئلة، تتاح له جولة إضافية لإعادة حل الأسئلة التي أخطأ فيها لتعزيز التعلم.
+                  </p>
+                )}
               </div>
               <button
                 onClick={() => {
@@ -936,7 +984,7 @@ export default function QuizManagerPanel({
                     updateLiveQuizSettings({ allowRetryWrong: newVal });
                   }
                 }}
-                className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
+                className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer shrink-0 ${
                   allowRetryWrong ? 'bg-purple-600' : 'bg-slate-800'
                 }`}
               >
@@ -949,39 +997,39 @@ export default function QuizManagerPanel({
 
           {/* Live Progress Stats if active or finished */}
           {currentQuizState && currentQuizState.participants && (
-            <div className="p-5 bg-slate-950/80 border border-slate-800 rounded-3xl space-y-4">
+            <div className={`${embeddedControlOnly ? 'p-3 rounded-2xl space-y-2.5' : 'p-5 rounded-3xl space-y-4'} bg-slate-950/80 border border-slate-800`}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-sky-400" />
-                  <span className="text-sm font-black text-slate-200">إحصائيات الطلاب المشاركين في التحدي</span>
+                  <Users className="w-4 h-4 text-sky-400" />
+                  <span className={`${embeddedControlOnly ? 'text-xs' : 'text-sm'} font-black text-slate-200`}>إحصائيات الطلاب المشاركين في التحدي</span>
                 </div>
                 <span className="text-xs text-amber-400 font-mono font-bold">
                   {Object.keys(currentQuizState.participants).length} طالب مشارك
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl">
+              <div className={`grid grid-cols-2 sm:grid-cols-4 ${embeddedControlOnly ? 'gap-2' : 'gap-3'}`}>
+                <div className={`${embeddedControlOnly ? 'p-2' : 'p-3'} bg-slate-900 border border-slate-800 rounded-xl`}>
                   <div className="text-[11px] text-slate-400">المشاركون</div>
-                  <div className="text-lg font-black text-slate-100">
+                  <div className={`${embeddedControlOnly ? 'text-base' : 'text-lg'} font-black text-slate-100`}>
                     {Object.keys(currentQuizState.participants).length}
                   </div>
                 </div>
-                <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl">
+                <div className={`${embeddedControlOnly ? 'p-2' : 'p-3'} bg-slate-900 border border-slate-800 rounded-xl`}>
                   <div className="text-[11px] text-slate-400">أتموا المسابقة</div>
-                  <div className="text-lg font-black text-emerald-400">
+                  <div className={`${embeddedControlOnly ? 'text-base' : 'text-lg'} font-black text-emerald-400`}>
                     {Object.values(currentQuizState.participants).filter(p => p.isFinished).length}
                   </div>
                 </div>
-                <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl">
+                <div className={`${embeddedControlOnly ? 'p-2' : 'p-3'} bg-slate-900 border border-slate-800 rounded-xl`}>
                   <div className="text-[11px] text-slate-400">المتصدر حالياً</div>
-                  <div className="text-sm font-black text-amber-400 truncate">
+                  <div className="text-xs font-black text-amber-400 truncate">
                     {Object.values(currentQuizState.participants).sort((a,b) => b.totalScore - a.totalScore)[0]?.studentName || '-'}
                   </div>
                 </div>
-                <div className="p-3 bg-slate-900 border border-slate-800 rounded-xl">
+                <div className={`${embeddedControlOnly ? 'p-2' : 'p-3'} bg-slate-900 border border-slate-800 rounded-xl`}>
                   <div className="text-[11px] text-slate-400">أعلى نقاط</div>
-                  <div className="text-lg font-black text-amber-400 font-mono">
+                  <div className={`${embeddedControlOnly ? 'text-base' : 'text-lg'} font-black text-amber-400 font-mono`}>
                     {Math.max(0, ...Object.values(currentQuizState.participants).map(p => p.totalScore || 0)).toLocaleString()}
                   </div>
                 </div>

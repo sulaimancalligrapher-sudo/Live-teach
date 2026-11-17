@@ -124,11 +124,13 @@ import { showAppConfirm } from './AppDialog';
 interface LiveDirectManagerProps {
   onOpenDisplayScreen?: () => void;
   onBackToAdmin?: () => void;
+  embeddedView?: 'full' | 'broadcast' | 'pdf';
 }
 
 export default function LiveDirectManager({
   onOpenDisplayScreen,
   onBackToAdmin,
+  embeddedView = 'full',
 }: LiveDirectManagerProps) {
   // Main tabs: 1- إعدادات التدريس والتحكم المباشر | 2- أدوات التعليم | 3- أسئلة الشيت | 4- سجل الإجابات
   const [activeTab, setActiveTab] = useState<'teaching' | 'tools' | 'questions' | 'answers'>('teaching');
@@ -1444,124 +1446,125 @@ export default function LiveDirectManager({
   };
 
   return (
-    <div className="space-y-6 text-slate-100" dir="rtl">
+    <div className={embeddedView === 'full' ? 'space-y-6 text-slate-100' : 'space-y-4 text-slate-100'} dir="rtl">
       {/* Top Banner / Header */}
-      {/* Top Banner / Header */}
-      <div className="bg-gradient-to-r from-amber-600/20 via-slate-900 to-indigo-900/30 border border-amber-500/30 rounded-3xl p-4 sm:p-5 shadow-2xl flex flex-col gap-3.5">
-        {/* Row 1: Title Only */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center shadow-inner shrink-0">
-            <Mic className="w-5 h-5 animate-pulse" />
+      {embeddedView === 'full' && (
+        <div className="bg-gradient-to-r from-amber-600/20 via-slate-900 to-indigo-900/30 border border-amber-500/30 rounded-3xl p-4 sm:p-5 shadow-2xl flex flex-col gap-3.5">
+          {/* Row 1: Title Only */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center shadow-inner shrink-0">
+              <Mic className="w-5 h-5 animate-pulse" />
+            </div>
+            <h2 className="text-base sm:text-lg font-black text-slate-100">قسم الحصص المباشرة والأسئلة الحية (Live) </h2>
           </div>
-          <h2 className="text-base sm:text-lg font-black text-slate-100">قسم الحصص المباشرة والأسئلة الحية (Live) </h2>
-        </div>
 
-        {/* Row 2: Action Buttons */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* Start / End Live Program Button */}
-          <button
-            type="button"
-            onClick={handleToggleProgram}
-            disabled={isTogglingProgram}
-            className={`px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95 disabled:opacity-50 ${
-              isProgramRunning
-                ? 'bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 text-white shadow-rose-900/30 ring-2 ring-rose-500/50'
-                : 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white shadow-emerald-900/30 ring-2 ring-emerald-500/50 animate-pulse'
-            }`}
-            title={isProgramRunning ? 'إنهاء الحصة المباشرة وإخراج المشتركين' : 'بدء الحصة المباشرة وتفعيل دخول الطلاب'}
-          >
-            <Power className={`w-4 h-4 ${isTogglingProgram ? 'animate-spin' : ''}`} />
-            <span>
-              {isTogglingProgram
-                ? 'جارٍ التنفيذ...'
-                : isProgramRunning
-                ? 'إنهاء'
-                : 'بدء'}
-            </span>
-          </button>
+          {/* Row 2: Action Buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Start / End Live Program Button */}
+            <button
+              type="button"
+              onClick={handleToggleProgram}
+              disabled={isTogglingProgram}
+              className={`px-4 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95 disabled:opacity-50 ${
+                isProgramRunning
+                  ? 'bg-gradient-to-r from-rose-600 to-red-700 hover:from-rose-500 hover:to-red-600 text-white shadow-rose-900/30 ring-2 ring-rose-500/50'
+                  : 'bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white shadow-emerald-900/30 ring-2 ring-emerald-500/50 animate-pulse'
+              }`}
+              title={isProgramRunning ? 'إنهاء الحصة المباشرة وإخراج المشتركين' : 'بدء الحصة المباشرة وتفعيل دخول الطلاب'}
+            >
+              <Power className={`w-4 h-4 ${isTogglingProgram ? 'animate-spin' : ''}`} />
+              <span>
+                {isTogglingProgram
+                  ? 'جارٍ التنفيذ...'
+                  : isProgramRunning
+                  ? 'إنهاء'
+                  : 'بدء'}
+              </span>
+            </button>
 
-          {/* ACCESS MODE TOGGLE: RESTRICTED (SETTINGS) VS OPEN (FREE) */}
-          <button
-            type="button"
-            onClick={async () => {
-              const nextMode = sessionState?.accessMode === 'open' ? 'restricted' : 'open';
-              setSessionState(prev => prev ? ({ ...prev, accessMode: nextMode }) : prev);
-              await toggleLiveAccessMode(nextMode);
-            }}
-            className={`px-3.5 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95 border ${
-              sessionState?.accessMode === 'open'
-                ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border-emerald-400/40 shadow-emerald-900/30'
-                : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white border-amber-400/40 shadow-amber-900/30'
-            }`}
-            title={
-              sessionState?.accessMode === 'open'
-                ? 'الدخول حالياً مفتوح للجميع بدون قيود. اضغط على "تحقيق" لتفعيل التحقق من ورقة Settings'
-                : 'التحقق مفعل حالياً من ورقة Settings. اضغط على "إلغاء التحقق" لجعل الدخول مفتوحاً بدون قيود'
-            }
-          >
-            {sessionState?.accessMode === 'open' ? (
-              <>
-                <Lock className="w-4 h-4 text-emerald-200" />
-                <span>تحقيق 🔒</span>
-              </>
-            ) : (
-              <>
-                <Unlock className="w-4 h-4 text-amber-200" />
-                <span>إلغاء التحقق 🔓</span>
-              </>
-            )}
-          </button>
-
-          {/* Display screen launch */}
-          <button
-            type="button"
-            onClick={() => {
-              if (onOpenDisplayScreen) {
-                onOpenDisplayScreen();
-              } else {
-                window.open('/?page=live-direct-display', '_blank');
+            {/* ACCESS MODE TOGGLE: RESTRICTED (SETTINGS) VS OPEN (FREE) */}
+            <button
+              type="button"
+              onClick={async () => {
+                const nextMode = sessionState?.accessMode === 'open' ? 'restricted' : 'open';
+                setSessionState(prev => prev ? ({ ...prev, accessMode: nextMode }) : prev);
+                await toggleLiveAccessMode(nextMode);
+              }}
+              className={`px-3.5 py-2.5 rounded-xl text-xs font-black flex items-center gap-2 shadow-lg transition-all cursor-pointer active:scale-95 border ${
+                sessionState?.accessMode === 'open'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border-emerald-400/40 shadow-emerald-900/30'
+                  : 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white border-amber-400/40 shadow-amber-900/30'
+              }`}
+              title={
+                sessionState?.accessMode === 'open'
+                  ? 'الدخول حالياً مفتوح للجميع بدون قيود. اضغط على "تحقيق" لتفعيل التحقق من ورقة Settings'
+                  : 'التحقق مفعل حالياً من ورقة Settings. اضغط على "إلغاء التحقق" لجعل الدخول مفتوحاً بدون قيود'
               }
-            }}
-            className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
-            title="فتح شاشة العرض المخصصة للبروجكتر والمسرح"
-          >
-            <Tv className="w-4 h-4" />
-            <span>شاشة العرض</span>
-          </button>
+            >
+              {sessionState?.accessMode === 'open' ? (
+                <>
+                  <Lock className="w-4 h-4 text-emerald-200" />
+                  <span>تحقيق 🔒</span>
+                </>
+              ) : (
+                <>
+                  <Unlock className="w-4 h-4 text-amber-200" />
+                  <span>إلغاء التحقق 🔓</span>
+                </>
+              )}
+            </button>
 
-          {/* Student Join Link */}
-          <button
-            type="button"
-            onClick={handleCopyLink}
-            className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer border border-slate-700"
-            title="نسخ رابط دخول الطلاب المباشر"
-          >
-            {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4 text-indigo-400" />}
-            <span>{copiedLink ? 'تم النسخ' : 'رابط'}</span>
-          </button>
+            {/* Display screen launch */}
+            <button
+              type="button"
+              onClick={() => {
+                if (onOpenDisplayScreen) {
+                  onOpenDisplayScreen();
+                } else {
+                  window.open('/?page=live-direct-display', '_blank');
+                }
+              }}
+              className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer"
+              title="فتح شاشة العرض المخصصة للبروجكتر والمسرح"
+            >
+              <Tv className="w-4 h-4" />
+              <span>شاشة العرض</span>
+            </button>
 
-          {/* QR Code Modal Toggle */}
-          <button
-            type="button"
-            onClick={() => setShowQrModal(true)}
-            className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition-all cursor-pointer border border-slate-700"
-            title="عرض رمز QR للدخول"
-          >
-            <QrCode className="w-4 h-4 text-amber-400" />
-          </button>
+            {/* Student Join Link */}
+            <button
+              type="button"
+              onClick={handleCopyLink}
+              className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all cursor-pointer border border-slate-700"
+              title="نسخ رابط دخول الطلاب المباشر"
+            >
+              {copiedLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4 text-indigo-400" />}
+              <span>{copiedLink ? 'تم النسخ' : 'رابط'}</span>
+            </button>
 
-          {/* Reset Session Memory */}
-          <button
-            type="button"
-            onClick={handleResetSession}
-            disabled={isResettingSession}
-            className="p-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-xl transition-all cursor-pointer border border-rose-500/20"
-            title="تصفير ذاكرة الحصة "
-          >
-            <RefreshCw className={`w-4 h-4 ${isResettingSession ? 'animate-spin' : ''}`} />
-          </button>
+            {/* QR Code Modal Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowQrModal(true)}
+              className="p-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition-all cursor-pointer border border-slate-700"
+              title="عرض رمز QR للدخول"
+            >
+              <QrCode className="w-4 h-4 text-amber-400" />
+            </button>
+
+            {/* Reset Session Memory */}
+            <button
+              type="button"
+              onClick={handleResetSession}
+              disabled={isResettingSession}
+              className="p-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-xl transition-all cursor-pointer border border-rose-500/20"
+              title="تصفير ذاكرة الحصة "
+            >
+              <RefreshCw className={`w-4 h-4 ${isResettingSession ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Notice alert banner */}
       {notice && (
@@ -1588,73 +1591,75 @@ export default function LiveDirectManager({
       )}
 
       {/* 5 Main Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
-        <button
-          onClick={() => setActiveTab('teaching')}
-          className={`px-4 sm:px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer border shrink-0 ${
-            activeTab === 'teaching'
-              ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
-              : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800'
-          }`}
-        >
-          <Radio className="w-4 h-4" />
-          <span>التحكم المباشر</span>
-        </button>
+      {embeddedView === 'full' && (
+        <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab('teaching')}
+            className={`px-4 sm:px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer border shrink-0 ${
+              activeTab === 'teaching'
+                ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
+                : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800'
+            }`}
+          >
+            <Radio className="w-4 h-4" />
+            <span>التحكم المباشر</span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('tools')}
-          className={`px-4 sm:px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer border shrink-0 ${
-            activeTab === 'tools'
-              ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
-              : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800'
-          }`}
-        >
-          <BookOpen className="w-4 h-4 text-emerald-400" />
-          <span>PDF</span>
-          <span className="px-2 py-0.5 rounded-full bg-slate-950/40 text-[10px] font-mono text-emerald-300">
-            {pdfLessons.length}
-          </span>
-        </button>
+          <button
+            onClick={() => setActiveTab('tools')}
+            className={`px-4 sm:px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer border shrink-0 ${
+              activeTab === 'tools'
+                ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
+                : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800'
+            }`}
+          >
+            <BookOpen className="w-4 h-4 text-emerald-400" />
+            <span>PDF</span>
+            <span className="px-2 py-0.5 rounded-full bg-slate-950/40 text-[10px] font-mono text-emerald-300">
+              {pdfLessons.length}
+            </span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('questions')}
-          className={`px-4 sm:px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer border shrink-0 ${
-            activeTab === 'questions'
-              ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
-              : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800'
-          }`}
-        >
-          <HelpCircle className="w-4 h-4" />
-          <span>Questions-Live</span>
-          <span className="px-2 py-0.5 rounded-full bg-slate-950/40 text-[10px] font-mono">
-            {lessons.length}
-          </span>
-        </button>
+          <button
+            onClick={() => setActiveTab('questions')}
+            className={`px-4 sm:px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer border shrink-0 ${
+              activeTab === 'questions'
+                ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
+                : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800'
+            }`}
+          >
+            <HelpCircle className="w-4 h-4" />
+            <span>Questions-Live</span>
+            <span className="px-2 py-0.5 rounded-full bg-slate-950/40 text-[10px] font-mono">
+              {lessons.length}
+            </span>
+          </button>
 
-        <button
-          onClick={() => setActiveTab('answers')}
-          className={`px-4 sm:px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer border shrink-0 ${
-            activeTab === 'answers'
-              ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
-              : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800'
-          }`}
-        >
-          <BarChart3 className="w-4 h-4" />
-          <span>Answers-Live</span>
-          <span className="px-2 py-0.5 rounded-full bg-slate-950/40 text-[10px] font-mono">
-            {answers.length}
-          </span>
-        </button>
-      </div>
+          <button
+            onClick={() => setActiveTab('answers')}
+            className={`px-4 sm:px-5 py-2.5 rounded-2xl text-xs font-black flex items-center gap-2 transition-all cursor-pointer border shrink-0 ${
+              activeTab === 'answers'
+                ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
+                : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-800'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span>Answers-Live</span>
+            <span className="px-2 py-0.5 rounded-full bg-slate-950/40 text-[10px] font-mono">
+              {answers.length}
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* ========================================================================= */}
       {/* TAB 1: TEACHING CONTROL (غرفة قيادة المعلم المباشرة) */}
       {/* ========================================================================= */}
-      {activeTab === 'teaching' && (
+      {((embeddedView === 'full' && activeTab === 'teaching') || embeddedView === 'broadcast') && (
         <div className="space-y-4">
 
           {/* Session Overview Card */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 space-y-4 shadow-xl">
+          <div className={`bg-slate-900/90 border border-slate-800 ${embeddedView === 'broadcast' ? 'rounded-2xl p-4 space-y-3' : 'rounded-3xl p-5 space-y-4 shadow-xl'}`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               {/* Lesson Picker */}
               <div className="flex items-center gap-2.5 flex-wrap">
@@ -1671,9 +1676,21 @@ export default function LiveDirectManager({
                     </option>
                   ))}
                 </select>
+                {embeddedView === 'broadcast' && (
+                  <button
+                    type="button"
+                    onClick={loadLessons}
+                    disabled={loadingLessons}
+                    title="تحديث قائمة الدروس من الشيت"
+                    className="p-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-700 transition cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${loadingLessons ? 'animate-spin text-amber-400' : ''}`} />
+                  </button>
+                )}
               </div>
 
               {/* Status Chips with Eye toggles */}
+              {embeddedView === 'full' && (
               <div className="flex items-center gap-2 flex-wrap">
                 {/* PIN Badge with Eye toggle (افتراضياً مخفي عن شاشة العرض) */}
                 {sessionState?.sessionPin && (
@@ -1801,9 +1818,11 @@ export default function LiveDirectManager({
                   </button>
                 </div>
               </div>
+              )}
             </div>
 
             {/* Quick Educational Tools & PDF Bar (شريط التحكم السريع في ملفات PDF للشرح) */}
+            {embeddedView === 'full' && (
             <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3 shadow-inner">
               {/* Row 1: Clear Title and Status */}
               <div className="flex items-center justify-between gap-3">
@@ -1930,9 +1949,10 @@ export default function LiveDirectManager({
                 </button>
               </div>
             </div>
+            )}
 
             {/* Compact Script & Live Subtitles Quick Control Strip */}
-            {(() => {
+            {embeddedView === 'full' && (() => {
               const currentPageNum = sessionState?.pdfPage || 1;
               const pageScriptLines = scriptLines.filter((l) => Number(l.page) === Number(currentPageNum));
               const activeSub = sessionState?.subtitleState;
@@ -2348,6 +2368,8 @@ export default function LiveDirectManager({
             )}
 
             {/* Real-time Interactive Controls Bar (أعداد الخيارات، إجابات الطلاب، الذين لم يجاوبوا، البحث) */}
+            {embeddedView === 'full' && (
+            <>
             <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
               {/* Search Bar + Unanswered Filter Button */}
               <div className="flex flex-wrap items-center gap-2 flex-1 min-w-[280px] max-w-xl">
@@ -2644,23 +2666,27 @@ export default function LiveDirectManager({
                 </div>
               );
             })()}
+            </>
+            )}
           </div>
 
           {/* Extensible Future Widgets Slot (و أشياء أخرى لاحقاً نضيف) */}
-          <div className="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-3.5 flex items-center justify-between text-xs text-slate-400">
-            <span className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-amber-400" />
-              <span>مساحة التوسعات القادمة: استطلاعات الرأي السريعة، الأسئلة المفتوحة، والمؤقتات المباشرة.</span>
-            </span>
-            <span className="text-[10px] text-slate-500 font-mono">Ready for extensions</span>
-          </div>
+          {embeddedView === 'full' && (
+            <div className="bg-slate-900/50 border border-slate-800/80 rounded-2xl p-3.5 flex items-center justify-between text-xs text-slate-400">
+              <span className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400" />
+                <span>مساحة التوسعات القادمة: استطلاعات الرأي السريعة، الأسئلة المفتوحة، والمؤقتات المباشرة.</span>
+              </span>
+              <span className="text-[10px] text-slate-500 font-mono">Ready for extensions</span>
+            </div>
+          )}
         </div>
       )}
 
       {/* ========================================================================= */}
       {/* TAB: EDUCATIONAL TOOLS & PDF LIBRARY (قسم أدوات التعليم وعرض ملفات PDF) */}
       {/* ========================================================================= */}
-      {activeTab === 'tools' && (
+      {((embeddedView === 'full' && activeTab === 'tools') || embeddedView === 'pdf') && (
         <div className="space-y-6">
           {/* Header Action Bar */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xl flex flex-col gap-3.5">
@@ -2986,7 +3012,7 @@ export default function LiveDirectManager({
       {/* ========================================================================= */}
       {/* TAB 2: QUESTIONS SETTINGS (Questions-Live) */}
       {/* ========================================================================= */}
-      {activeTab === 'questions' && (
+      {embeddedView === 'full' && activeTab === 'questions' && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="relative w-full sm:w-80">
@@ -3138,7 +3164,7 @@ export default function LiveDirectManager({
       {/* ========================================================================= */}
       {/* TAB 4: ANSWERS LOG (Answers-Live) */}
       {/* ========================================================================= */}
-      {activeTab === 'answers' && (
+      {embeddedView === 'full' && activeTab === 'answers' && (
         <div className="space-y-4">
           {/* Top Controls Box: Row 1 = 4 Buttons, Row 2 = Unified Search */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 sm:p-4 space-y-3 shadow-lg">
@@ -3941,7 +3967,7 @@ export default function LiveDirectManager({
 
       {/* Smart Single Persistent Floating Chat Notification (Manual close, updates counter) */}
       <AnimatePresence>
-        {floatingChatNotice.visible && (
+        {embeddedView === 'full' && floatingChatNotice.visible && (
           <motion.div
             initial={{ opacity: 0, y: 30, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}

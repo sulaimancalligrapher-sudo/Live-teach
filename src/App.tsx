@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'qrcode';
 import { 
-  Trophy, ShieldCheck, Lock, 
+  Trophy, ShieldCheck, Lock, Unlock,
   Sun, Moon, Users, 
   Copy, ArrowLeft, Monitor,
   Radio, LayoutGrid, Film, Power, QrCode, Link as LinkIcon,
-  X, Clock, CheckCircle2, Check, ListVideo
+  X, Clock, CheckCircle2, Check, ListVideo,
+  BookOpen, Video, Captions
 } from 'lucide-react';
 import { HeaderConfig, LiveLessonRow, LiveSessionState } from './types';
 import { 
@@ -16,7 +17,8 @@ import {
   fetchLiveQuestionsT,
   subscribeToLiveSession,
   startLiveProgram,
-  endLiveProgram
+  endLiveProgram,
+  toggleLiveAccessMode
 } from './api';
 import { showAppConfirm } from './components/AppDialog';
 import AdminPanel from './components/AdminPanel';
@@ -32,6 +34,8 @@ import StandaloneChatRoom from './components/StandaloneChatRoom';
 import ScriptPrompterPanel from './components/ScriptPrompterPanel';
 import QuizManagerPanel from './components/QuizManagerPanel';
 import LiveClassManager from './components/LiveClassManager';
+import LiveDirectManager from './components/LiveDirectManager';
+import LiveCameraManager from './components/LiveCameraManager';
 import { useLanguage } from './translations';
 
 export default function App() {
@@ -69,7 +73,7 @@ export default function App() {
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
 
   // Master Quick-Control Bar & Stackable Open Cards (ordered by opening)
-  type QuickPanelId = 'screen' | 'start' | 'login' | 'quiz' | 'video-questions';
+  type QuickPanelId = 'screen' | 'start' | 'login' | 'quiz' | 'video-questions' | 'live-direct' | 'pdf' | 'camera' | 'translation';
   const [openPanels, setOpenPanels] = useState<QuickPanelId[]>([]);
   const [loginFilterView, setLoginFilterView] = useState<'live' | 'unanswered' | 'answers'>('live');
 
@@ -424,6 +428,8 @@ export default function App() {
             (liveSession?.quizState?.quizStatus === 'in_progress' || liveSession?.quizState?.quizStatus === 'waiting')
           );
           const isVideoQuestionActive = liveSession?.status === 'question_active';
+          const isCameraActive = Boolean(liveSession?.streamState?.isActive);
+          const isSubtitlesShown = Boolean(liveSession?.subtitleState?.showToStudents);
 
           const mainButtons: Array<{
             id: QuickPanelId;
@@ -478,6 +484,42 @@ export default function App() {
               activeClass: 'bg-orange-500 text-slate-950 border-orange-400 shadow-md shadow-orange-500/20',
               badge: isVideoQuestionActive ? (
                 <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+              ) : undefined,
+            },
+            {
+              id: 'live-direct',
+              label: 'البث المباشر',
+              renderIcon: (isOpen) => <Radio className={`w-4 h-4 ${isOpen ? 'text-white' : 'text-rose-500'}`} />,
+              activeClass: 'bg-rose-600 text-white border-rose-500 shadow-md shadow-rose-600/20',
+              badge: liveSession?.mode === 'direct' && isVideoQuestionActive ? (
+                <span className="w-2 h-2 rounded-full bg-amber-300 animate-ping" />
+              ) : undefined,
+            },
+            {
+              id: 'pdf',
+              label: 'PDF',
+              renderIcon: (isOpen) => <BookOpen className={`w-4 h-4 ${isOpen ? 'text-white' : 'text-emerald-500'}`} />,
+              activeClass: 'bg-teal-600 text-white border-teal-500 shadow-md shadow-teal-600/20',
+              badge: liveSession?.showPdfInRoom ? (
+                <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
+              ) : undefined,
+            },
+            {
+              id: 'camera',
+              label: 'كاميرا',
+              renderIcon: (isOpen) => <Video className={`w-4 h-4 ${isOpen ? 'text-white' : 'text-sky-500'}`} />,
+              activeClass: 'bg-sky-600 text-white border-sky-500 shadow-md shadow-sky-600/20',
+              badge: isCameraActive ? (
+                <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping" />
+              ) : undefined,
+            },
+            {
+              id: 'translation',
+              label: 'الترجمة',
+              renderIcon: (isOpen) => <Captions className={`w-4 h-4 ${isOpen ? 'text-slate-950' : 'text-indigo-500'}`} />,
+              activeClass: 'bg-indigo-500 text-white border-indigo-400 shadow-md shadow-indigo-500/20',
+              badge: isSubtitlesShown ? (
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               ) : undefined,
             },
           ];
@@ -634,7 +676,7 @@ export default function App() {
                       </div>
 
                       <div className="p-4 flex flex-wrap items-center gap-2.5">
-                        {/* 1. Start / End + PIN + Copy PIN */}
+                        {/* 1. Start / End + Access Mode Toggle + PIN + Copy PIN */}
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <button
                             type="button"
@@ -648,6 +690,38 @@ export default function App() {
                           >
                             <Power className={`w-3.5 h-3.5 ${isTogglingProgram ? 'animate-spin' : ''}`} />
                             <span>{isTogglingProgram ? 'جارٍ...' : isProgramRunning ? 'إنهاء' : 'ابدأ'}</span>
+                          </button>
+
+                          {/* Toggle Verification (تحقيق / إلغاء التحقق) */}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const nextMode = liveSession?.accessMode === 'open' ? 'restricted' : 'open';
+                              setLiveSession((prev) => (prev ? { ...prev, accessMode: nextMode } : prev));
+                              await toggleLiveAccessMode(nextMode);
+                            }}
+                            className={`px-3.5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition cursor-pointer active:scale-[0.98] border ${
+                              liveSession?.accessMode === 'open'
+                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400/50'
+                                : 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-400'
+                            }`}
+                            title={
+                              liveSession?.accessMode === 'open'
+                                ? 'الدخول حالياً مفتوح للجميع بدون قيود. اضغط على "تحقيق" لتفعيل التحقق'
+                                : 'التحقق مفعل حالياً. اضغط على "إلغاء التحقق" لجعل الدخول مفتوحاً بدون قيود'
+                            }
+                          >
+                            {liveSession?.accessMode === 'open' ? (
+                              <>
+                                <Lock className="w-3.5 h-3.5" />
+                                <span>تحقيق 🔒</span>
+                              </>
+                            ) : (
+                              <>
+                                <Unlock className="w-3.5 h-3.5" />
+                                <span>إلغاء التحقق 🔓</span>
+                              </>
+                            )}
                           </button>
 
                           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 px-2.5 py-1.5 rounded-xl font-mono text-xs">
@@ -849,12 +923,12 @@ export default function App() {
                       key="quiz"
                       className="rounded-2xl bg-slate-900 border border-slate-800 shadow-lg overflow-hidden text-slate-100"
                     >
-                      <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3 bg-slate-950/60">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-xl bg-purple-500/15 text-purple-400 flex items-center justify-center shrink-0">
-                            <Trophy className="w-4 h-4" />
+                      <div className="px-3.5 py-2.5 border-b border-slate-800 flex items-center justify-between gap-2 bg-slate-950/60">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-purple-500/15 text-purple-400 flex items-center justify-center shrink-0">
+                            <Trophy className="w-3.5 h-3.5" />
                           </div>
-                          <span className="text-sm sm:text-base font-black text-white">
+                          <span className="text-sm font-black text-white">
                             تحدي الكويز — غرفة التحكم المباشرة
                           </span>
                         </div>
@@ -868,7 +942,7 @@ export default function App() {
                         </button>
                       </div>
 
-                      <div className="p-4">
+                      <div className="p-2.5 sm:p-3">
                         <QuizManagerPanel
                           sessionState={liveSession}
                           embeddedControlOnly={true}
@@ -905,6 +979,140 @@ export default function App() {
 
                       <div className="p-4">
                         <LiveClassManager embeddedVideoQuestionsOnly={true} />
+                      </div>
+                    </section>
+                  );
+                }
+
+                if (panelId === 'live-direct') {
+                  return (
+                    <section
+                      key="live-direct"
+                      className="rounded-2xl bg-slate-900 border border-slate-800 shadow-lg overflow-hidden text-slate-100"
+                    >
+                      <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3 bg-slate-950/60">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-rose-500/15 text-rose-400 flex items-center justify-center shrink-0">
+                            <Radio className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm sm:text-base font-black text-white">
+                            البث المباشر — قائمة الدروس وبنك الأسئلة المباشرة
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => closeQuickPanel('live-direct')}
+                          title="إغلاق"
+                          className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="p-4">
+                        <LiveDirectManager
+                          embeddedView="broadcast"
+                          onOpenDisplayScreen={() => navigateToPage('live-direct-display')}
+                        />
+                      </div>
+                    </section>
+                  );
+                }
+
+                if (panelId === 'pdf') {
+                  return (
+                    <section
+                      key="pdf"
+                      className="rounded-2xl bg-slate-900 border border-slate-800 shadow-lg overflow-hidden text-slate-100"
+                    >
+                      <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3 bg-slate-950/60">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
+                            <BookOpen className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm sm:text-base font-black text-white">
+                            PDF — مكتبة أدوات التعليم وعرض الملفات
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => closeQuickPanel('pdf')}
+                          title="إغلاق"
+                          className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="p-4">
+                        <LiveDirectManager
+                          embeddedView="pdf"
+                          onOpenDisplayScreen={() => navigateToPage('live-direct-display')}
+                        />
+                      </div>
+                    </section>
+                  );
+                }
+
+                if (panelId === 'camera') {
+                  return (
+                    <section
+                      key="camera"
+                      className="rounded-2xl bg-slate-900 border border-slate-800 shadow-lg overflow-hidden text-slate-100"
+                    >
+                      <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3 bg-slate-950/60">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-sky-500/15 text-sky-400 flex items-center justify-center shrink-0">
+                            <Video className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm sm:text-base font-black text-white">
+                            كاميرا — الكاميرا والبث المباشر
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => closeQuickPanel('camera')}
+                          title="إغلاق"
+                          className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="p-4">
+                        <LiveCameraManager />
+                      </div>
+                    </section>
+                  );
+                }
+
+                if (panelId === 'translation') {
+                  return (
+                    <section
+                      key="translation"
+                      className="rounded-2xl bg-slate-900 border border-slate-800 shadow-lg overflow-hidden text-slate-100"
+                    >
+                      <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3 bg-slate-950/60">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-indigo-500/15 text-indigo-400 flex items-center justify-center shrink-0">
+                            <Captions className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm sm:text-base font-black text-white">
+                            الترجمة — التحكم السريع بالترجمة والتتبع الصوتي
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => closeQuickPanel('translation')}
+                          title="إغلاق"
+                          className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="p-4">
+                        <ScriptPrompterPanel embeddedTranslationQuickOnly={true} />
                       </div>
                     </section>
                   );

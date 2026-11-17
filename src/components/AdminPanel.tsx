@@ -5,7 +5,7 @@ import {
   ExternalLink, Copy, CheckCircle2, ShieldCheck, 
   Sparkles, KeyRound, Globe, Users, ArrowUpRight, 
   FileSpreadsheet, Play, QrCode, Sliders, Palette, Square,
-  Video, Radio, MessageSquare, Bell, Camera
+  Video, Radio, MessageSquare, Bell, Camera, Captions
 } from 'lucide-react';
 import { LiveLessonRow, HeaderConfig } from '../types';
 import LiveClassManager from './LiveClassManager';
@@ -13,6 +13,7 @@ import LiveDirectManager from './LiveDirectManager';
 import LiveCameraManager from './LiveCameraManager';
 import QuizManagerPanel from './QuizManagerPanel';
 import SettingsPanel from './SettingsPanel';
+import ScriptPrompterPanel from './ScriptPrompterPanel';
 import { 
   getLiveSessionState, 
   updateLivePin, 
@@ -35,7 +36,7 @@ interface AdminPanelProps {
   onOpenLiveDirectDisplay?: () => void;
   onOpenQuizArenaDisplay?: () => void;
   onOpenSmartDisplay?: () => void;
-  initialTab?: 'live' | 'live-direct' | 'quiz-challenge' | 'camera' | 'broadcast' | 'translations' | 'sheets-design';
+  initialTab?: 'live' | 'live-direct' | 'quiz-challenge' | 'camera' | 'script-prompter' | 'broadcast' | 'translations' | 'sheets-design';
 }
 
 export default function AdminPanel({ 
@@ -46,7 +47,7 @@ export default function AdminPanel({
   onOpenSmartDisplay,
   initialTab = 'live'
 }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<'live' | 'live-direct' | 'quiz-challenge' | 'camera' | 'broadcast' | 'translations' | 'sheets-design'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'live' | 'live-direct' | 'quiz-challenge' | 'camera' | 'script-prompter' | 'broadcast' | 'translations' | 'sheets-design'>(initialTab);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [currentPin, setCurrentPin] = useState<string>('1234');
   const [isUpdatingPin, setIsUpdatingPin] = useState(false);
@@ -327,6 +328,19 @@ export default function AdminPanel({
             )}
           </button>
 
+          {/* Tab 3b: Script Prompter & Live Subtitles */}
+          <button
+            onClick={() => setActiveTab('script-prompter')}
+            className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center gap-2.5 shrink-0 transition-all cursor-pointer whitespace-nowrap shadow-sm ${
+              activeTab === 'script-prompter'
+                ? 'bg-amber-500 text-slate-950 shadow-amber-500/20 scale-[1.02]'
+                : 'bg-slate-850 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60'
+            }`}
+          >
+            <Captions className={`w-4 h-4 ${activeTab === 'script-prompter' ? 'text-slate-950' : 'text-emerald-400'}`} />
+            <span>السكربت والترجمة</span>
+          </button>
+
           {/* Tab 4: Quiz Challenge */}
           <button
             onClick={() => setActiveTab('quiz-challenge')}
@@ -408,6 +422,11 @@ export default function AdminPanel({
           {/* TAB 3: LIVE CAMERA & AUDIO STREAM (Kept mounted so camera and WebRTC stream never disconnect when switching tabs) */}
           <div className={`py-2 ${activeTab === 'camera' ? 'block' : 'hidden'}`}>
             <LiveCameraManager />
+          </div>
+
+          {/* TAB 3b: SCRIPT PROMPTER & LIVE SUBTITLES (Kept mounted so voice tracking continues uninterrupted across tabs) */}
+          <div className={`py-2 ${activeTab === 'script-prompter' ? 'block' : 'hidden'}`}>
+            <ScriptPrompterPanel />
           </div>
 
           {/* TAB 3: LIVE QUIZ CHALLENGE */}

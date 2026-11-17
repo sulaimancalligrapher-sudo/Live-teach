@@ -946,6 +946,19 @@ async function startServer() {
     }
   }
 
+  // Shared Gemini client factory (strictly server-side)
+  async function getGeminiClient() {
+    const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) return null;
+    const { GoogleGenAI } = await import("@google/genai");
+    return new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: { 'User-Agent': 'aistudio-build' }
+      }
+    });
+  }
+
   // AI Single Translation Endpoint using @google/genai
   app.post("/api/translate-ai", async (req, res) => {
     try {
@@ -956,14 +969,12 @@ async function startServer() {
 
       const safeLang: 'th' | 'en' = targetLang === 'th' ? 'th' : 'en';
       const langName = safeLang === 'th' ? 'Thai' : 'English';
-      const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+      const ai = await getGeminiClient();
 
-      if (apiKey) {
+      if (ai) {
         try {
-          const { GoogleGenAI } = await import("@google/genai");
-          const ai = new GoogleGenAI({ apiKey });
           const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-4-hydrogen",
             contents: `Translate the following educational UI string from Arabic to natural, idiomatic ${langName}. Return ONLY the direct translation text with no markdown, quotes, or conversational explanations:\n\n${text}`
           });
           const translated = (response.text || "").trim().replace(/^["']|["']$/g, '');
@@ -991,13 +1002,11 @@ async function startServer() {
         return res.status(400).json({ success: false, error: "Text is required" });
       }
 
-      const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-      if (apiKey) {
+      const ai = await getGeminiClient();
+      if (ai) {
         try {
-          const { GoogleGenAI } = await import("@google/genai");
-          const ai = new GoogleGenAI({ apiKey });
           const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-4-hydrogen",
             contents: `Translate this spoken Arabic educational sentence into natural, idiomatic Thai and English. Return ONLY a strict JSON object with keys "th" and "en" without markdown formatting or conversational text. Example: {"th": "...", "en": "..."}\n\nArabic: "${text}"`,
             config: {
               responseMimeType: "application/json"
@@ -1028,7 +1037,7 @@ async function startServer() {
     }
   });
 
-  // AI Batch Translation Endpoint
+  // AI Batch Translation Endpoint (Supports Arabic -> Thai & English for Script Prompter / UI)
   app.post("/api/translate-batch", async (req, res) => {
     try {
       const { items } = req.body;
@@ -1036,22 +1045,20 @@ async function startServer() {
         return res.status(400).json({ success: false, error: "Items array required" });
       }
 
-      const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-      if (apiKey) {
+      const ai = await getGeminiClient();
+      if (ai) {
         try {
-          const { GoogleGenAI } = await import("@google/genai");
-          const ai = new GoogleGenAI({ apiKey });
-          const prompt = `Translate each of the following Arabic educational UI phrases into Thai (th) and English (en).
+          const prompt = `Translate each of the following Arabic educational phrases into natural Thai (th) and English (en).
 Return ONLY a valid JSON object matching this schema:
 {
   "keyName": { "th": "Thai translation", "en": "English translation" }
 }
 
 Input items:
-${JSON.stringify(items.map(i => ({ key: i.key, ar: i.ar })))}
+${JSON.stringify(items.map((i: any) => ({ key: i.key, ar: i.ar })))}
 `;
           const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
+            model: "gemini-4-hydrogen",
             contents: prompt,
             config: { responseMimeType: "application/json" }
           });
@@ -1075,6 +1082,100 @@ ${JSON.stringify(items.map(i => ({ key: i.key, ar: i.ar })))}
       return res.json({ success: true, translations: fallbackTranslations });
     } catch (err: any) {
       res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  // Server-side TTS LRU Cache (ensures instant replay & zero Android/iOS voice-pack issues)
+  const ttsCache = new Map<string, { audioDataUrl: string; source: string }>();
+  const TTS_CACHE_MAX = 200;
+
+  function setTtsCache(key: string, val: { audioDataUrl: string; source: string }) {
+    if (ttsCache.has(key)) {
+      ttsCache.delete(key);
+    } else if (ttsCache.size >= TTS_CACHE_MAX) {
+      const oldestKey = ttsCache.keys().next().value;
+      if (oldestKey !== undefined) ttsCache.delete(oldestKey);
+    }
+    ttsCache.set(key, val);
+  }
+
+  // Server-side Text-to-Speech Endpoint (Arabic / Thai / English)
+  app.post("/api/tts", async (req, res) => {
+    try {
+      const { text, lang } = req.body || {};
+      if (!text || typeof text !== 'string' || !text.trim()) {
+        return res.status(400).json({ success: false, error: "Text is required" });
+      }
+
+      const safeLang: 'ar' | 'th' | 'en' =
+        lang === 'th' ? 'th' : lang === 'en' ? 'en' : 'ar';
+      const cleanText = text.trim().slice(0, 600);
+      const cacheKey = `${safeLang}:${cleanText}`;
+
+      const cached = ttsCache.get(cacheKey);
+      if (cached) {
+        // Refresh LRU order
+        setTtsCache(cacheKey, cached);
+        return res.json({ success: true, audioDataUrl: cached.audioDataUrl, source: cached.source, cached: true });
+      }
+
+      // 1. Primary: Gemini 3.8 Flash Lite TTS (returns crisp 24kHz WAV)
+      const ai = await getGeminiClient();
+      if (ai) {
+        try {
+          const langLabel = safeLang === 'th' ? 'Thai' : safeLang === 'en' ? 'English' : 'Arabic';
+          const response = await ai.models.generateContent({
+            model: "gemini-3.8-flash-lite-tts",
+            contents: [{ parts: [{ text: `Read the following ${langLabel} sentence clearly and naturally at a comfortable classroom pace:\n\n${cleanText}` }] }],
+            config: {
+              responseModalities: ["AUDIO"],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: "Kore" },
+                },
+              },
+            },
+          });
+
+          const inlineData = response.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+          if (inlineData?.data) {
+            const mime = inlineData.mimeType || 'audio/wav';
+            const audioDataUrl = `data:${mime};base64,${inlineData.data}`;
+            setTtsCache(cacheKey, { audioDataUrl, source: 'gemini-tts' });
+            return res.json({ success: true, audioDataUrl, source: 'gemini-tts' });
+          }
+        } catch (geminiErr: any) {
+          console.warn("Gemini TTS error, trying Google TTS proxy:", geminiErr?.message || geminiErr);
+        }
+      }
+
+      // 2. Fallback: Lightweight Google Translate TTS audio/mpeg proxy
+      try {
+        const gttsChunk = cleanText.slice(0, 200);
+        const gttsUrl = `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${safeLang}&q=${encodeURIComponent(gttsChunk)}`;
+        const audioRes = await fetch(gttsUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; aistudio-build/1.0)'
+          }
+        });
+        if (audioRes.ok) {
+          const arrBuf = await audioRes.arrayBuffer();
+          if (arrBuf.byteLength > 256) {
+            const b64 = Buffer.from(arrBuf).toString('base64');
+            const audioDataUrl = `data:audio/mpeg;base64,${b64}`;
+            setTtsCache(cacheKey, { audioDataUrl, source: 'google-tts' });
+            return res.json({ success: true, audioDataUrl, source: 'google-tts' });
+          }
+        }
+      } catch (gttsErr: any) {
+        console.warn("Google TTS fallback failed:", gttsErr?.message || gttsErr);
+      }
+
+      // 3. Final fallback hint for browser SpeechSynthesis
+      return res.json({ success: false, fallback: 'browser' });
+    } catch (err: any) {
+      console.error("/api/tts unexpected error:", err);
+      return res.json({ success: false, fallback: 'browser' });
     }
   });
 

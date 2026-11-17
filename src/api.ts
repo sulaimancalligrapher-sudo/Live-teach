@@ -4,7 +4,8 @@ import {
   TelegramConfig, TelegramTemplateItem, TelegramUserBinding, TelegramBroadcastMessage,
   LiveQuestionItem, LiveLessonRow, LiveAnswerRecord, LiveSessionState, LiveStudentAnswerSubmission,
   LiveDirectQuestionItem, LiveDirectLessonRow, LiveDirectAnswerRecord, LivePdfItem,
-  QuizQuestionItem, QuizLessonRow, QuizAnswerRecord, QuizActiveState, QuizStudentProgress
+  QuizQuestionItem, QuizLessonRow, QuizAnswerRecord, QuizActiveState, QuizStudentProgress,
+  ScriptSubtitleLine, LiveSubtitleState
 } from './types';
 
 // Helper to get Web App URL from localStorage or environment variables
@@ -2504,6 +2505,12 @@ export {
   toggleLiveStream,
   updateLiveCaption,
   defaultLiveStreamConfig,
+  defaultSubtitleState,
+  updateLiveSubtitleState,
+  setActiveScriptLine,
+  subscribeToScriptSubtitles,
+  getScriptSubtitles,
+  saveScriptSubtitles,
 } from './lib/firebaseLiveService';
 
 export {
@@ -2747,8 +2754,108 @@ export async function translateLiveCaption(text: string): Promise<{ th: string; 
   }
 }
 
+// ==========================================
+// SCRIPT-FOLLOWED LIVE SUBTITLES (Live_Subtitles Sheet & Server TTS)
+// ==========================================
 
+export async function fetchLiveSubtitlesFromSheet(): Promise<{
+  success: boolean;
+  data: ScriptSubtitleLine[];
+  message?: string;
+}> {
+  if (!isApiConfigured()) {
+    return { success: false, data: [], message: 'لم يتم تكوين رابط Google Sheets' };
+  }
+  try {
+    let res = await fetchGas({ action: 'getLiveSubtitles' }, 'GET');
+    if (!res || res.message === 'الإجراء المطلوب غير معروف' || res.success === false) {
+      try {
+        res = await fetchGas({ action: 'getLiveSubtitles' }, 'POST', { action: 'getLiveSubtitles' });
+      } catch {}
+    }
+    const rawArr = Array.isArray(res)
+      ? res
+      : Array.isArray(res?.data)
+      ? res.data
+      : Array.isArray(res?.lines)
+      ? res.lines
+      : null;
 
+    if (rawArr) {
+      const mapped: ScriptSubtitleLine[] = rawArr
+        .map((row: any, idx: number) => ({
+          id: String(row.id || `sub_${idx}_${Date.now()}`),
+          lessonTitle: String(row.lessonTitle || row.lesson || row['عنوان الدرس'] || '').trim(),
+          page: Math.max(1, Number(row.page || row['الصفحة'] || 1) || 1),
+          order: typeof row.order === 'number' ? row.order : idx,
+          arabic: String(row.arabic || row.ar || row['النص العربي'] || '').trim(),
+          th: String(row.th || row.thai || row['التايلندية'] || '').trim(),
+          en: String(row.en || row.english || row['الإنجليزية'] || '').trim(),
+        }))
+        .filter((r: ScriptSubtitleLine) => r.arabic || r.th || r.en);
 
+      return { success: true, data: mapped };
+    }
+    return { success: false, data: [], message: res?.message || 'تعذر قراءة ورقة Live_Subtitles من الشيت' };
+  } catch (err: any) {
+    console.warn('fetchLiveSubtitlesFromSheet error:', err);
+    return { success: false, data: [], message: err?.message || 'فشل الاتصال بالشيت' };
+  }
+}
 
+export async function saveLiveSubtitlesToSheet(
+  lines: ScriptSubtitleLine[]
+): Promise<{ success: boolean; message?: string }> {
+  if (!isApiConfigured()) {
+    return { success: false, message: 'لم يتم تكوين رابط Google Sheets' };
+  }
+  try {
+    const cleanPayload = lines
+      .filter((l) => (l.arabic || l.th || l.en).trim().length > 0)
+      .map((l, idx) => ({
+        id: l.id || `sub_${idx}`,
+        lessonTitle: (l.lessonTitle || '').trim(),
+        page: Math.max(1, Number(l.page) || 1),
+        order: idx,
+        arabic: (l.arabic || '').trim(),
+        th: (l.th || '').trim(),
+        en: (l.en || '').trim(),
+      }));
 
+    const res = await fetchGas({ action: 'saveLiveSubtitles' }, 'POST', {
+      action: 'saveLiveSubtitles',
+      lines: cleanPayload,
+    });
+    if (res && res.success === false) {
+      return { success: false, message: res.message || 'تعذر الحفظ في الشيت' };
+    }
+    return { success: true, message: res?.message || 'تمت المزامنة مع ورقة Live_Subtitles في Google Sheets بنجاح' };
+  } catch (err: any) {
+    console.warn('saveLiveSubtitlesToSheet error:', err);
+    return { success: false, message: err?.message || 'فشل الحفظ في الشيت' };
+  }
+}
+
+export async function fetchTtsAudio(
+  text: string,
+  lang: 'ar' | 'th' | 'en'
+): Promise<{ success: boolean; audioDataUrl?: string; fallback?: 'browser'; source?: string }> {
+  try {
+    const res = await fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, lang }),
+    });
+    if (!res.ok) {
+      return { success: false, fallback: 'browser' };
+    }
+    const data = await res.json();
+    if (data?.success && data?.audioDataUrl) {
+      return { success: true, audioDataUrl: data.audioDataUrl, source: data.source };
+    }
+    return { success: false, fallback: 'browser' };
+  } catch (err) {
+    console.warn('fetchTtsAudio error:', err);
+    return { success: false, fallback: 'browser' };
+  }
+}

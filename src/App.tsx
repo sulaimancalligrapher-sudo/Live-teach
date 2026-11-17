@@ -25,6 +25,7 @@ import SmartHubDisplayRoom from './components/SmartHubDisplayRoom';
 import StudentQuizView from './components/StudentQuizView';
 import LanguageSelector from './components/LanguageSelector';
 import StandaloneChatRoom from './components/StandaloneChatRoom';
+import ScriptPrompterPanel from './components/ScriptPrompterPanel';
 import { useLanguage } from './translations';
 
 export default function App() {
@@ -33,13 +34,14 @@ export default function App() {
   const [isConfigured, setIsConfigured] = useState(isApiConfigured());
   const [headerConfig, setHeaderConfig] = useState<HeaderConfig | null>(null);
 
-  // Page Routing Mode: 'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'chat'
-  const [pageMode, setPageMode] = useState<'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'chat'>(() => {
+  // Page Routing Mode: 'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'chat' | 'script-prompter'
+  const [pageMode, setPageMode] = useState<'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'chat' | 'script-prompter'>(() => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const p = params.get('page');
       const mode = params.get('mode');
       if (p === 'chat' || mode === 'chat') return 'chat';
+      if (p === 'script-prompter' || p === 'prompter') return 'script-prompter';
       if (p === 'admin') return 'admin';
       if (p === 'display' || p === 'smart-display') return 'display';
       if (p === 'live-teacher') return 'live-teacher';
@@ -100,7 +102,7 @@ export default function App() {
   }, [webAppUrl, isConfigured]);
 
   // URL sync & history navigation
-  const navigateToPage = (mode: 'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display') => {
+  const navigateToPage = (mode: 'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'script-prompter') => {
     setPageMode(mode);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
@@ -118,6 +120,8 @@ export default function App() {
         url.searchParams.set('page', 'quiz-arena');
       } else if (mode === 'student-quiz') {
         url.searchParams.set('page', 'student-quiz');
+      } else if (mode === 'script-prompter') {
+        url.searchParams.set('page', 'script-prompter');
       } else {
         url.searchParams.delete('page');
       }
@@ -130,6 +134,7 @@ export default function App() {
       const params = new URLSearchParams(window.location.search);
       const p = params.get('page');
       if (p === 'admin') setPageMode('admin');
+      else if (p === 'script-prompter' || p === 'prompter') setPageMode('script-prompter');
       else if (p === 'display' || p === 'smart-display') setPageMode('display');
       else if (p === 'live-teacher') setPageMode('live-teacher');
       else if (p === 'live-student') setPageMode('live-student');
@@ -180,6 +185,16 @@ export default function App() {
   if (pageMode === 'chat') {
     return (
       <StandaloneChatRoom
+        onBack={() => navigateToPage('admin')}
+      />
+    );
+  }
+
+  // Route: Standalone Script Prompter & Subtitle Control Window
+  if (pageMode === 'script-prompter') {
+    return (
+      <ScriptPrompterPanel
+        isStandalone={true}
         onBack={() => navigateToPage('admin')}
       />
     );

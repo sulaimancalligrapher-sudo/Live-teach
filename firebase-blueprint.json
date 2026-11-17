@@ -17,6 +17,14 @@
         "connectedStudents": { "type": "array" },
         "answersForCurrentQuestion": { "type": "object" },
         "allSessionAnswers": { "type": "object" },
+        "subtitleState": { "type": "object", "nullable": true },
+        "updatedAt": { "type": "number" }
+      }
+    },
+    "LiveSubtitlesCatalog": {
+      "collection": "live_sessions",
+      "fields": {
+        "lines": { "type": "array" },
         "updatedAt": { "type": "number" }
       }
     }

@@ -19,10 +19,13 @@ import {
   QuizQuestionItem,
   QuizStudentProgress,
   QuizStudentAnswerDetail,
-  LiveStreamConfig
+  LiveStreamConfig,
+  ScriptSubtitleLine,
+  LiveSubtitleState
 } from '../types';
 
 const LIVE_DOC_REF = doc(db, 'live_sessions', 'main');
+const SUBTITLES_DOC_REF = doc(db, 'live_sessions', 'subtitles');
 
 export const defaultLiveStreamConfig: LiveStreamConfig = {
   isActive: false,
@@ -38,11 +41,25 @@ export const defaultLiveStreamConfig: LiveStreamConfig = {
   startedAt: 0,
 };
 
+export const defaultSubtitleState: LiveSubtitleState = {
+  showToStudents: false,
+  trackingEnabled: false,
+  filterByPdfPage: true,
+  activeLineId: '',
+  activePage: 1,
+  activeLessonTitle: '',
+  activeArabic: '',
+  activeTh: '',
+  activeEn: '',
+  updatedAt: 0,
+};
+
 export const defaultLiveSessionState: LiveSessionState = {
   sessionId: 'live-main',
   sessionPin: '1234',
   isProgramActive: false,
   streamState: defaultLiveStreamConfig,
+  subtitleState: defaultSubtitleState,
   accessMode: 'restricted',
   showLessonsListInRoom: false,
   showPinInRoom: false,
@@ -177,6 +194,18 @@ export function subscribeToLiveSession(
             liveCaptionUpdatedAt: data.streamState.liveCaptionUpdatedAt || 0,
             startedAt: data.streamState.startedAt || 0,
           } : defaultLiveStreamConfig,
+          subtitleState: data.subtitleState ? {
+            showToStudents: Boolean(data.subtitleState.showToStudents),
+            trackingEnabled: Boolean(data.subtitleState.trackingEnabled),
+            filterByPdfPage: data.subtitleState.filterByPdfPage !== false,
+            activeLineId: data.subtitleState.activeLineId || '',
+            activePage: data.subtitleState.activePage || 1,
+            activeLessonTitle: data.subtitleState.activeLessonTitle || '',
+            activeArabic: data.subtitleState.activeArabic || '',
+            activeTh: data.subtitleState.activeTh || '',
+            activeEn: data.subtitleState.activeEn || '',
+            updatedAt: data.subtitleState.updatedAt || 0,
+          } : defaultSubtitleState,
         };
         cachedState = state;
         onUpdate(state);
@@ -267,8 +296,24 @@ export async function getLiveSessionState(): Promise<LiveSessionState | null> {
           mode: data.streamState.mode === 'audio' ? 'audio' : 'video',
           useMeshcast: data.streamState.useMeshcast !== false,
           enableSubtitles: Boolean(data.streamState.enableSubtitles),
+          liveCaption: data.streamState.liveCaption || '',
+          liveCaptionTh: data.streamState.liveCaptionTh || '',
+          liveCaptionEn: data.streamState.liveCaptionEn || '',
+          liveCaptionUpdatedAt: data.streamState.liveCaptionUpdatedAt || 0,
           startedAt: data.streamState.startedAt || 0,
         } : defaultLiveStreamConfig,
+        subtitleState: data.subtitleState ? {
+          showToStudents: Boolean(data.subtitleState.showToStudents),
+          trackingEnabled: Boolean(data.subtitleState.trackingEnabled),
+          filterByPdfPage: data.subtitleState.filterByPdfPage !== false,
+          activeLineId: data.subtitleState.activeLineId || '',
+          activePage: data.subtitleState.activePage || 1,
+          activeLessonTitle: data.subtitleState.activeLessonTitle || '',
+          activeArabic: data.subtitleState.activeArabic || '',
+          activeTh: data.subtitleState.activeTh || '',
+          activeEn: data.subtitleState.activeEn || '',
+          updatedAt: data.subtitleState.updatedAt || 0,
+        } : defaultSubtitleState,
       };
       cachedState = state;
       return state;
@@ -2234,4 +2279,132 @@ export async function updateLiveCaption(
     console.warn('Failed to update live caption in Firebase:', error);
   }
 }
+
+export async function updateLiveSubtitleState(
+  partial: Partial<LiveSubtitleState>
+): Promise<{ success: boolean; state?: LiveSessionState }> {
+  try {
+    const currentSub = cachedState.subtitleState || defaultSubtitleState;
+    const merged: LiveSubtitleState = {
+      ...currentSub,
+      ...partial,
+      updatedAt: Date.now(),
+    };
+    await updateDoc(LIVE_DOC_REF, {
+      subtitleState: merged,
+      updatedAt: serverTimestamp(),
+    });
+    cachedState = { ...cachedState, subtitleState: merged };
+    return { success: true, state: cachedState };
+  } catch (error) {
+    console.warn('Failed to update live subtitle state in Firebase:', error);
+    throw error;
+  }
+}
+
+export async function setActiveScriptLine(
+  line: ScriptSubtitleLine | null,
+  extra?: Partial<LiveSubtitleState>
+): Promise<void> {
+  try {
+    const currentSub = cachedState.subtitleState || defaultSubtitleState;
+    const merged: LiveSubtitleState = {
+      ...currentSub,
+      ...extra,
+      activeLineId: line ? line.id : '',
+      activePage: line ? line.page : (extra?.activePage ?? currentSub.activePage ?? 1),
+      activeLessonTitle: line ? (line.lessonTitle || '') : (extra?.activeLessonTitle ?? currentSub.activeLessonTitle ?? ''),
+      activeArabic: line ? line.arabic : '',
+      activeTh: line ? line.th : '',
+      activeEn: line ? line.en : '',
+      updatedAt: Date.now(),
+    };
+    await updateDoc(LIVE_DOC_REF, {
+      subtitleState: merged,
+      updatedAt: serverTimestamp(),
+    });
+    cachedState = { ...cachedState, subtitleState: merged };
+  } catch (error) {
+    console.warn('Failed to set active script line in Firebase:', error);
+  }
+}
+
+export function subscribeToScriptSubtitles(
+  onUpdate: (lines: ScriptSubtitleLine[]) => void
+): () => void {
+  return onSnapshot(
+    SUBTITLES_DOC_REF,
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        const rawLines = Array.isArray(data?.lines) ? data.lines : [];
+        onUpdate(
+          rawLines.map((item: any, idx: number) => ({
+            id: String(item.id || `line_${idx}`),
+            lessonTitle: String(item.lessonTitle || '').trim(),
+            page: Math.max(1, Number(item.page) || 1),
+            order: typeof item.order === 'number' ? item.order : idx,
+            arabic: String(item.arabic || '').trim(),
+            th: String(item.th || '').trim(),
+            en: String(item.en || '').trim(),
+          }))
+        );
+      } else {
+        onUpdate([]);
+      }
+    },
+    (err) => {
+      console.warn('Script subtitles snapshot listener warning:', err);
+    }
+  );
+}
+
+export async function getScriptSubtitles(): Promise<ScriptSubtitleLine[]> {
+  try {
+    const snap = await getDoc(SUBTITLES_DOC_REF);
+    if (snap.exists()) {
+      const data = snap.data();
+      const rawLines = Array.isArray(data?.lines) ? data.lines : [];
+      return rawLines.map((item: any, idx: number) => ({
+        id: String(item.id || `line_${idx}`),
+        lessonTitle: String(item.lessonTitle || '').trim(),
+        page: Math.max(1, Number(item.page) || 1),
+        order: typeof item.order === 'number' ? item.order : idx,
+        arabic: String(item.arabic || '').trim(),
+        th: String(item.th || '').trim(),
+        en: String(item.en || '').trim(),
+      }));
+    }
+    return [];
+  } catch (err) {
+    console.warn('Failed to get script subtitles from Firestore:', err);
+    return [];
+  }
+}
+
+export async function saveScriptSubtitles(lines: ScriptSubtitleLine[]): Promise<{ success: boolean }> {
+  try {
+    const sanitized = lines
+      .filter((l) => (l.arabic || l.th || l.en).trim().length > 0)
+      .map((l, idx) => ({
+        id: l.id || `sub_${Date.now()}_${idx}`,
+        lessonTitle: (l.lessonTitle || '').trim(),
+        page: Math.max(1, Number(l.page) || 1),
+        order: idx,
+        arabic: (l.arabic || '').trim(),
+        th: (l.th || '').trim(),
+        en: (l.en || '').trim(),
+      }));
+    await setDoc(SUBTITLES_DOC_REF, {
+      lines: sanitized,
+      updatedAt: Date.now(),
+      serverUpdatedAt: serverTimestamp(),
+    });
+    return { success: true };
+  } catch (err) {
+    console.warn('Failed to save script subtitles to Firestore:', err);
+    throw err;
+  }
+}
+
 

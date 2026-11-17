@@ -24,6 +24,7 @@ import { NativePdfViewer } from './NativePdfViewer';
 import { useLanguage } from '../translations';
 import LanguageSelector from './LanguageSelector';
 import LiveFloatingStreamPlayer from './LiveFloatingStreamPlayer';
+import LiveSubtitleBar from './LiveSubtitleBar';
 
 interface LiveStudentViewProps {
   onBackToMain?: () => void;
@@ -96,6 +97,7 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
   }, [propHeaderConfig]);
 
   const [isVerifyingRoster, setIsVerifyingRoster] = useState(false);
+  const [isVideoFullscreen, setIsVideoFullscreen] = useState(false);
 
   // Student credentials - persisted across tabs and accidental closes
   const [username, setUsername] = useState(() => {
@@ -1260,9 +1262,19 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
         {/* Live Audio / Video Stream Player (VDO.Ninja WebRTC Integration) */}
         <LiveFloatingStreamPlayer
           streamState={sessionState?.streamState}
+          subtitleState={sessionState?.subtitleState}
           isQuestionActive={Boolean(isQuestionActive)}
           isRevealed={Boolean(isRevealed)}
           sessionStatus={sessionState?.status}
+          onFullscreenChange={setIsVideoFullscreen}
+        />
+
+        {/* Independent Script-Followed Multilingual Subtitles & Optional Student TTS (Works with or without Video) */}
+        <LiveSubtitleBar
+          subtitleState={sessionState?.subtitleState}
+          streamState={sessionState?.streamState}
+          variant="card"
+          suspendAudio={isVideoFullscreen}
         />
 
         {/* Step 1: Floating Challenge Invitation Banner for students in "شرح مباشر" */}

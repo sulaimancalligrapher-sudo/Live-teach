@@ -49,6 +49,7 @@ import {
   ShieldCheck,
   Lock,
   Unlock,
+  Captions,
 } from 'lucide-react';
 import {
   LiveDirectLessonRow,
@@ -56,6 +57,7 @@ import {
   LiveDirectAnswerRecord,
   LiveSessionState,
   LivePdfItem,
+  ScriptSubtitleLine,
   evaluateLiveAnswer,
   normalizeArabicText,
 } from '../types';
@@ -110,6 +112,9 @@ import {
   recordLiveAnswersBatchT,
   clearLiveDirectLessonAnswers,
   clearLiveAnswersSheetDirect,
+  subscribeToScriptSubtitles,
+  updateLiveSubtitleState,
+  setActiveScriptLine,
 } from '../api';
 import LiveChatModal from './LiveChatModal';
 import { NativePdfViewer } from './NativePdfViewer';
@@ -228,6 +233,15 @@ export default function LiveDirectManager({
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [driveFolderId, setDriveFolderId] = useState('');
   const laserThrottleRef = useRef<number>(0);
+
+  // Script Subtitles quick catalog for active PDF page
+  const [scriptLines, setScriptLines] = useState<ScriptSubtitleLine[]>([]);
+  useEffect(() => {
+    const unsub = subscribeToScriptSubtitles((incoming) => {
+      setScriptLines(incoming);
+    });
+    return () => unsub();
+  }, []);
   const livePdfBroadcastChannelRef = useRef<BroadcastChannel | null>(null);
 
   useEffect(() => {
@@ -1916,6 +1930,104 @@ export default function LiveDirectManager({
                 </button>
               </div>
             </div>
+
+            {/* Compact Script & Live Subtitles Quick Control Strip */}
+            {(() => {
+              const currentPageNum = sessionState?.pdfPage || 1;
+              const pageScriptLines = scriptLines.filter((l) => Number(l.page) === Number(currentPageNum));
+              const activeSub = sessionState?.subtitleState;
+              const activeId = activeSub?.activeLineId || '';
+              const activeIdx = pageScriptLines.findIndex((l) => l.id === activeId);
+              const showToStudents = Boolean(activeSub?.showToStudents);
+
+              return (
+                <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
+                      showToStudents
+                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                        : 'bg-slate-800 text-slate-400 border-slate-700'
+                    }`}>
+                      <Captions className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs font-black text-slate-200">الترجمة النصية للطلاب (ص {currentPageNum})</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          showToStudents
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : 'bg-slate-800 text-slate-400'
+                        }`}>
+                          {showToStudents ? 'ظاهرة للطلاب ●' : 'مخفية ○'}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          ({pageScriptLines.length} سطر بالصفحة)
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                        {activeSub?.activeArabic
+                          ? `النشط: «${activeSub.activeArabic}»`
+                          : 'اضغط التالي لإرسال أول سطر من سكربت الصفحة أو افتح قارئ السكربت للتتبع الصوتي'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => updateLiveSubtitleState({ showToStudents: !showToStudents })}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 border transition cursor-pointer ${
+                        showToStudents
+                          ? 'bg-emerald-600 text-white border-emerald-500'
+                          : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                      }`}
+                    >
+                      {showToStudents ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                      <span>{showToStudents ? 'ظاهر' : 'إظهار'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={pageScriptLines.length === 0}
+                      onClick={() => {
+                        if (pageScriptLines.length === 0) return;
+                        const prevIdx = activeIdx <= 0 ? 0 : activeIdx - 1;
+                        setActiveScriptLine(pageScriptLines[prevIdx], { activePage: currentPageNum });
+                      }}
+                      className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-slate-200 border border-slate-700 text-xs font-bold transition cursor-pointer"
+                      title="السطر السابق"
+                    >
+                      السابق
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={pageScriptLines.length === 0}
+                      onClick={() => {
+                        if (pageScriptLines.length === 0) return;
+                        const nextIdx = activeIdx === -1 ? 0 : Math.min(pageScriptLines.length - 1, activeIdx + 1);
+                        setActiveScriptLine(pageScriptLines[nextIdx], { activePage: currentPageNum });
+                      }}
+                      className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-slate-950 text-xs font-black transition cursor-pointer"
+                      title="السطر التالي"
+                    >
+                      التالي
+                    </button>
+
+                    <a
+                      href="?page=script-prompter"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                      title="فتح قارئ السكربت والتتبع الصوتي في نافذة مستقلة"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>قارئ السكربت</span>
+                    </a>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Current State Live Monitor Bar */}
             <div className={`p-4 rounded-2xl border transition-all ${

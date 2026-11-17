@@ -278,11 +278,35 @@ export interface LiveStreamConfig {
   startedAt?: number;
 }
 
+export interface ScriptSubtitleLine {
+  id: string;
+  lessonTitle?: string;
+  page: number;
+  order?: number;
+  arabic: string;
+  th: string;
+  en: string;
+}
+
+export interface LiveSubtitleState {
+  showToStudents: boolean;
+  trackingEnabled?: boolean;
+  filterByPdfPage?: boolean;
+  activeLineId?: string;
+  activePage?: number;
+  activeLessonTitle?: string;
+  activeArabic?: string;
+  activeTh?: string;
+  activeEn?: string;
+  updatedAt?: number;
+}
+
 export interface LiveSessionState {
   sessionId: string;
   sessionPin?: string;
   isProgramActive?: boolean;
   streamState?: LiveStreamConfig; // Live Camera & WebRTC Audio/Video Stream (VDO.Ninja integration)
+  subtitleState?: LiveSubtitleState; // Independent Script-Followed Multilingual Subtitles (PDF-linked + TTS)
   accessMode?: 'restricted' | 'open'; // 'restricted' (default) = verifies student against Settings sheet, 'open' = unrestricted guest entry
   showLessonsListInRoom?: boolean; // Controls whether lessons list dropdown/button appears on projector display screen
   showPinInRoom?: boolean; // Controls whether attendance PIN badge appears on projector display screen

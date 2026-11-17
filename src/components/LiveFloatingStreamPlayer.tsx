@@ -4,29 +4,28 @@ import {
   Mic, Video, Sparkles, X, Columns, Fullscreen,
   PanelTop, ChevronDown, RotateCw, RefreshCw
 } from 'lucide-react';
-import { LiveStreamConfig } from '../types';
-import { useLanguage } from '../translations';
+import { LiveStreamConfig, LiveSubtitleState } from '../types';
+import LiveSubtitleBar from './LiveSubtitleBar';
 
 interface LiveFloatingStreamPlayerProps {
   streamState?: LiveStreamConfig | null;
+  subtitleState?: LiveSubtitleState | null;
   isQuestionActive?: boolean;
   isRevealed?: boolean;
   sessionStatus?: string;
+  onFullscreenChange?: (isFullscreen: boolean) => void;
 }
 
 export type StreamDisplayMode = 'banner' | 'split' | 'fullscreen';
 
 export default function LiveFloatingStreamPlayer({
   streamState,
+  subtitleState,
   isQuestionActive = false,
   isRevealed = false,
   sessionStatus,
+  onFullscreenChange,
 }: LiveFloatingStreamPlayerProps) {
-  const { t, language } = useLanguage();
-  
-  // Subtitle Language preference: 'auto' (follows app language), 'ar', 'th', or 'en'
-  const [subLangMode, setSubLangMode] = useState<'auto' | 'ar' | 'th' | 'en'>('auto');
-  const activeSubLang = subLangMode === 'auto' ? (language || 'ar') : subLangMode;
 
   // Display modes:
   // - 'banner': compact top docked strip (leaves 100% of question & choices clearly visible below it)
@@ -39,38 +38,17 @@ export default function LiveFloatingStreamPlayer({
   const [studentAudioOnly, setStudentAudioOnly] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
-  // Time ticker to auto-fade caption after 5.5s of silence
-  const [now, setNow] = useState(Date.now());
+  // Inform parent whether fullscreen overlay is currently active (prevents duplicate audio playback)
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const isCaptionFresh = Boolean(
-    streamState?.liveCaption &&
-    streamState?.liveCaptionUpdatedAt &&
-    (now - streamState.liveCaptionUpdatedAt) < 5500
-  );
-
-  // Multilingual Subtitle Resolution
-  let primaryCaptionText = streamState?.liveCaption || '';
-  let secondaryCaptionText: string | null = null;
-
-  if (activeSubLang === 'th') {
-    if (streamState?.liveCaptionTh) {
-      primaryCaptionText = streamState.liveCaptionTh;
-      secondaryCaptionText = streamState.liveCaption || null;
-    } else {
-      primaryCaptionText = streamState?.liveCaption || '';
-    }
-  } else if (activeSubLang === 'en') {
-    if (streamState?.liveCaptionEn) {
-      primaryCaptionText = streamState.liveCaptionEn;
-      secondaryCaptionText = streamState.liveCaption || null;
-    } else {
-      primaryCaptionText = streamState?.liveCaption || '';
-    }
-  }
+    const isFullscreenActive = Boolean(
+      streamState?.isActive &&
+      streamState?.streamId &&
+      streamState?.mode !== 'audio' &&
+      !studentAudioOnly &&
+      displayMode === 'fullscreen'
+    );
+    onFullscreenChange?.(isFullscreenActive);
+  }, [displayMode, studentAudioOnly, streamState?.isActive, streamState?.streamId, streamState?.mode, onFullscreenChange]);
 
   // Remember previous mode before question started to restore it automatically afterwards
   const previousModeRef = useRef<StreamDisplayMode>('split');
@@ -320,60 +298,15 @@ export default function LiveFloatingStreamPlayer({
               className="w-full h-full border-0 block"
             />
 
-            {/* Continuous Live Multilingual Subtitles Overlay in Fullscreen - Rotates With The Video! */}
-            {streamState?.enableSubtitles && streamState?.liveCaption && isCaptionFresh && (
-              <div className="absolute bottom-6 sm:bottom-8 left-4 right-4 z-40 flex flex-col items-center pointer-events-none">
-                <div className="max-w-[92%] bg-black/85 backdrop-blur-md px-4 py-2 rounded-2xl border border-amber-500/40 shadow-2xl text-center leading-relaxed animate-in fade-in zoom-in-95 duration-150">
-                  {/* Secondary/Original Arabic text when viewing in Thai or English */}
-                  {secondaryCaptionText && (
-                    <div className="text-[11px] text-amber-200/80 mb-0.5 font-medium line-clamp-1" dir="rtl">
-                      {secondaryCaptionText}
-                    </div>
-                  )}
-                  {/* Primary text in active language */}
-                  <div className={`font-bold ${
-                    activeSubLang === 'th' 
-                      ? 'text-emerald-300 text-sm sm:text-base' 
-                      : activeSubLang === 'en' 
-                      ? 'text-blue-200 text-xs sm:text-sm font-sans' 
-                      : 'text-amber-300 text-xs sm:text-sm'
-                  }`}>
-                    <span>{primaryCaptionText}</span>
-                  </div>
-                </div>
-
-                {/* Subtitle Language Switcher Pills */}
-                <div className="mt-1.5 flex items-center gap-1 bg-black/75 backdrop-blur-md px-2 py-0.5 rounded-full border border-white/10 pointer-events-auto shadow-md">
-                  <button
-                    type="button"
-                    onClick={() => setSubLangMode('ar')}
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition cursor-pointer ${
-                      activeSubLang === 'ar' ? 'bg-amber-500 text-slate-950 font-black' : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    العربية
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSubLangMode('th')}
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition cursor-pointer ${
-                      activeSubLang === 'th' ? 'bg-emerald-500 text-slate-950 font-black' : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    ไทย
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSubLangMode('en')}
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold transition cursor-pointer ${
-                      activeSubLang === 'en' ? 'bg-blue-500 text-white font-black' : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    EN
-                  </button>
-                </div>
-              </div>
-            )}
+            {/* Script / Live Multilingual Subtitles Overlay in Fullscreen - Rotates With The Video! */}
+            <div className="absolute bottom-5 sm:bottom-8 left-4 right-4 z-40 pointer-events-none">
+              <LiveSubtitleBar
+                subtitleState={subtitleState}
+                streamState={streamState}
+                variant="fullscreen-overlay"
+                suspendAudio={false}
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -510,60 +443,6 @@ export default function LiveFloatingStreamPlayer({
           />
         </div>
 
-        {/* Continuous Multilingual Live Subtitles Overlay (Docked Banner & Split) */}
-        {streamState?.enableSubtitles && streamState?.liveCaption && isCaptionFresh && (
-          <div className="absolute bottom-1.5 left-2 right-2 z-30 flex flex-col items-center pointer-events-none">
-            <div className="max-w-[96%] bg-black/85 backdrop-blur-md px-3 py-1 rounded-xl border border-amber-500/40 shadow-xl text-center">
-              {secondaryCaptionText && !isBanner && (
-                <div className="text-[10px] text-amber-200/80 mb-0.5 font-medium truncate" dir="rtl">
-                  {secondaryCaptionText}
-                </div>
-              )}
-              <div className={`font-bold truncate ${
-                activeSubLang === 'th' 
-                  ? 'text-emerald-300 text-xs sm:text-sm' 
-                  : activeSubLang === 'en' 
-                  ? 'text-blue-200 text-[11px] sm:text-xs font-sans' 
-                  : 'text-amber-300 text-[11px] sm:text-xs'
-              }`}>
-                <span>{primaryCaptionText}</span>
-              </div>
-            </div>
-
-            {/* Language Quick Switcher (Shown in Split Mode) */}
-            {!isBanner && (
-              <div className="mt-1 flex items-center gap-1 bg-black/75 backdrop-blur-md px-1.5 py-0.5 rounded-full border border-white/10 pointer-events-auto shadow-sm">
-                <button
-                  type="button"
-                  onClick={() => setSubLangMode('ar')}
-                  className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold transition cursor-pointer ${
-                    activeSubLang === 'ar' ? 'bg-amber-500 text-slate-950 font-black' : 'text-slate-300 hover:text-white'
-                  }`}
-                >
-                  عربي
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSubLangMode('th')}
-                  className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold transition cursor-pointer ${
-                    activeSubLang === 'th' ? 'bg-emerald-500 text-slate-950 font-black' : 'text-slate-300 hover:text-white'
-                  }`}
-                >
-                  ไทย
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSubLangMode('en')}
-                  className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold transition cursor-pointer ${
-                    activeSubLang === 'en' ? 'bg-blue-500 text-white font-black' : 'text-slate-300 hover:text-white'
-                  }`}
-                >
-                  EN
-                </button>
-              </div>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

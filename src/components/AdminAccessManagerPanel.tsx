@@ -109,25 +109,25 @@ export default function AdminAccessManagerPanel({ onNotice }: AdminAccessManager
     const defaults: AdminSheetUser[] = [
       {
         id: 'def_admin_1',
-        name: 'المدير',
-        number: '3344',
+        name: 'Admin الخطاط سليمان ادم 2026',
+        number: '0980877274',
         allowHome: 'نعم',
         allowAdmin: 'نعم',
         status: 'نعم',
-        notes: 'صلاحية كاملة للصفحة الرئيسية ولوحة التحكم',
+        notes: 'صلاحية كاملة للتحكم السريع ولوحة التحكم',
       },
       {
         id: 'def_teacher_2',
-        name: 'المعلم',
-        number: '1122',
+        name: 'الخطاط سليمان ادم',
+        number: '0980877274',
         allowHome: 'نعم',
         allowAdmin: 'لا',
         status: 'نعم',
-        notes: 'صلاحية الصفحة الرئيسية فقط',
+        notes: 'صلاحية صفحة التحكم السريع فقط',
       },
     ];
     setUsers(defaults);
-    notify('تم إدراج النموذج المبدئي — اضغط «حفظ ومزامنة» لاعتماده في الشيت والنظام.', 'success');
+    notify('تم إدراج النموذج المبدئي — اضغط «حفظ ومزامنة» لاعتماده في ورقة Admin والنظام.', 'success');
   };
 
   const updateRow = (idx: number, patch: Partial<AdminSheetUser>) => {
@@ -176,10 +176,10 @@ export default function AdminAccessManagerPanel({ onNotice }: AdminAccessManager
         <div>
           <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-amber-400" />
-            <span>إدارة صلاحيات الدخول وورقة «أدمن» (الصفحة الرئيسية + لوحة التحكم)</span>
+            <span>إدارة صلاحيات الدخول وورقة «Admin» (التحكم السريع + لوحة التحكم)</span>
           </h3>
           <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-            تتحكم هذه الورقة في من يُسمح له بالدخول بالاسم والرقم إلى <b className="text-slate-200">الصفحة الرئيسية</b> وإلى <b className="text-amber-300">لوحة التحكم المركزية</b> بشكل مستقل مع المزامنة الثنائية بين الشيت والنظام.
+            تتحكم هذه الورقة في من يُسمح له بالدخول بالاسم والرقم إلى صفحة <b className="text-slate-200">التحكم السريع</b> (<span className="font-mono text-amber-300" dir="ltr">?live=control</span>) وإلى <b className="text-amber-300">لوحة التحكم المركزية</b> (<span className="font-mono text-amber-300" dir="ltr">?Admin=controlroom2026</span>) بشكل مستقل مع المزامنة الثنائية بين الشيت والنظام.
           </p>
         </div>
 
@@ -191,7 +191,7 @@ export default function AdminAccessManagerPanel({ onNotice }: AdminAccessManager
             className="px-3.5 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/40 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
           >
             <Sparkles className={`w-3.5 h-3.5 ${isSettingUpSheet ? 'animate-spin' : ''}`} />
-            <span>{isSettingUpSheet ? 'جاري التهيئة...' : 'إنشاء ورقة «أدمن» بالشيت'}</span>
+            <span>{isSettingUpSheet ? 'جاري التهيئة...' : 'إنشاء ورقة «Admin» بالشيت'}</span>
           </button>
 
           <button
@@ -226,9 +226,9 @@ export default function AdminAccessManagerPanel({ onNotice }: AdminAccessManager
               <Unlock className="w-4 h-4 text-slate-400 shrink-0" />
             )}
             <div>
-              <div className="text-xs font-black text-white">تسجيل دخول الصفحة الرئيسية</div>
+              <div className="text-xs font-black text-white">تسجيل دخول التحكم السريع (?live=control)</div>
               <div className="text-[11px] text-slate-400">
-                طلب الاسم والرقم قبل فتح الصفحة الرئيسية للمعلم/المقدّم
+                طلب الاسم والرقم قبل فتح صفحة التحكم السريع للمعلم/المقدّم
               </div>
             </div>
           </div>

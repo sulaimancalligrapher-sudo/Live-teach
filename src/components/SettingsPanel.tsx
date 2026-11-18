@@ -638,6 +638,7 @@ function getHeaderConfig() {
   var logoUrl = (data.length > 1 && data[1].length > 2 && data[1][2]) ? data[1][2].toString().trim() : '';
   var loginLogoUrl = (data.length > 1 && data[1].length > 3 && data[1][3]) ? data[1][3].toString().trim() : '';
   var subtitle = (data.length > 2 && data[2].length > 1 && data[2][1]) ? data[2][1].toString().trim() : '';
+  var heroImageUrl = (data.length > 2 && data[2].length > 2 && data[2][2]) ? data[2][2].toString().trim() : '';
 
   // Socials row 2 (index 1): E2 (col 4), F2 (col 5), G2 (col 6), H2 (col 7)
   var facebook = (data.length > 1 && data[1].length > 4 && data[1][4]) ? data[1][4].toString().trim() : '';
@@ -658,6 +659,7 @@ function getHeaderConfig() {
     title: title,
     subtitle: subtitle,
     logoUrl: logoUrl,
+    heroImageUrl: heroImageUrl,
     loginLogoUrl: loginLogoUrl,
     buttons: buttons,
     socials: {
@@ -4422,7 +4424,7 @@ function translateBatchGas(items) {
 
 function findAdminSheet() {
   var ss = getSpreadsheet();
-  return ss.getSheetByName('أدمن') || ss.getSheetByName('ادمن') || ss.getSheetByName('Admin') || ss.getSheetByName('admin');
+  return ss.getSheetByName('Admin') || ss.getSheetByName('admin') || ss.getSheetByName('أدمن') || ss.getSheetByName('ادمن');
 }
 
 function getOrCreateAdminSheet() {
@@ -4430,9 +4432,10 @@ function getOrCreateAdminSheet() {
   var sheet = findAdminSheet();
   var createdNow = false;
   if (!sheet) {
-    sheet = ss.insertSheet('أدمن');
+    sheet = ss.insertSheet('Admin');
     createdNow = true;
   }
+  sheet.getRange('B:B').setNumberFormat('@');
   var headers = ['الاسم', 'الرقم', 'الصفحة الرئيسية', 'لوحة التحكم', 'الحالة', 'ملاحظات'];
   var firstRowEmpty = sheet.getLastRow() === 0 || !String(sheet.getRange(1, 1).getValue() || '').trim();
   if (createdNow || firstRowEmpty) {
@@ -4440,8 +4443,10 @@ function getOrCreateAdminSheet() {
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#fde68a');
     sheet.setFrozenRows(1);
     if (sheet.getLastRow() <= 1) {
-      sheet.appendRow(['المدير', '3344', 'نعم', 'نعم', 'نعم', 'صلاحية كاملة للصفحة الرئيسية ولوحة التحكم']);
-      sheet.appendRow(['المعلم', '1122', 'نعم', 'لا', 'نعم', 'صلاحية الصفحة الرئيسية فقط']);
+      sheet.getRange(2, 1, 2, 6).setValues([
+        ['Admin الخطاط سليمان ادم 2026', '0980877274', 'نعم', 'نعم', 'نعم', 'الإدارة ولوحة التحكم المركزية'],
+        ['الخطاط سليمان ادم', '0980877274', 'نعم', 'لا', 'نعم', 'صفحة التحكم السريع فقط']
+      ]);
     }
   }
   return sheet;
@@ -4456,7 +4461,7 @@ function setupAdminSheet() {
     sheet.setFrozenRows(1);
     return {
       success: true,
-      message: 'تم إنشاء وتهيئة ورقة (أدمن) لصلاحيات الدخول في الشيت بنجاح! 🔐'
+      message: 'تم إنشاء وتهيئة ورقة (Admin) لصلاحيات الدخول في الشيت بنجاح! 🔐'
     };
   } catch (err) {
     return { success: false, message: err.message };
@@ -4523,6 +4528,7 @@ function saveAdminUsers(users) {
     var sheet = getOrCreateAdminSheet();
     var list = Array.isArray(users) ? users : [];
     sheet.clearContents();
+    sheet.getRange('B:B').setNumberFormat('@');
     var headers = ['الاسم', 'الرقم', 'الصفحة الرئيسية', 'لوحة التحكم', 'الحالة', 'ملاحظات'];
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#fde68a');
@@ -4543,43 +4549,49 @@ function saveAdminUsers(users) {
     }
     return {
       success: true,
-      message: 'تم حفظ ومزامنة ' + list.length + ' حساب في ورقة (أدمن) بنجاح! ✅'
+      message: 'تم حفظ ومزامنة ' + list.length + ' حساب في ورقة (Admin) بنجاح! ✅'
     };
   } catch (err) {
     return { success: false, message: err.message };
   }
 }
 
+function adminNumbersMatchGas(a, b) {
+  var sa = String(a || '').replace(/[٠-٩]/g, function(d) { return '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString(); }).trim();
+  var sb = String(b || '').replace(/[٠-٩]/g, function(d) { return '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString(); }).trim();
+  if (!sa || !sb) return false;
+  if (sa === sb) return true;
+  if (sa.length >= 6 && sb.length >= 6 && sa.replace(/^0+/, '') === sb.replace(/^0+/, '')) return true;
+  return false;
+}
+
 function verifyAdminUser(name, number, target) {
   try {
     var sheet = findAdminSheet();
     if (!sheet) {
-      return { success: false, sheetMissing: true, message: 'ورقة (أدمن) غير موجودة في الشيت' };
+      return { success: false, sheetMissing: true, message: 'ورقة (Admin) غير موجودة في الشيت' };
     }
     var res = getAdminUsers();
     var list = (res && res.data) ? res.data : [];
     if (list.length === 0) {
-      return { success: false, sheetEmpty: true, message: 'ورقة (أدمن) فارغة من الحسابات' };
+      return { success: false, sheetEmpty: true, message: 'ورقة (Admin) فارغة من الحسابات' };
     }
     var targetName = normalizeAdminStringGas(name);
-    var targetNum = String(number || '')
-      .replace(/[٠-٩]/g, function(d) { return '٠١٢٣٤٥٦٧٨٩'.indexOf(d).toString(); })
-      .trim();
     var found = null;
     for (var i = 0; i < list.length; i++) {
-      if (normalizeAdminStringGas(list[i].name) === targetName && String(list[i].number).trim() === targetNum) {
+      if (normalizeAdminStringGas(list[i].name) === targetName && adminNumbersMatchGas(list[i].number, number)) {
         found = list[i];
         break;
       }
     }
     if (!found) {
-      return { success: false, message: 'الاسم أو الرقم غير صحيح! يرجى التحقق من ورقة (أدمن).' };
+      return { success: false, message: 'الاسم أو الرقم غير صحيح! يرجى التحقق من ورقة (Admin).' };
     }
     if (found.status === 'لا') {
       return { success: false, message: 'تم إيقاف هذا الحساب من قبل الإدارة (الحالة: لا).' };
     }
     if (target === 'home' && found.allowHome !== 'نعم') {
-      return { success: false, message: 'هذا الحساب غير مصرح له بالدخول إلى الصفحة الرئيسية.' };
+      return { success: false, message: 'هذا الحساب غير مصرح له بالدخول إلى صفحة التحكم السريع.' };
     }
     if (target === 'admin' && found.allowAdmin !== 'نعم') {
       return { success: false, message: 'هذا الحساب لا يملك صلاحية الدخول إلى لوحة التحكم المركزية.' };

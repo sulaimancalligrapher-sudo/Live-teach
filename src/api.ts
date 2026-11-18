@@ -14,8 +14,8 @@ import {
 
 // Helper to get Web App URL from localStorage or environment variables
 export function getWebAppUrl(): string {
-  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbz1XMc_qbK3-ne2-YbnEFaxbb8gDzS1ATG39yWZQYSB1UhlY3m-3z86--9o98TLRpPbWQ/exec';
-  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbz1XMc_qbK3-ne2-YbnEFaxbb8gDzS1ATG39yWZQYSB1UhlY3m-3z86--9o98TLRpPbWQ/exec';
+  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbwNv7aLBgsQ72d9SCVA1tfW-kdglU_e8D_Dicfgii1wEaXQquA0zkq2y01JsuYvxr1arQ/exec';
+  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbwakS_2H_RJGQSy6tUhWQ17S8gpoidY1fFc_Id234ubTFKuzA0k6_qa-DaeCGdbvYpwWg/exec';
 
   // 1. Check localStorage first (allows individual overrides / testing)
   const localUrl = localStorage.getItem('webAppUrl');
@@ -905,6 +905,7 @@ export function parseHeaderResponse(res: any): HeaderConfig {
     const title = res.title || res.B2 || res.b2 || res.subject || '';
     const subtitle = res.subtitle || res.B3 || res.b3 || res.description || '';
     const logoUrl = formatDriveImageUrl(res.logoUrl || res.logo || res.C2 || res.c2 || '');
+    const heroImageUrl = formatDriveImageUrl(res.heroImageUrl || res.C3 || res.c3 || '');
     const loginLogoUrl = formatDriveImageUrl(res.loginLogoUrl || res.D2 || res.d2 || '');
 
     let buttons: HeaderNavButton[] = [];
@@ -943,6 +944,7 @@ export function parseHeaderResponse(res: any): HeaderConfig {
       title: title ? String(title).trim() : undefined,
       subtitle: subtitle ? String(subtitle).trim() : undefined,
       logoUrl: logoUrl ? String(logoUrl).trim() : undefined,
+      heroImageUrl: heroImageUrl ? String(heroImageUrl).trim() : undefined,
       loginLogoUrl: loginLogoUrl ? String(loginLogoUrl).trim() : undefined,
       buttons,
       socials
@@ -970,6 +972,7 @@ export function parseHeaderResponse(res: any): HeaderConfig {
     let logoUrl = formatDriveImageUrl(getCellValue(1, 2) || getCellValue(0, 2));
     let loginLogoUrl = formatDriveImageUrl(getCellValue(1, 3) || getCellValue(0, 3));
     let subtitle = getCellValue(2, 1) || getCellValue(1, 1);
+    let heroImageUrl = formatDriveImageUrl(getCellValue(2, 2));
 
     // Socials row 2 (index 1): E2 (col 4), F2 (col 5), G2 (col 6), H2 (col 7)
     let facebook = getCellValue(1, 4) || getCellValue(0, 4);
@@ -983,6 +986,7 @@ export function parseHeaderResponse(res: any): HeaderConfig {
       logoUrl = formatDriveImageUrl(getCellValue(1, 2));
       loginLogoUrl = formatDriveImageUrl(getCellValue(1, 3));
       subtitle = getCellValue(2, 1);
+      heroImageUrl = formatDriveImageUrl(getCellValue(2, 2));
       facebook = getCellValue(1, 4);
       instagram = getCellValue(1, 5);
       youtube = getCellValue(1, 6);
@@ -1015,6 +1019,7 @@ export function parseHeaderResponse(res: any): HeaderConfig {
       title: title || undefined,
       subtitle: subtitle || undefined,
       logoUrl: logoUrl || undefined,
+      heroImageUrl: heroImageUrl || undefined,
       loginLogoUrl: loginLogoUrl || undefined,
       buttons,
       socials: {
@@ -1046,7 +1051,7 @@ export async function fetchHeaderConfig(): Promise<HeaderConfig> {
     let res = await fetchGas({ action: 'getHeaderConfig' });
     let parsed = parseHeaderResponse(res);
 
-    if (!parsed.title && !parsed.logoUrl && (!parsed.buttons || parsed.buttons.length === 0)) {
+    if (!parsed.title && !parsed.logoUrl && !parsed.heroImageUrl && (!parsed.buttons || parsed.buttons.length === 0)) {
       // Retry with action 'getHeader'
       res = await fetchGas({ action: 'getHeader' });
       parsed = parseHeaderResponse(res);
@@ -1056,6 +1061,7 @@ export async function fetchHeaderConfig(): Promise<HeaderConfig> {
       parsed.title || 
       parsed.subtitle || 
       parsed.logoUrl || 
+      parsed.heroImageUrl ||
       parsed.loginLogoUrl || 
       (parsed.buttons && parsed.buttons.length > 0) || 
       (parsed.socials && Object.values(parsed.socials).some(Boolean))
@@ -3176,16 +3182,28 @@ export function matchAdminUserFromList(
   const cleanName = normalizeArabicText(name);
   const cleanNum = normalizeDigitString(number);
 
+  const numbersMatch = (a: string, b: string) => {
+    const na = normalizeDigitString(a);
+    const nb = normalizeDigitString(b);
+    if (!na || !nb) return false;
+    if (na === nb) return true;
+    // Handle phone/ID numbers where Google Sheets stripped a leading 0
+    if (na.length >= 6 && nb.length >= 6 && na.replace(/^0+/, '') === nb.replace(/^0+/, '')) {
+      return true;
+    }
+    return false;
+  };
+
   const matched = users.find(
     (u) =>
       normalizeArabicText(u.name) === cleanName &&
-      normalizeDigitString(u.number) === cleanNum
+      numbersMatch(u.number, cleanNum)
   );
 
   if (!matched) {
     return {
       success: false,
-      message: 'الاسم أو الرقم غير صحيح! يرجى التأكد من البيانات في ورقة (أدمن).',
+      message: 'الاسم أو الرقم غير صحيح! يرجى التحقق من البيانات في ورقة Admin.',
     };
   }
 
@@ -3199,7 +3217,7 @@ export function matchAdminUserFromList(
   if (target === 'home' && matched.allowHome !== 'نعم') {
     return {
       success: false,
-      message: 'هذا الحساب غير مصرح له بالدخول إلى الصفحة الرئيسية.',
+      message: 'هذا الحساب غير مصرح له بالدخول إلى صفحة التحكم السريع.',
     };
   }
 
@@ -3230,7 +3248,7 @@ export async function verifyAdminCredentials(
     return { success: false, message: 'يرجى إدخال الاسم والرقم معاً.' };
   }
 
-  // 1. Try Google Sheets (أدمن) directly via GAS if configured
+  // 1. Try Google Sheets (Admin) directly via GAS if configured
   if (isApiConfigured()) {
     try {
       const gasRes = await fetchGas(
@@ -3283,14 +3301,12 @@ export async function verifyAdminCredentials(
 
   // 3. Initial bootstrap fallback ONLY when neither Sheet nor Firestore has configured users yet
   const normName = normalizeArabicText(rawName);
-  const bootstrapHomeAccounts = [
-    { name: 'المدير', number: '3344', allowHome: 'نعم' as const, allowAdmin: 'نعم' as const },
-    { name: 'المعلم', number: '1122', allowHome: 'نعم' as const, allowAdmin: 'لا' as const },
-    { name: 'admin', number: '3344', allowHome: 'نعم' as const, allowAdmin: 'نعم' as const },
-    { name: 'teacher', number: '1122', allowHome: 'نعم' as const, allowAdmin: 'لا' as const },
+  const bootstrapAccounts = [
+    { name: 'Admin الخطاط سليمان ادم 2026', number: '0980877274', allowHome: 'نعم' as const, allowAdmin: 'نعم' as const },
+    { name: 'الخطاط سليمان ادم', number: '0980877274', allowHome: 'نعم' as const, allowAdmin: 'لا' as const },
   ];
 
-  const foundBootstrap = bootstrapHomeAccounts.find(
+  const foundBootstrap = bootstrapAccounts.find(
     (b) => normalizeArabicText(b.name) === normName && b.number === rawNum
   );
 
@@ -3298,7 +3314,7 @@ export async function verifyAdminCredentials(
     if (target === 'admin' && foundBootstrap.allowAdmin !== 'نعم') {
       return {
         success: false,
-        message: 'هذا الحساب الافتراضي مخصص للصفحة الرئيسية فقط. للدخول للوحة التحكم استخدم حساب المدير (3344).',
+        message: 'هذا الحساب لا يملك صلاحية الدخول إلى لوحة التحكم المركزية.',
         source: 'bootstrap',
       };
     }
@@ -3311,7 +3327,7 @@ export async function verifyAdminCredentials(
         allowHome: foundBootstrap.allowHome,
         allowAdmin: foundBootstrap.allowAdmin,
         status: 'نعم',
-        notes: 'دخول افتراضي مبدئي قبل تهيئة ورقة أدمن',
+        notes: 'حساب افتراضي',
       },
       source: 'bootstrap',
     };
@@ -3319,10 +3335,7 @@ export async function verifyAdminCredentials(
 
   return {
     success: false,
-    message:
-      target === 'admin'
-        ? 'بيانات لوحة التحكم غير صحيحة! الافتراضي قبل تهيئة ورقة (أدمن): الاسم «المدير» والرقم «3344».'
-        : 'بيانات الصفحة الرئيسية غير صحيحة! الافتراضي قبل تهيئة ورقة (أدمن): الاسم «المعلم» والرقم «1122» أو «المدير» والرقم «3344».',
+    message: 'الاسم أو الرقم غير صحيح! يرجى التحقق من البيانات المسجلة.',
     source: 'bootstrap',
   };
 }

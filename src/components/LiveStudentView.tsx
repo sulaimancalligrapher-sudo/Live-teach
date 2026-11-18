@@ -116,6 +116,17 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
     return '';
   });
 
+  // Two-step login: Step 1 (Name + Number) -> Step 2 (Welcome + Attendance PIN)
+  const [isStudentIdentitySaved, setIsStudentIdentitySaved] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      const u = p.get('username') || p.get('name') || sessionStorage.getItem('liveStudentUsername') || localStorage.getItem('liveStudentUsername') || '';
+      return Boolean(u.trim());
+    }
+    return false;
+  });
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
   const [isJoined, setIsJoined] = useState(false);
   const [sessionState, setSessionState] = useState<LiveSessionState | null>(null);
   const [connected, setConnected] = useState(false);
@@ -182,11 +193,10 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
           setIsSessionEndedWithGratitude(true);
           setIsJoined(false);
           setIsPinVerified(false);
+          setStudentPin('');
           setSubmittedAnswer(null);
           setScanSuccessMsg(null);
           setScannerError(null);
-          sessionStorage.removeItem('liveStudentUsername');
-          sessionStorage.removeItem('liveStudentSheet');
           sessionStorage.removeItem('liveStudentPin');
           sessionStorage.removeItem('hasAcceptedQuizChallenge');
           localStorage.removeItem('liveStudentPin');
@@ -197,9 +207,10 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
         if (isJoined && state.sessionPin && studentPin.trim() && state.sessionPin.trim() !== studentPin.trim()) {
           setIsJoined(false);
           setIsPinVerified(false);
+          setStudentPin('');
           setScanSuccessMsg(null);
           setScannerError(null);
-          setJoinError('قام المعلم بتحديث رمز الحضور في الفصل. يرجى إدخال الرمز الجديد المعروض على الشاشة.');
+          setJoinError('قام المعلم بتحديث رمز الحضور في الفصل. يرجى إدخال رمز الحضور (Attendance PIN) الجديد المعروض على الشاشة.');
           sessionStorage.removeItem('liveStudentPin');
           localStorage.removeItem('liveStudentPin');
           return;
@@ -448,6 +459,17 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
       setSheetNumber(parsed.sheetNumber);
       msgs.push(`رقم المشترك: ${parsed.sheetNumber}`);
     }
+    if (parsed.username) {
+      try {
+        sessionStorage.setItem('liveStudentUsername', parsed.username);
+        sessionStorage.setItem('liveStudentSheet', updatedSheet.trim());
+        localStorage.setItem('liveStudentUsername', parsed.username);
+        localStorage.setItem('liveStudentSheet', updatedSheet.trim());
+        localStorage.setItem('loggedInUsername', parsed.username);
+        localStorage.setItem('loggedInSheetNumber', updatedSheet.trim());
+      } catch {}
+      setIsStudentIdentitySaved(true);
+    }
     if (parsed.pin) {
       updatedPin = parsed.pin;
       setStudentPin(parsed.pin);
@@ -592,7 +614,103 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
     }, 250);
   };
 
-  // Join Classroom
+  // Step 1: Verify & Save Student Identity (Name + Sheet Number) locally
+  const handleSaveStudentIdentity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanUser = username.trim();
+    const cleanSheet = sheetNumber.trim();
+    if (!cleanUser) {
+      setJoinError(t('login_error_missing', 'خطأ في الاسم ورقم التسجيل، يجب التواصل مع الإدارة'));
+      return;
+    }
+    setJoinError(null);
+
+    let currentAccessMode = sessionState?.accessMode;
+    if (!currentAccessMode) {
+      try {
+        const freshState = await getLiveSessionState();
+        if (freshState) {
+          setSessionState(freshState);
+          currentAccessMode = freshState.accessMode;
+        }
+      } catch {}
+    }
+
+    if (currentAccessMode !== 'open') {
+      setIsVerifyingRoster(true);
+      try {
+        let devId = '';
+        try {
+          devId = localStorage.getItem('deviceId') || '';
+          if (!devId) {
+            devId = 'dev_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+            localStorage.setItem('deviceId', devId);
+          }
+        } catch {
+          devId = 'dev_' + Date.now();
+        }
+        const verifyRes = await verifyStudentInSettings(cleanUser, cleanSheet, devId, { lat: null, lng: null });
+        if (!verifyRes.success) {
+          const isBlocked = (verifyRes.message || '').includes('تعطيل') || (verifyRes.message || '').includes('منع');
+          const errorMsg = isBlocked
+            ? t('student_account_disabled_error', 'تم تعطيل دخول هذا الحساب، يرجى التواصل مع الإدارة')
+            : t('student_not_in_settings_error', 'خطأ في الاسم ورقم التسجيل، يجب التواصل مع الإدارة');
+          setJoinError(errorMsg);
+          setIsVerifyingRoster(false);
+          return;
+        }
+      } catch (errVer) {
+        console.warn('Step 1 roster check notice:', errVer);
+      } finally {
+        setIsVerifyingRoster(false);
+      }
+    }
+
+    setUsername(cleanUser);
+    setSheetNumber(cleanSheet);
+    try {
+      sessionStorage.setItem('liveStudentUsername', cleanUser);
+      sessionStorage.setItem('liveStudentSheet', cleanSheet);
+      localStorage.setItem('liveStudentUsername', cleanUser);
+      localStorage.setItem('liveStudentSheet', cleanSheet);
+      localStorage.setItem('loggedInUsername', cleanUser);
+      localStorage.setItem('loggedInSheetNumber', cleanSheet);
+    } catch {}
+    setIsStudentIdentitySaved(true);
+  };
+
+  // Explicit Student Logout (after confirmation dialog)
+  const handleConfirmStudentLogout = async () => {
+    try {
+      if (isJoined && username.trim()) {
+        await leaveLiveSession(username, sheetNumber);
+      }
+    } catch {}
+    try {
+      sessionStorage.removeItem('liveStudentUsername');
+      sessionStorage.removeItem('liveStudentSheet');
+      sessionStorage.removeItem('liveStudentPin');
+      sessionStorage.removeItem('hasAcceptedQuizChallenge');
+      localStorage.removeItem('liveStudentUsername');
+      localStorage.removeItem('liveStudentSheet');
+      localStorage.removeItem('liveStudentPin');
+      localStorage.removeItem('loggedInUsername');
+      localStorage.removeItem('loggedInSheetNumber');
+    } catch {}
+    setUsername('');
+    setSheetNumber('');
+    setStudentPin('');
+    setIsJoined(false);
+    setIsPinVerified(false);
+    setIsStudentIdentitySaved(false);
+    setSubmittedAnswer(null);
+    setScanSuccessMsg(null);
+    setScannerError(null);
+    setJoinError(null);
+    setShowLogoutConfirm(false);
+  };
+
+  // Join Classroom (Step 2 with Attendance PIN)
   const handleJoin = async (nameToJoin: string, sheetToJoin: string, pinToJoin?: string) => {
     if (!nameToJoin.trim()) {
       setJoinError(t('login_error_missing', 'خطأ في الاسم ورقم التسجيل، يجب التواصل مع الإدارة'));
@@ -927,12 +1045,24 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
           {/* Header Glow */}
           <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-amber-500 via-indigo-500 to-emerald-500 rounded-t-3xl" />
 
-          {/* Single Language Dropdown Button */}
-          <div className="flex items-center justify-end mb-4">
+          {/* Top Card Bar: Conditional Student Logout Button + Language Selector */}
+          <div className="flex items-center justify-between gap-2 mb-4">
+            {isStudentIdentitySaved ? (
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(true)}
+                className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                <span>خروج الطالب</span>
+              </button>
+            ) : (
+              <div />
+            )}
             <LanguageSelector align="left" />
           </div>
 
-          <div className="text-center mb-6">
+          <div className="text-center mb-5">
             {(headerConfig?.loginLogoUrl || headerConfig?.logoUrl) ? (
               <div className="mb-4 flex items-center justify-center">
                 <img
@@ -943,22 +1073,46 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
                 />
               </div>
             ) : null}
-            <h2 className="text-xl sm:text-2xl font-black text-slate-100">
-              {t('login_title', 'تسجيل دخول الطالب 👤')}
-            </h2>
-            <p className="text-xs text-slate-400 mt-2 leading-relaxed font-semibold">
-              {t('login_subtitle', 'أدخل اسمك ورقم الشيت الخاص بك لمتابعة دروس القراءة والواجبات.')}
-            </p>
+
+            {!isStudentIdentitySaved ? (
+              <>
+                <h2 className="text-xl sm:text-2xl font-black text-slate-100">
+                  {t('login_title', 'تسجيل دخول الطالب 👤')}
+                </h2>
+                <p className="text-xs text-slate-400 mt-2 leading-relaxed font-semibold">
+                  أدخل اسمك ورقم الشيت لحفظ بياناتك على هذا الجهاز قبل إدخال رمز الحصة.
+                </p>
+              </>
+            ) : (
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/15 via-indigo-500/10 to-slate-950 border border-emerald-500/35 text-center space-y-1.5 shadow-inner">
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[11px] font-black border border-emerald-500/30">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>بيانات الطالب محفوظة</span>
+                </div>
+                <h2 className="text-lg sm:text-xl font-black text-white">
+                  أهلاً بك يا <span className="text-amber-300">{username}</span>
+                </h2>
+                {sheetNumber && (
+                  <p className="text-xs font-mono font-bold text-slate-300">
+                    رقم الشيت: #{sheetNumber}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* زر مسح رمز QR بالكاميرا */}
           <button
             type="button"
             onClick={startScanner}
-            className="w-full py-3.5 px-4 bg-gradient-to-r from-indigo-900/60 via-purple-900/50 to-indigo-900/60 hover:from-indigo-850 hover:to-purple-850 border border-indigo-500/40 hover:border-indigo-400 text-indigo-200 font-bold rounded-2xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-950/40 mb-4 active:scale-98"
+            className="w-full py-3 px-4 bg-gradient-to-r from-indigo-900/60 via-purple-900/50 to-indigo-900/60 hover:from-indigo-850 hover:to-purple-850 border border-indigo-500/40 hover:border-indigo-400 text-indigo-200 font-bold rounded-2xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-indigo-950/40 mb-4 active:scale-98"
           >
             <Camera className="w-4 h-4 text-indigo-400" />
-            <span>{t('live_student_scan_qr', 'مسح رمز QR بالكاميرا (بيانات الطالب أو رمز الحضور) 📷')}</span>
+            <span>
+              {isStudentIdentitySaved
+                ? 'مسح رمز الحضور QR بالكاميرا 📷'
+                : t('live_student_scan_qr', 'مسح رمز QR بالكاميرا (بطاقة الطالب أو رمز الحضور) 📷')}
+            </span>
           </button>
 
           {/* رسالة نجاح مسح الكود */}
@@ -979,87 +1133,123 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
             </div>
           )}
 
-          <form onSubmit={(e) => { e.preventDefault(); handleJoin(username, sheetNumber, studentPin); }} className="space-y-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                {t('student_name_label', 'اسم الطالب:')}
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder={t('student_name_placeholder', 'أدخل اسمك الكريم...')}
-                  className="w-full px-4 py-3.5 bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-slate-100 rounded-2xl outline-none text-sm font-bold pr-11"
-                />
-                <User className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                {t('student_sheet_label', 'رقم الشيت (اختياري - للربط المباشر مع سجل الدرجات):')}
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  value={sheetNumber}
-                  onChange={(e) => setSheetNumber(e.target.value)}
-                  placeholder="12, A1..."
-                  className="w-full px-4 py-3.5 bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-slate-100 rounded-2xl outline-none text-sm font-mono pr-11"
-                />
-                <Hash className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
-              </div>
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold text-amber-300">
-                  {t('student_pin_label', 'رمز الحضور (PIN):')}
+          {!isStudentIdentitySaved ? (
+            /* STEP 1: Student Name + Number ONLY */
+            <form onSubmit={handleSaveStudentIdentity} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                  {t('student_name_label', 'اسم الطالب:')}
                 </label>
-                <span className="text-[10px] text-amber-400/80 font-bold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                  PIN
-                </span>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder={t('student_name_placeholder', 'أدخل اسمك الكريم...')}
+                    className="w-full px-4 py-3.5 bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-slate-100 rounded-2xl outline-none text-sm font-bold pr-11"
+                  />
+                  <User className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                </div>
               </div>
-              <div className="relative">
-                <input
-                  type="text"
-                  maxLength={6}
-                  value={studentPin}
-                  onChange={(e) => setStudentPin(e.target.value.replace(/\D/g, ''))}
-                  placeholder={t('student_pin_placeholder', 'أدخل رمز الـ PIN المعروض على الشاشة...')}
-                  className="w-full px-4 py-3.5 bg-slate-950 border-2 border-amber-500/40 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-amber-300 placeholder:text-slate-600 rounded-2xl outline-none text-base font-black font-mono tracking-widest text-center pr-11"
-                />
-                <KeyRound className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-amber-400" />
-              </div>
-            </div>
 
-            {joinError && (
-              <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl text-xs font-bold flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 shrink-0" />
-                <span>{joinError}</span>
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                  {t('student_sheet_label', 'رقم الشيت (اختياري - للربط المباشر مع سجل الدرجات):')}
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={sheetNumber}
+                    onChange={(e) => setSheetNumber(e.target.value)}
+                    placeholder="12, A1..."
+                    className="w-full px-4 py-3.5 bg-slate-950 border border-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-slate-100 rounded-2xl outline-none text-sm font-mono pr-11"
+                  />
+                  <Hash className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" />
+                </div>
               </div>
-            )}
 
-            <button
-              type="submit"
-              disabled={isVerifyingRoster}
-              className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-600/20 active:scale-98 transition-all flex items-center justify-center gap-2 text-sm cursor-pointer disabled:opacity-50"
-            >
-              {isVerifyingRoster ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>{t('verifying_student_badge', 'جاري التحقق من بيانات الطالب في ورقة Settings...')}</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-5 h-5" />
-                  <span>{t('student_join_btn', 'دخول الحصة التفاعلية 🚀')}</span>
-                </>
+              {joinError && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl text-xs font-bold flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 shrink-0" />
+                  <span>{joinError}</span>
+                </div>
               )}
-            </button>
-          </form>
+
+              <button
+                type="submit"
+                disabled={isVerifyingRoster}
+                className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-600/20 active:scale-98 transition-all flex items-center justify-center gap-2 text-sm cursor-pointer disabled:opacity-50"
+              >
+                {isVerifyingRoster ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>{t('verifying_student_badge', 'جاري التحقق من بيانات الطالب...')}</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-5 h-5" />
+                    <span>تسجيل الدخول / متابعة</span>
+                  </>
+                )}
+              </button>
+            </form>
+          ) : (
+            /* STEP 2: Attendance PIN + Enter Class ONLY */
+            <form onSubmit={(e) => { e.preventDefault(); handleJoin(username, sheetNumber, studentPin); }} className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-amber-300" dir="ltr">
+                    Attendance PIN:
+                  </label>
+                  <span className="text-[10px] text-amber-400/80 font-bold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                    PIN
+                  </span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    required
+                    autoFocus
+                    value={studentPin}
+                    onChange={(e) => setStudentPin(e.target.value.replace(/\D/g, ''))}
+                    placeholder="••••"
+                    className="w-full px-4 py-4 bg-slate-950 border-2 border-amber-500/40 focus:border-amber-400 focus:ring-1 focus:ring-amber-400 text-amber-300 placeholder:text-slate-600 rounded-2xl outline-none text-lg font-black font-mono tracking-widest text-center pr-11"
+                  />
+                  <KeyRound className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-amber-400" />
+                </div>
+                <p className="text-[11px] text-slate-400 mt-2 leading-relaxed text-center font-semibold">
+                  أدخل رمز الحضور (Attendance PIN) الظاهر على شاشة المعلم للدخول إلى الحصة الحالية.
+                </p>
+              </div>
+
+              {joinError && (
+                <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl text-xs font-bold flex items-center gap-2">
+                  <ShieldAlert className="w-4 h-4 shrink-0" />
+                  <span>{joinError}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isVerifyingRoster}
+                className="w-full bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black py-4 rounded-2xl shadow-lg shadow-amber-500/20 active:scale-98 transition-all flex items-center justify-center gap-2 text-sm cursor-pointer disabled:opacity-50"
+              >
+                {isVerifyingRoster ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>{t('verifying_student_badge', 'جاري التحقق والدخول للحصة...')}</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5" />
+                    <span>دخول الحصة 🚀</span>
+                  </>
+                )}
+              </button>
+            </form>
+          )}
 
           {/* Social media links from header sheet cells E2 to H2 */}
           {headerConfig?.socials && (
@@ -1166,6 +1356,51 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
             </motion.div>
           )}
         </AnimatePresence>
+        {/* Student Logout Confirmation Warning Modal */}
+        <AnimatePresence>
+          {showLogoutConfirm && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+              dir="rtl"
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.94 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.94 }}
+                className="w-full max-w-sm bg-slate-900 border border-amber-500/40 rounded-3xl p-6 shadow-2xl space-y-4 text-right"
+              >
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
+                  <ShieldAlert className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-black text-white text-center">
+                  تنبيه قبل خروج الطالب
+                </h3>
+                <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800">
+                  تسجيل الخروج سيمسح اسمك ورقمك من هذا الجهاز. إذا انتهت الحصة أو تغيّر رقم الحضور (<span className="font-mono text-amber-300" dir="ltr">Attendance PIN</span>) فقط، يُنصح بالبقاء مسجلاً لأنك تحتاج فقط لإدخال الـ PIN الجديد للحصة القادمة دون إعادة كتابة الاسم والرقم في كل مرة. هل تريد تسجيل الخروج حقاً؟
+                </p>
+                <div className="space-y-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowLogoutConfirm(false)}
+                    className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition cursor-pointer shadow-md shadow-emerald-600/20"
+                  >
+                    البقاء مسجلاً (موصى به)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmStudentLogout}
+                    className="w-full py-3 rounded-2xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 font-black text-xs transition cursor-pointer"
+                  >
+                    نعم، تسجيل الخروج وتبديل الحساب
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
@@ -1222,25 +1457,62 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
           <div className="flex items-center gap-2">
             <LanguageSelector iconOnly={true} align="left" />
             <button
-              onClick={async () => {
-                await leaveLiveSession(username, sheetNumber);
-                sessionStorage.removeItem('liveStudentUsername');
-                sessionStorage.removeItem('liveStudentSheet');
-                setIsJoined(false);
-                setIsPinVerified(false);
-                setSubmittedAnswer(null);
-                setScanSuccessMsg(null);
-                setScannerError(null);
-              }}
-              title={t('switch_student_btn', 'تبديل الطالب')}
+              onClick={() => setShowLogoutConfirm(true)}
+              title="خروج الطالب"
               className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold"
             >
               <LogOut className="w-4 h-4 text-rose-400" />
-              <span className="hidden sm:inline">{t('switch_student_btn', 'تبديل الطالب')}</span>
+              <span className="hidden sm:inline">خروج الطالب</span>
             </button>
           </div>
         </div>
       </header>
+
+      {/* Student Logout Confirmation Warning Modal (Inside Active Classroom) */}
+      <AnimatePresence>
+        {showLogoutConfirm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+            dir="rtl"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.94 }}
+              className="w-full max-w-sm bg-slate-900 border border-amber-500/40 rounded-3xl p-6 shadow-2xl space-y-4 text-right"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
+                <ShieldAlert className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-black text-white text-center">
+                تنبيه قبل خروج الطالب
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800">
+                تسجيل الخروج سيمسح اسمك ورقمك من هذا الجهاز. إذا انتهت الحصة أو تغيّر رقم الحضور (<span className="font-mono text-amber-300" dir="ltr">Attendance PIN</span>) فقط، يُنصح بالبقاء مسجلاً لأنك تحتاج فقط لإدخال الـ PIN الجديد للحصة القادمة دون إعادة كتابة الاسم والرقم في كل مرة. هل تريد تسجيل الخروج حقاً؟
+              </p>
+              <div className="space-y-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowLogoutConfirm(false)}
+                  className="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition cursor-pointer shadow-md shadow-emerald-600/20"
+                >
+                  البقاء مسجلاً (موصى به)
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmStudentLogout}
+                  className="w-full py-3 rounded-2xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 font-black text-xs transition cursor-pointer"
+                >
+                  نعم، تسجيل الخروج وتبديل الحساب
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Main Dynamic Interactive Body */}
       <main className={`flex-1 w-full mx-auto p-2 sm:p-4 flex flex-col justify-center relative transition-all duration-300 ${isShowingPdf ? 'max-w-6xl' : 'max-w-xl'}`}>

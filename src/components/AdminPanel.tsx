@@ -802,11 +802,11 @@ export default function AdminPanel({
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-bold text-amber-400 text-sm">صلاحيات الدخول والأدمن</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-mono">أدمن</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-mono">Admin</span>
                       </div>
                       <p className="text-xs text-slate-400 mb-3">
                         متصل بورقة: <br />
-                        • <b>أدمن</b>: الاسم والرقم وصلاحية الدخول للصفحة الرئيسية ولوحة التحكم المركزية
+                        • <b>Admin</b>: الاسم والرقم وصلاحية الدخول للتحكم السريع (<span className="font-mono text-amber-300" dir="ltr">?live=control</span>) ولوحة التحكم (<span className="font-mono text-amber-300" dir="ltr">?Admin=controlroom2026</span>)
                       </p>
                     </div>
                     <button
@@ -815,7 +815,7 @@ export default function AdminPanel({
                       className="w-full py-2 rounded-xl bg-rose-500/25 hover:bg-rose-500 text-rose-200 hover:text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
                     >
                       <Sparkles className={`w-3.5 h-3.5 ${settingUpAdminSheet ? 'animate-spin' : ''}`} />
-                      {settingUpAdminSheet ? 'جارٍ التهيئة...' : 'إنشاء وتهيئة ورقة «أدمن» بالشيت'}
+                      {settingUpAdminSheet ? 'جارٍ التهيئة...' : 'إنشاء وتهيئة ورقة Admin بالشيت'}
                     </button>
                   </div>
                 </div>

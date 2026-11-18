@@ -8,11 +8,13 @@ import {
   Radio, LayoutGrid, Film, Power, QrCode, Link as LinkIcon,
   X, Clock, CheckCircle2, Check,
   BookOpen, Video, Captions, MessageSquare, ExternalLink,
-  LogOut, KeyRound, Eye, EyeOff, Loader2, User, Hash, AlertCircle
+  LogOut, KeyRound, Eye, EyeOff, Loader2, User, Hash, AlertCircle,
+  Facebook, Instagram, Youtube
 } from 'lucide-react';
 import { HeaderConfig, LiveLessonRow, LiveSessionState, AdminSheetUser, AdminAccessConfig } from './types';
 import { 
   fetchHeaderConfig, 
+  formatDriveImageUrl,
   getWebAppUrl, 
   isApiConfigured,
   fetchLiveQuestionsT,
@@ -55,26 +57,38 @@ export default function App() {
   const [isConfigured, setIsConfigured] = useState(isApiConfigured());
   const [headerConfig, setHeaderConfig] = useState<HeaderConfig | null>(null);
 
-  // Page Routing Mode: 'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'chat' | 'script-prompter'
-  const [pageMode, setPageMode] = useState<'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'chat' | 'script-prompter'>(() => {
+  // Page Routing Mode:
+  // 'public-home' (/) | 'control' (?live=control) | 'admin' (?Admin=controlroom2026) | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'chat' | 'script-prompter'
+  type AppPageMode = 'public-home' | 'control' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'chat' | 'script-prompter';
+
+  const resolvePageModeFromSearch = (search: string): AppPageMode => {
+    const params = new URLSearchParams(search);
+    const p = (params.get('page') || '').trim();
+    const mode = (params.get('mode') || '').trim();
+    const live = (params.get('live') || '').trim().toLowerCase();
+    const adminParam = (params.get('Admin') || params.get('admin') || '').trim();
+
+    if (p === 'chat' || mode === 'chat') return 'chat';
+    if (p === 'script-prompter' || p === 'prompter') return 'script-prompter';
+    if (adminParam.toLowerCase() === 'controlroom2026' || p === 'admin') return 'admin';
+    if (live === 'control') return 'control';
+    if (p === 'display' || p === 'smart-display') return 'display';
+    if (p === 'live-teacher') return 'live-teacher';
+    if (p === 'live-student') return 'live-student';
+    if (p === 'live-direct-display' || p === 'live-direct' || p === 'live-display') return 'live-direct-display';
+    if (p === 'quiz-arena' || p === 'quiz-display') return 'quiz-arena';
+    if (p === 'student-quiz') return 'student-quiz';
+    return 'public-home';
+  };
+
+  const [pageMode, setPageMode] = useState<AppPageMode>(() => {
     if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const p = params.get('page');
-      const mode = params.get('mode');
-      if (p === 'chat' || mode === 'chat') return 'chat';
-      if (p === 'script-prompter' || p === 'prompter') return 'script-prompter';
-      if (p === 'admin') return 'admin';
-      if (p === 'display' || p === 'smart-display') return 'display';
-      if (p === 'live-teacher') return 'live-teacher';
-      if (p === 'live-student') return 'live-student';
-      if (p === 'live-direct-display' || p === 'live-direct' || p === 'live-display') return 'live-direct-display';
-      if (p === 'quiz-arena' || p === 'quiz-display') return 'quiz-arena';
-      if (p === 'student-quiz') return 'student-quiz';
+      return resolvePageModeFromSearch(window.location.search);
     }
-    return 'student';
+    return 'public-home';
   });
 
-  // Separate Authentication States: Home Page vs Central Admin Panel (backed by ورقة أدمن + Firestore)
+  // Separate Authentication States: Quick Control (?live=control) vs Central Admin (?Admin=controlroom2026) backed by Admin sheet + Firestore
   const [adminAccessConfig, setAdminAccessConfig] = useState<AdminAccessConfig>(defaultAdminAccessConfig);
 
   const [homeAuthUser, setHomeAuthUser] = useState<AdminSheetUser | null>(() => {
@@ -100,7 +114,7 @@ export default function App() {
     }
   });
   const isAdminUnlocked = Boolean(adminAuthUser) || adminAccessConfig.requireAdminLogin === false;
-  const [adminInputName, setAdminInputName] = useState(() => localStorage.getItem('adminName') || '');
+  const [adminInputName, setAdminInputName] = useState('');
   const [adminInputPassword, setAdminInputPassword] = useState('');
   const [adminShowNumber, setAdminShowNumber] = useState(false);
   const [isVerifyingAdmin, setIsVerifyingAdmin] = useState(false);
@@ -227,14 +241,11 @@ export default function App() {
     }
   }, [adminAccessConfig.users]);
 
-  // Open Admin gate automatically when routed via ?page=admin
+  // Sync Admin panel state when routed directly via ?Admin=controlroom2026
   useEffect(() => {
     if (pageMode === 'admin') {
-      if (isAdminUnlocked) {
-        setIsAdminPanelOpen(true);
-      } else {
-        setShowAdminPassModal(true);
-      }
+      setShowAdminPassModal(false);
+      setIsAdminPanelOpen(isAdminUnlocked);
     }
   }, [pageMode, isAdminUnlocked]);
 
@@ -321,28 +332,22 @@ export default function App() {
   };
 
   // URL sync & history navigation
-  const navigateToPage = (mode: 'student' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'script-prompter') => {
+  const navigateToPage = (mode: 'public-home' | 'control' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'script-prompter') => {
     setPageMode(mode);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
+      url.searchParams.delete('page');
+      url.searchParams.delete('mode');
+      url.searchParams.delete('live');
+      url.searchParams.delete('Admin');
+      url.searchParams.delete('admin');
+
       if (mode === 'admin') {
-        url.searchParams.set('page', 'admin');
-      } else if (mode === 'display') {
-        url.searchParams.set('page', 'display');
-      } else if (mode === 'live-teacher') {
-        url.searchParams.set('page', 'live-teacher');
-      } else if (mode === 'live-student') {
-        url.searchParams.set('page', 'live-student');
-      } else if (mode === 'live-direct-display') {
-        url.searchParams.set('page', 'live-direct-display');
-      } else if (mode === 'quiz-arena') {
-        url.searchParams.set('page', 'quiz-arena');
-      } else if (mode === 'student-quiz') {
-        url.searchParams.set('page', 'student-quiz');
-      } else if (mode === 'script-prompter') {
-        url.searchParams.set('page', 'script-prompter');
-      } else {
-        url.searchParams.delete('page');
+        url.searchParams.set('Admin', 'controlroom2026');
+      } else if (mode === 'control') {
+        url.searchParams.set('live', 'control');
+      } else if (mode !== 'public-home') {
+        url.searchParams.set('page', mode);
       }
       window.history.pushState({}, '', url.toString());
     }
@@ -350,17 +355,7 @@ export default function App() {
 
   useEffect(() => {
     const handlePopState = () => {
-      const params = new URLSearchParams(window.location.search);
-      const p = params.get('page');
-      if (p === 'admin') setPageMode('admin');
-      else if (p === 'script-prompter' || p === 'prompter') setPageMode('script-prompter');
-      else if (p === 'display' || p === 'smart-display') setPageMode('display');
-      else if (p === 'live-teacher') setPageMode('live-teacher');
-      else if (p === 'live-student') setPageMode('live-student');
-      else if (p === 'live-direct-display') setPageMode('live-direct-display');
-      else if (p === 'quiz-arena') setPageMode('quiz-arena');
-      else if (p === 'student-quiz') setPageMode('student-quiz');
-      else setPageMode('student');
+      setPageMode(resolvePageModeFromSearch(window.location.search));
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
@@ -379,6 +374,7 @@ export default function App() {
       if (res.success && res.user) {
         setHomeAuthUser(res.user);
         localStorage.setItem('homeAuthUser', JSON.stringify(res.user));
+        setHomeInputName('');
         setHomeInputNumber('');
       } else {
         setHomeAuthError(res.message || 'الاسم أو الرقم غير صحيح!');
@@ -393,6 +389,8 @@ export default function App() {
   const handleHomeLogout = () => {
     setHomeAuthUser(null);
     localStorage.removeItem('homeAuthUser');
+    setHomeInputName('');
+    setHomeInputNumber('');
     setHomeAuthError(null);
     setOpenPanels([]);
   };
@@ -410,7 +408,7 @@ export default function App() {
       if (res.success && res.user) {
         setAdminAuthUser(res.user);
         localStorage.setItem('adminAuthUser', JSON.stringify(res.user));
-        localStorage.setItem('adminName', res.user.name);
+        setAdminInputName('');
         setAdminInputPassword('');
         setShowAdminPassModal(false);
         setIsAdminPanelOpen(true);
@@ -427,6 +425,8 @@ export default function App() {
   const handleAdminLock = () => {
     setAdminAuthUser(null);
     localStorage.removeItem('adminAuthUser');
+    setAdminInputName('');
+    setAdminInputPassword('');
     setIsAdminPanelOpen(false);
   };
 
@@ -450,7 +450,7 @@ export default function App() {
   if (pageMode === 'chat') {
     return (
       <StandaloneChatRoom
-        onBack={() => navigateToPage('admin')}
+        onBack={() => navigateToPage('control')}
       />
     );
   }
@@ -460,7 +460,7 @@ export default function App() {
     return (
       <ScriptPrompterPanel
         isStandalone={true}
-        onBack={() => navigateToPage('admin')}
+        onBack={() => navigateToPage('control')}
       />
     );
   }
@@ -471,7 +471,7 @@ export default function App() {
       <LiveTeacherRoom
         initialLesson={activeLiveLesson || undefined}
         allLessons={allLiveLessons}
-        onBack={() => navigateToPage('student')}
+        onBack={() => navigateToPage('control')}
       />
     );
   }
@@ -480,7 +480,7 @@ export default function App() {
   if (pageMode === 'live-student') {
     return (
       <LiveStudentView
-        onBackToMain={() => navigateToPage('student')}
+        onBackToMain={() => navigateToPage('public-home')}
       />
     );
   }
@@ -490,11 +490,11 @@ export default function App() {
     return (
       <div className="relative min-h-screen bg-slate-950">
         <button
-          onClick={() => navigateToPage('student')}
+          onClick={() => navigateToPage('control')}
           className="fixed top-3 right-3 z-50 px-3 py-1.5 rounded-xl bg-slate-800/90 text-slate-300 hover:text-white border border-slate-700 text-xs flex items-center gap-1.5 backdrop-blur-md cursor-pointer transition shadow-lg"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
-          العودة للرئيسية
+          العودة للتحكم السريع
         </button>
         <LiveDirectDisplayRoom />
       </div>
@@ -506,7 +506,7 @@ export default function App() {
     return (
       <SmartHubDisplayRoom
         initialMode="auto"
-        onBackToMain={() => navigateToPage('student')}
+        onBackToMain={() => navigateToPage('control')}
       />
     );
   }
@@ -516,7 +516,7 @@ export default function App() {
     return (
       <SmartHubDisplayRoom
         initialMode="quiz"
-        onBackToMain={() => navigateToPage('student')}
+        onBackToMain={() => navigateToPage('control')}
       />
     );
   }
@@ -525,9 +525,246 @@ export default function App() {
   if (pageMode === 'student-quiz') {
     return (
       <LiveStudentView
-        onBackToMain={() => navigateToPage('student')}
+        onBackToMain={() => navigateToPage('public-home')}
         headerConfig={headerConfig}
       />
+    );
+  }
+
+  // Route: Dedicated Central Admin Panel (?Admin=controlroom2026)
+  if (pageMode === 'admin') {
+    if (!isAdminUnlocked) {
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-[#faf7f2] via-[#f5efe5] to-[#ebf3ed] dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 text-slate-800 dark:text-slate-100 flex flex-col justify-center items-center p-4 font-sans" dir="rtl">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="w-full max-w-md bg-white dark:bg-slate-900 border border-amber-200/70 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl text-right space-y-5"
+          >
+            <div className="text-center space-y-2">
+              <div className="w-14 h-14 rounded-2xl bg-amber-500/15 text-amber-500 flex items-center justify-center mx-auto">
+                <ShieldCheck className="w-7 h-7" />
+              </div>
+              <h2 className="text-xl font-black text-slate-900 dark:text-white">
+                تسجيل الدخول — لوحة التحكم المركزية
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                أدخل الاسم والرقم المصرح بهما لفتح لوحة التحكم المركزية والإعدادات.
+              </p>
+            </div>
+
+            <form onSubmit={handleAdminUnlock} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  الاسم:
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    autoComplete="off"
+                    value={adminInputName}
+                    onChange={(e) => setAdminInputName(e.target.value)}
+                    placeholder="أدخل الاسم"
+                    className="w-full pr-10 pl-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                  />
+                  <User className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  الرقم:
+                </label>
+                <div className="relative">
+                  <input
+                    type={adminShowNumber ? 'text' : 'password'}
+                    required
+                    autoComplete="off"
+                    value={adminInputPassword}
+                    onChange={(e) => setAdminInputPassword(e.target.value)}
+                    placeholder="أدخل الرقم"
+                    className="w-full pr-10 pl-10 py-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-center font-mono text-base font-bold tracking-widest text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
+                  />
+                  <Hash className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
+                  <button
+                    type="button"
+                    onClick={() => setAdminShowNumber((v) => !v)}
+                    className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                  >
+                    {adminShowNumber ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {adminPassError && (
+                <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-600 dark:text-rose-400 text-xs font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{adminPassError}</span>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isVerifyingAdmin}
+                className="w-full py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 transition cursor-pointer disabled:opacity-60"
+              >
+                {isVerifyingAdmin ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>جاري التحقق...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>دخول لوحة التحكم</span>
+                  </>
+                )}
+              </button>
+            </form>
+          </motion.div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-screen bg-slate-950" dir="rtl">
+        <AdminPanel
+          adminUserName={adminAuthUser?.name}
+          onLockAdmin={adminAuthUser ? handleAdminLock : undefined}
+          onClose={() => navigateToPage('control')}
+          onStartTeacherTheater={(lesson) => {
+            setActiveLiveLesson(lesson);
+            navigateToPage('live-teacher');
+          }}
+          onOpenLiveDirectDisplay={() => {
+            navigateToPage('live-direct-display');
+          }}
+          onOpenQuizArenaDisplay={() => {
+            navigateToPage('quiz-arena');
+          }}
+          onOpenSmartDisplay={() => {
+            navigateToPage('display');
+          }}
+        />
+      </div>
+    );
+  }
+
+  // Route: Clean Public Home Showcase (/) — Image Card + Text Card from `header` sheet + Social Channels Bar ONLY (zero action/nav buttons)
+  if (pageMode === 'public-home') {
+    const publicImageUrl = formatDriveImageUrl(headerConfig?.heroImageUrl || headerConfig?.logoUrl || '');
+    const publicTitle = headerConfig?.title || '';
+    const publicSubtitle = headerConfig?.subtitle || '';
+    const socials = headerConfig?.socials;
+    const hasSocials = Boolean(socials && (socials.facebook || socials.instagram || socials.youtube || socials.line));
+
+    return (
+      <div
+        className="min-h-screen bg-gradient-to-br from-[#faf7f2] via-[#f5efe5] to-[#ebf3ed] dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 text-slate-800 dark:text-slate-100 flex flex-col justify-between font-sans transition-colors duration-300 selection:bg-amber-500/20"
+        dir="rtl"
+      >
+        <main className="flex-1 flex items-center justify-center px-4 py-10 sm:py-16">
+          <div className="w-full max-w-4xl space-y-6">
+            <div className={`grid gap-6 items-stretch ${publicImageUrl && (publicTitle || publicSubtitle) ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 max-w-2xl mx-auto'}`}>
+              {/* Card 1: Image Card (Header Sheet Col C: C3 / C2, supports Google Drive links) */}
+              {publicImageUrl ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white/95 dark:bg-slate-900/95 border border-amber-200/70 dark:border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xl flex items-center justify-center overflow-hidden min-h-[260px] sm:min-h-[320px]"
+                >
+                  <img
+                    src={publicImageUrl}
+                    alt={publicTitle || 'الصورة الرئيسية'}
+                    className="w-full max-h-[380px] object-contain rounded-2xl"
+                    onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                  />
+                </motion.div>
+              ) : null}
+
+              {/* Card 2: Text Card (Header Sheet Col B: B2 & B3) */}
+              {(publicTitle || publicSubtitle) ? (
+                <motion.div
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.06 }}
+                  className="bg-white/95 dark:bg-slate-900/95 border border-amber-200/70 dark:border-slate-800 rounded-3xl p-7 sm:p-10 shadow-xl flex flex-col justify-center text-right space-y-4 relative overflow-hidden"
+                >
+                  <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-amber-500 via-emerald-500 to-amber-500 opacity-80" />
+                  {publicTitle && (
+                    <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white leading-snug tracking-tight">
+                      {publicTitle}
+                    </h1>
+                  )}
+                  {publicSubtitle && (
+                    <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-loose font-medium whitespace-pre-line">
+                      {publicSubtitle}
+                    </p>
+                  )}
+                </motion.div>
+              ) : null}
+            </div>
+          </div>
+        </main>
+
+        {/* Bottom Social Channels Bar ONLY (Header Sheet Cols E2:H2) */}
+        <footer className="py-5 px-4 border-t border-amber-200/50 dark:border-slate-800/80 bg-[#fefdfa]/80 dark:bg-slate-950/80 backdrop-blur-md">
+          {hasSocials && (
+            <div className="max-w-4xl mx-auto flex items-center justify-center gap-3.5 flex-wrap">
+              {socials?.facebook && (
+                <a
+                  href={socials.facebook}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Facebook"
+                  title="Facebook"
+                  className="w-11 h-11 rounded-2xl bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 border border-blue-500/25 flex items-center justify-center transition-all shadow-sm hover:-translate-y-0.5"
+                >
+                  <Facebook className="w-5 h-5" />
+                </a>
+              )}
+              {socials?.instagram && (
+                <a
+                  href={socials.instagram}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Instagram"
+                  title="Instagram"
+                  className="w-11 h-11 rounded-2xl bg-pink-600/10 hover:bg-pink-600/20 text-pink-600 dark:text-pink-400 border border-pink-500/25 flex items-center justify-center transition-all shadow-sm hover:-translate-y-0.5"
+                >
+                  <Instagram className="w-5 h-5" />
+                </a>
+              )}
+              {socials?.youtube && (
+                <a
+                  href={socials.youtube}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="YouTube"
+                  title="YouTube"
+                  className="w-11 h-11 rounded-2xl bg-red-600/10 hover:bg-red-600/20 text-red-600 dark:text-red-400 border border-red-500/25 flex items-center justify-center transition-all shadow-sm hover:-translate-y-0.5"
+                >
+                  <Youtube className="w-5 h-5" />
+                </a>
+              )}
+              {socials?.line && (
+                <a
+                  href={socials.line}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="LINE"
+                  title="LINE"
+                  className="h-11 px-4 rounded-2xl bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-700 dark:text-emerald-400 border border-emerald-500/25 flex items-center justify-center text-xs font-black font-mono transition-all shadow-sm hover:-translate-y-0.5"
+                >
+                  LINE
+                </a>
+              )}
+            </div>
+          )}
+        </footer>
+      </div>
     );
   }
 
@@ -628,7 +865,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* ----------------- HOME LOGIN GATE OR MAIN CONTENT ----------------- */}
+      {/* ----------------- QUICK CONTROL LOGIN GATE (?live=control) OR CONTENT ----------------- */}
       {adminAccessConfig.requireHomeLogin !== false && !homeAuthUser ? (
         <main className="flex-grow flex items-center justify-center px-4 py-10">
           <motion.div
@@ -649,10 +886,10 @@ export default function App() {
                 </div>
               )}
               <h2 className="text-xl font-black text-slate-900 dark:text-white">
-                تسجيل الدخول — الصفحة الرئيسية
+                تسجيل الدخول — التحكم السريع
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                أدخل الاسم والرقم الخاص بك المسجل في ورقة <span className="font-bold text-amber-600 dark:text-amber-400">«أدمن»</span> لفتح أدوات العرض والتحكم بالحصص.
+                أدخل الاسم والرقم المصرح بهما لفتح أدوات العرض والتحكم السريع بالحصص.
               </p>
             </div>
 
@@ -666,9 +903,10 @@ export default function App() {
                     type="text"
                     required
                     autoFocus
+                    autoComplete="off"
                     value={homeInputName}
                     onChange={(e) => setHomeInputName(e.target.value)}
-                    placeholder="أدخل الاسم المسجل..."
+                    placeholder="أدخل الاسم"
                     className="w-full pr-10 pl-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-sm font-bold text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                   />
                   <User className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
@@ -683,9 +921,10 @@ export default function App() {
                   <input
                     type={homeShowNumber ? 'text' : 'password'}
                     required
+                    autoComplete="off"
                     value={homeInputNumber}
                     onChange={(e) => setHomeInputNumber(e.target.value)}
-                    placeholder="أدخل الرقم السري..."
+                    placeholder="أدخل الرقم"
                     className="w-full pr-10 pl-10 py-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-center font-mono text-base font-bold tracking-widest text-slate-900 dark:text-white focus:outline-none focus:border-amber-500"
                   />
                   <Hash className="w-4 h-4 text-slate-400 absolute right-3.5 top-1/2 -translate-y-1/2" />
@@ -714,34 +953,16 @@ export default function App() {
                 {isVerifyingHome ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>جاري التحقق من ورقة «أدمن»...</span>
+                    <span>جاري التحقق...</span>
                   </>
                 ) : (
                   <>
                     <KeyRound className="w-4 h-4" />
-                    <span>دخول الصفحة الرئيسية</span>
+                    <span>دخول التحكم السريع</span>
                   </>
                 )}
               </button>
             </form>
-
-            {(!adminAccessConfig.users || adminAccessConfig.users.length === 0) && (
-              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                الدخول المبدئي قبل تهيئة ورقة <b className="text-amber-600 dark:text-amber-400">أدمن</b>:
-                الاسم <span className="font-mono font-bold text-slate-800 dark:text-slate-200">المعلم</span> والرقم <span className="font-mono font-bold text-slate-800 dark:text-slate-200">1122</span> (أو المدير / 3344).
-              </div>
-            )}
-
-            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 text-center">
-              <button
-                type="button"
-                onClick={() => setShowAdminPassModal(true)}
-                className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                <span>دخول لوحة التحكم المركزية مباشرة</span>
-              </button>
-            </div>
           </motion.div>
         </main>
       ) : (
@@ -1776,7 +1997,7 @@ export default function App() {
                 تسجيل الدخول — لوحة التحكم المركزية
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 leading-relaxed">
-                أدخل الاسم والرقم المصرح لهما بدخول لوحة التحكم من ورقة <span className="font-bold text-amber-500">«أدمن»</span>.
+                أدخل الاسم والرقم المصرح لهما بدخول لوحة التحكم المركزية.
               </p>
 
               <form onSubmit={handleAdminUnlock} className="space-y-4">
@@ -1788,9 +2009,10 @@ export default function App() {
                     type="text"
                     required
                     autoFocus
+                    autoComplete="off"
                     value={adminInputName}
                     onChange={(e) => setAdminInputName(e.target.value)}
-                    placeholder="مثال: المدير"
+                    placeholder="أدخل الاسم"
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-right text-sm font-bold focus:outline-none focus:border-amber-500"
                   />
                 </div>
@@ -1803,9 +2025,10 @@ export default function App() {
                     <input
                       type={adminShowNumber ? 'text' : 'password'}
                       required
+                      autoComplete="off"
                       value={adminInputPassword}
                       onChange={(e) => setAdminInputPassword(e.target.value)}
-                      placeholder="••••"
+                      placeholder="أدخل الرقم"
                       className="w-full px-10 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-center font-mono text-base font-bold tracking-widest focus:outline-none focus:border-amber-500"
                     />
                     <button
@@ -1823,12 +2046,6 @@ export default function App() {
                     </p>
                   )}
                 </div>
-
-                {(!adminAccessConfig.users || adminAccessConfig.users.length === 0) && (
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-950 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800">
-                    الدخول المبدئي قبل تهيئة ورقة أدمن: الاسم <span className="font-mono font-bold text-amber-500">المدير</span> والرقم <span className="font-mono font-bold text-amber-500">3344</span>
-                  </p>
-                )}
 
                 <div className="flex items-center gap-2">
                   <button

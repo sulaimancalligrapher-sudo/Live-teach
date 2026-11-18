@@ -113,8 +113,9 @@ export interface SocialLinks {
 export interface HeaderConfig {
   title?: string;
   subtitle?: string;
-  logoUrl?: string; // D2
-  loginLogoUrl?: string; // login card logo
+  logoUrl?: string; // C2
+  heroImageUrl?: string; // C3
+  loginLogoUrl?: string; // D2
   siteTitle?: string; // C2
   welcomeMessage?: string; // B2
   buttons?: HeaderNavButton[];

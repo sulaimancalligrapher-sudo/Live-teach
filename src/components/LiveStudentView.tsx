@@ -971,7 +971,9 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
             <p className="text-xs sm:text-sm text-slate-300 font-semibold">
               {t('gratitude_well_done', 'أحسنت يا')}{' '}
               <span className="text-amber-400 font-bold">{username || t('gratitude_hero_fallback', 'بطل')}</span>
-              {sheetNumber ? ` (${t('gratitude_sheet_badge', 'شيت #')}${sheetNumber})` : ''}
+            </p>
+            <p className="text-xs text-emerald-300/90 font-medium leading-relaxed">
+              اللهم ارزقه علماً نافعاً وعملاً صالحاً وبارك له في وقته وجهده 🤲
             </p>
           </div>
 
@@ -1084,19 +1086,17 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
                 </p>
               </>
             ) : (
-              <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/15 via-indigo-500/10 to-slate-950 border border-emerald-500/35 text-center space-y-1.5 shadow-inner">
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/15 via-indigo-500/10 to-slate-950 border border-emerald-500/35 text-center space-y-2 shadow-inner">
                 <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[11px] font-black border border-emerald-500/30">
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>بيانات الطالب محفوظة</span>
+                  <span>تم حفظ بياناتك بنجاح</span>
                 </div>
                 <h2 className="text-lg sm:text-xl font-black text-white">
                   أهلاً بك يا <span className="text-amber-300">{username}</span>
                 </h2>
-                {sheetNumber && (
-                  <p className="text-xs font-mono font-bold text-slate-300">
-                    رقم الشيت: #{sheetNumber}
-                  </p>
-                )}
+                <p className="text-xs text-emerald-200/90 leading-relaxed font-semibold">
+                  اللهم علمنا ما ينفعنا وانفعنا بما علمتنا وزدنا علماً نافعاً 🤲
+                </p>
               </div>
             )}
           </div>

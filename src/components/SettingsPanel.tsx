@@ -630,9 +630,9 @@ function getData() {
 function getHeaderConfig() {
   var ss = getSpreadsheet();
   var sheet = ss.getSheetByName('header') || ss.getSheetByName('Header');
-  if (!sheet) return { title: '', subtitle: '', logoUrl: '', loginLogoUrl: '', buttons: [], socials: {} };
+  if (!sheet) return { title: '', subtitle: '', logoUrl: '', loginLogoUrl: '', buttons: [], homeSections: [], socials: {} };
   var data = sheet.getDataRange().getValues();
-  if (!data || data.length === 0) return { title: '', subtitle: '', logoUrl: '', loginLogoUrl: '', buttons: [], socials: {} };
+  if (!data || data.length === 0) return { title: '', subtitle: '', logoUrl: '', loginLogoUrl: '', buttons: [], homeSections: [], socials: {} };
 
   var title = (data.length > 1 && data[1].length > 1 && data[1][1]) ? data[1][1].toString().trim() : '';
   var logoUrl = (data.length > 1 && data[1].length > 2 && data[1][2]) ? data[1][2].toString().trim() : '';
@@ -655,6 +655,22 @@ function getHeaderConfig() {
     }
   }
 
+  // محتوى الصفحة الرئيسية المرن: النصوص من B5:B12 والصور من C5:C12 (indices 4..11)
+  var homeSections = [];
+  for (var hr = 4; hr <= 11 && hr < data.length; hr++) {
+    var secText = (data[hr].length > 1 && data[hr][1] !== null && data[hr][1] !== undefined) ? data[hr][1].toString().trim() : '';
+    var secImg = (data[hr].length > 2 && data[hr][2] !== null && data[hr][2] !== undefined) ? data[hr][2].toString().trim() : '';
+    if (secText.toLowerCase() === 'undefined' || secText.toLowerCase() === 'null') secText = '';
+    if (secImg.toLowerCase() === 'undefined' || secImg.toLowerCase() === 'null') secImg = '';
+    if (secText || secImg) {
+      homeSections.push({
+        row: hr + 1,
+        text: secText,
+        imageUrl: secImg
+      });
+    }
+  }
+
   return {
     title: title,
     subtitle: subtitle,
@@ -662,6 +678,7 @@ function getHeaderConfig() {
     heroImageUrl: heroImageUrl,
     loginLogoUrl: loginLogoUrl,
     buttons: buttons,
+    homeSections: homeSections,
     socials: {
       facebook: facebook,
       instagram: instagram,

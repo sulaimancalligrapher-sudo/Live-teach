@@ -5,7 +5,7 @@ import {
   LiveQuestionItem, LiveLessonRow, LiveAnswerRecord, LiveSessionState, LiveStudentAnswerSubmission,
   LiveDirectQuestionItem, LiveDirectLessonRow, LiveDirectAnswerRecord, LivePdfItem,
   QuizQuestionItem, QuizLessonRow, QuizAnswerRecord, QuizActiveState, QuizStudentProgress,
-  ScriptSubtitleLine, LiveSubtitleState, AdminSheetUser, AdminAccessConfig, normalizeArabicText
+  ScriptSubtitleLine, LiveSubtitleState, AdminSheetUser, AdminAccessConfig, HeaderHomeSection, normalizeArabicText
 } from './types';
 import {
   getAdminAccessConfig,
@@ -14,17 +14,23 @@ import {
 
 // Helper to get Web App URL from localStorage or environment variables
 export function getWebAppUrl(): string {
-  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbxjUvAgzyEi2TGLxdDzXhJA0rWrTa8yQYh-b5CQukZvU8mjWPNStZQDk7IlIWXskf2ULg/exec';
-  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbxjUvAgzyEi2TGLxdDzXhJA0rWrTa8yQYh-b5CQukZvU8mjWPNStZQDk7IlIWXskf2ULg/exec';
+  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbyknTX-0c1ruEMyHwIgEz7Iyoe2Qlg63f2MM1zHf2TSAfC-r-Ch-K1imfNasgj944FAaQ/exec';
+  const PREVIOUS_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbyknTX-0c1ruEMyHwIgEz7Iyoe2Qlg63f2MM1zHf2TSAfC-r-Ch-K1imfNasgj944FAaQ/exec';
+  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbyknTX-0c1ruEMyHwIgEz7Iyoe2Qlg63f2MM1zHf2TSAfC-r-Ch-K1imfNasgj944FAaQ/exec';
 
   // 1. Check localStorage first (allows individual overrides / testing)
   const localUrl = localStorage.getItem('webAppUrl');
   if (localUrl && localUrl.trim().length > 0) {
-    if (localUrl.trim() === OLD_STALE_APP_URL || localUrl.includes('AKfycbyBL4Qjs9PgKVHuO9lLv-IriRtblaqw_Hrlie4-BProdWidMUyEdKu61GQalCsBfXYL')) {
+    const trimmedLocal = localUrl.trim();
+    if (
+      trimmedLocal === PREVIOUS_DEFAULT_URL ||
+      trimmedLocal === OLD_STALE_APP_URL ||
+      trimmedLocal.includes('AKfycbyBL4Qjs9PgKVHuO9lLv-IriRtblaqw_Hrlie4-BProdWidMUyEdKu61GQalCsBfXYL')
+    ) {
       localStorage.setItem('webAppUrl', NEW_DEFAULT_URL);
       return NEW_DEFAULT_URL;
     }
-    return localUrl.trim();
+    return trimmedLocal;
   }
 
   // 2. Check Vite Environment Variable (perfect for production deployment like Vercel)
@@ -896,11 +902,18 @@ export function formatDriveImageUrl(url?: string): string {
   return trimmed;
 }
 
+function sanitizeHeaderCellString(v: any): string {
+  if (v === null || v === undefined) return '';
+  const s = String(v).trim();
+  if (!s || s.toLowerCase() === 'undefined' || s.toLowerCase() === 'null') return '';
+  return s;
+}
+
 // 23. Fetch Dynamic Header Configuration from 'header' sheet tab
 export function parseHeaderResponse(res: any): HeaderConfig {
   if (!res) return {};
 
-  // Case A: Response is an Object (e.g. { title, subtitle, logoUrl, loginLogoUrl, buttons, socials })
+  // Case A: Response is an Object (e.g. { title, subtitle, logoUrl, loginLogoUrl, buttons, homeSections, socials })
   if (typeof res === 'object' && !Array.isArray(res)) {
     const title = res.title || res.B2 || res.b2 || res.subject || '';
     const subtitle = res.subtitle || res.B3 || res.b3 || res.description || '';
@@ -925,10 +938,57 @@ export function parseHeaderResponse(res: any): HeaderConfig {
         ['B8', 'C8'],
       ];
       for (const [bKey, cKey] of pairKeys) {
-        const url = String(res[cKey] || res[cKey.toLowerCase()] || '').trim();
-        if (url && url.length > 0 && url.toLowerCase() !== 'undefined' && url.toLowerCase() !== 'null') {
-          const label = String(res[bKey] || res[bKey.toLowerCase()] || '').trim() || 'رابط';
+        const url = sanitizeHeaderCellString(res[cKey] || res[cKey.toLowerCase()]);
+        if (url) {
+          const label = sanitizeHeaderCellString(res[bKey] || res[bKey.toLowerCase()]) || 'رابط';
           buttons.push({ label, url });
+        }
+      }
+    }
+
+    // Flexible Public Home Sections from B5:B12 (texts) & C5:C12 (images)
+    const homeSections: HeaderHomeSection[] = [];
+    if (Array.isArray(res.homeSections)) {
+      for (const item of res.homeSections) {
+        if (!item) continue;
+        const text = sanitizeHeaderCellString(item.text ?? item.label ?? item.title);
+        const imageUrl = formatDriveImageUrl(sanitizeHeaderCellString(item.imageUrl ?? item.image ?? item.url));
+        if (text || imageUrl) {
+          homeSections.push({
+            row: typeof item.row === 'number' ? item.row : undefined,
+            text: text || undefined,
+            imageUrl: imageUrl || undefined,
+          });
+        }
+      }
+    } else {
+      let foundExplicitKeys = false;
+      for (let rowNum = 5; rowNum <= 12; rowNum++) {
+        const bKey = `B${rowNum}`;
+        const cKey = `C${rowNum}`;
+        const text = sanitizeHeaderCellString(res[bKey] ?? res[bKey.toLowerCase()]);
+        const rawImg = sanitizeHeaderCellString(res[cKey] ?? res[cKey.toLowerCase()]);
+        if (text || rawImg) {
+          foundExplicitKeys = true;
+          homeSections.push({
+            row: rowNum,
+            text: text || undefined,
+            imageUrl: rawImg ? formatDriveImageUrl(rawImg) : undefined,
+          });
+        }
+      }
+      // Graceful fallback before GAS update: map any existing rows in `buttons` if explicit homeSections isn't returned yet
+      if (!foundExplicitKeys && buttons.length > 0) {
+        for (const b of buttons) {
+          const text = sanitizeHeaderCellString(b.label);
+          const cleanText = text === 'رابط' ? '' : text;
+          const imageUrl = formatDriveImageUrl(sanitizeHeaderCellString(b.url));
+          if (cleanText || imageUrl) {
+            homeSections.push({
+              text: cleanText || undefined,
+              imageUrl: imageUrl || undefined,
+            });
+          }
         }
       }
     }
@@ -947,6 +1007,7 @@ export function parseHeaderResponse(res: any): HeaderConfig {
       heroImageUrl: heroImageUrl ? String(heroImageUrl).trim() : undefined,
       loginLogoUrl: loginLogoUrl ? String(loginLogoUrl).trim() : undefined,
       buttons,
+      homeSections,
       socials
     };
   }
@@ -966,21 +1027,17 @@ export function parseHeaderResponse(res: any): HeaderConfig {
       return '';
     };
 
-    // Row 2 in Sheet is index 1 (0-indexed). Cell B2 = col 1, C2 = col 2, D2 = col 3.
-    // If array starts directly at Row 2, then index 0.
     let title = getCellValue(1, 1) || getCellValue(0, 1);
     let logoUrl = formatDriveImageUrl(getCellValue(1, 2) || getCellValue(0, 2));
     let loginLogoUrl = formatDriveImageUrl(getCellValue(1, 3) || getCellValue(0, 3));
     let subtitle = getCellValue(2, 1) || getCellValue(1, 1);
     let heroImageUrl = formatDriveImageUrl(getCellValue(2, 2));
 
-    // Socials row 2 (index 1): E2 (col 4), F2 (col 5), G2 (col 6), H2 (col 7)
     let facebook = getCellValue(1, 4) || getCellValue(0, 4);
     let instagram = getCellValue(1, 5) || getCellValue(0, 5);
     let youtube = getCellValue(1, 6) || getCellValue(0, 6);
     let line = getCellValue(1, 7) || getCellValue(0, 7);
 
-    // Header label check
     if (getCellValue(0, 1) === 'الموضوع' || title === 'الموضوع') {
       title = getCellValue(1, 1);
       logoUrl = formatDriveImageUrl(getCellValue(1, 2));
@@ -994,14 +1051,11 @@ export function parseHeaderResponse(res: any): HeaderConfig {
     }
 
     const buttons: HeaderNavButton[] = [];
-    // Buttons B4..B8 (col 1) and C4..C8 (col 2)
-    // Sheet Rows 4, 5, 6, 7, 8 -> 0-based indices 3, 4, 5, 6, 7
     for (let sheetRow = 4; sheetRow <= 8; sheetRow++) {
       let rIdx = sheetRow - 1;
       let btnLabel = getCellValue(rIdx, 1);
       let btnUrl = getCellValue(rIdx, 2);
 
-      // If array offset shift
       if (!btnUrl && res.length > sheetRow) {
         btnLabel = getCellValue(sheetRow, 1);
         btnUrl = getCellValue(sheetRow, 2);
@@ -1015,6 +1069,20 @@ export function parseHeaderResponse(res: any): HeaderConfig {
       }
     }
 
+    const homeSections: HeaderHomeSection[] = [];
+    for (let sheetRow = 5; sheetRow <= 12; sheetRow++) {
+      const rIdx = sheetRow - 1;
+      const text = getCellValue(rIdx, 1);
+      const imgUrl = formatDriveImageUrl(getCellValue(rIdx, 2));
+      if (text || imgUrl) {
+        homeSections.push({
+          row: sheetRow,
+          text: text || undefined,
+          imageUrl: imgUrl || undefined,
+        });
+      }
+    }
+
     return {
       title: title || undefined,
       subtitle: subtitle || undefined,
@@ -1022,6 +1090,7 @@ export function parseHeaderResponse(res: any): HeaderConfig {
       heroImageUrl: heroImageUrl || undefined,
       loginLogoUrl: loginLogoUrl || undefined,
       buttons,
+      homeSections,
       socials: {
         facebook: facebook || undefined,
         instagram: instagram || undefined,
@@ -1051,7 +1120,7 @@ export async function fetchHeaderConfig(): Promise<HeaderConfig> {
     let res = await fetchGas({ action: 'getHeaderConfig' });
     let parsed = parseHeaderResponse(res);
 
-    if (!parsed.title && !parsed.logoUrl && !parsed.heroImageUrl && (!parsed.buttons || parsed.buttons.length === 0)) {
+    if (!parsed.title && !parsed.logoUrl && !parsed.heroImageUrl && (!parsed.homeSections || parsed.homeSections.length === 0) && (!parsed.buttons || parsed.buttons.length === 0)) {
       // Retry with action 'getHeader'
       res = await fetchGas({ action: 'getHeader' });
       parsed = parseHeaderResponse(res);
@@ -1061,8 +1130,9 @@ export async function fetchHeaderConfig(): Promise<HeaderConfig> {
       parsed.title || 
       parsed.subtitle || 
       parsed.logoUrl || 
-      parsed.heroImageUrl ||
+      parsed.heroImageUrl || 
       parsed.loginLogoUrl || 
+      (parsed.homeSections && parsed.homeSections.length > 0) ||
       (parsed.buttons && parsed.buttons.length > 0) || 
       (parsed.socials && Object.values(parsed.socials).some(Boolean))
     ) {

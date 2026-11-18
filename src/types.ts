@@ -110,6 +110,12 @@ export interface SocialLinks {
   line?: string; // H2
 }
 
+export interface HeaderHomeSection {
+  row?: number;
+  text?: string;
+  imageUrl?: string;
+}
+
 export interface HeaderConfig {
   title?: string;
   subtitle?: string;
@@ -120,6 +126,7 @@ export interface HeaderConfig {
   welcomeMessage?: string; // B2
   buttons?: HeaderNavButton[];
   navButtons?: HeaderNavButton[];
+  homeSections?: HeaderHomeSection[]; // B5:B12 (texts) & C5:C12 (images)
   socials?: SocialLinks;
   socialLinks?: SocialLinks;
 }

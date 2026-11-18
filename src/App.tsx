@@ -113,7 +113,14 @@ export default function App() {
       return null;
     }
   });
-  const isAdminUnlocked = Boolean(adminAuthUser) || adminAccessConfig.requireAdminLogin === false;
+  const hasAdminRoleFromHome = Boolean(
+    homeAuthUser && homeAuthUser.status !== 'لا' && homeAuthUser.allowAdmin === 'نعم'
+  );
+  const effectiveAdminUser = adminAuthUser || (hasAdminRoleFromHome ? homeAuthUser : null);
+  const isAdminUnlocked = Boolean(effectiveAdminUser) || adminAccessConfig.requireAdminLogin === false;
+  const canShowControlAdminButton = homeAuthUser
+    ? hasAdminRoleFromHome
+    : adminAccessConfig.requireHomeLogin === false || Boolean(adminAuthUser);
   const [adminInputName, setAdminInputName] = useState('');
   const [adminInputPassword, setAdminInputPassword] = useState('');
   const [adminShowNumber, setAdminShowNumber] = useState(false);
@@ -223,6 +230,18 @@ export default function App() {
       if (!checkHome.success) {
         setHomeAuthUser(null);
         localStorage.removeItem('homeAuthUser');
+        if (!adminAuthUser) setIsAdminPanelOpen(false);
+      } else if (
+        checkHome.user &&
+        (checkHome.user.allowAdmin !== homeAuthUser.allowAdmin ||
+          checkHome.user.status !== homeAuthUser.status ||
+          checkHome.user.allowHome !== homeAuthUser.allowHome)
+      ) {
+        setHomeAuthUser(checkHome.user);
+        localStorage.setItem('homeAuthUser', JSON.stringify(checkHome.user));
+        if (checkHome.user.allowAdmin !== 'نعم' && !adminAuthUser) {
+          setIsAdminPanelOpen(false);
+        }
       }
     }
 
@@ -374,6 +393,11 @@ export default function App() {
       if (res.success && res.user) {
         setHomeAuthUser(res.user);
         localStorage.setItem('homeAuthUser', JSON.stringify(res.user));
+        if (res.user.allowAdmin !== 'نعم') {
+          setAdminAuthUser(null);
+          localStorage.removeItem('adminAuthUser');
+          setIsAdminPanelOpen(false);
+        }
         setHomeInputName('');
         setHomeInputNumber('');
       } else {
@@ -393,6 +417,7 @@ export default function App() {
     setHomeInputNumber('');
     setHomeAuthError(null);
     setOpenPanels([]);
+    setIsAdminPanelOpen(false);
   };
 
   const handleAdminUnlock = async (e: React.FormEvent) => {
@@ -652,11 +677,17 @@ export default function App() {
     );
   }
 
-  // Route: Clean Public Home Showcase (/) — Image Card + Text Card from `header` sheet + Social Channels Bar ONLY (zero action/nav buttons)
+  // Route: Clean Public Home Showcase (/)
+  // - Classic Top Bar from `header` sheet: Logo (C2) + Title (B2) + Subtitle (B3) — NO connected action/nav buttons
+  // - Flexible Main Content from `header` sheet rows B5:B12 (Text) & C5:C12 (Image, Google Drive supported) — Image ABOVE text without border/shadow
+  // - Bottom Social Channels Bar from E2:H2 (Facebook, Instagram, YouTube, LINE)
   if (pageMode === 'public-home') {
-    const publicImageUrl = formatDriveImageUrl(headerConfig?.heroImageUrl || headerConfig?.logoUrl || '');
-    const publicTitle = headerConfig?.title || '';
-    const publicSubtitle = headerConfig?.subtitle || '';
+    const topLogoUrl = formatDriveImageUrl(headerConfig?.logoUrl || '');
+    const topTitle = headerConfig?.title || '';
+    const topSubtitle = headerConfig?.subtitle || '';
+    const homeSections = (headerConfig?.homeSections || []).filter(
+      (sec) => Boolean((sec.text && sec.text.trim()) || (sec.imageUrl && sec.imageUrl.trim()))
+    );
     const socials = headerConfig?.socials;
     const hasSocials = Boolean(socials && (socials.facebook || socials.instagram || socials.youtube || socials.line));
 
@@ -665,48 +696,71 @@ export default function App() {
         className="min-h-screen bg-gradient-to-br from-[#faf7f2] via-[#f5efe5] to-[#ebf3ed] dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 text-slate-800 dark:text-slate-100 flex flex-col justify-between font-sans transition-colors duration-300 selection:bg-amber-500/20"
         dir="rtl"
       >
-        <main className="flex-1 flex items-center justify-center px-4 py-10 sm:py-16">
-          <div className="w-full max-w-4xl space-y-6">
-            <div className={`grid gap-6 items-stretch ${publicImageUrl && (publicTitle || publicSubtitle) ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1 max-w-2xl mx-auto'}`}>
-              {/* Card 1: Image Card (Header Sheet Col C: C3 / C2, supports Google Drive links) */}
-              {publicImageUrl ? (
-                <motion.div
-                  initial={{ opacity: 0, y: 14 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-white/95 dark:bg-slate-900/95 border border-amber-200/70 dark:border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xl flex items-center justify-center overflow-hidden min-h-[260px] sm:min-h-[320px]"
-                >
-                  <img
-                    src={publicImageUrl}
-                    alt={publicTitle || 'الصورة الرئيسية'}
-                    className="w-full max-h-[380px] object-contain rounded-2xl"
-                    onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
-                  />
-                </motion.div>
+        {/* Classic Top Header Bar (Header Sheet: C2 logo, B2 title, B3 subtitle) — No Action/Nav Buttons */}
+        {(topLogoUrl || topTitle || topSubtitle) && (
+          <header className="bg-[#fefdfa]/90 dark:bg-slate-900/90 border-b border-amber-100/60 dark:border-slate-800 sticky top-0 z-30 backdrop-blur-md px-4 py-3.5 shadow-sm">
+            <div className="max-w-5xl mx-auto flex items-center gap-3.5">
+              {topLogoUrl ? (
+                <img
+                  src={topLogoUrl}
+                  alt={topTitle || 'الشعار'}
+                  className="w-11 h-11 rounded-2xl object-cover shadow-md border border-amber-200/60 dark:border-slate-700 bg-white dark:bg-slate-800 shrink-0"
+                  onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                />
               ) : null}
-
-              {/* Card 2: Text Card (Header Sheet Col B: B2 & B3) */}
-              {(publicTitle || publicSubtitle) ? (
-                <motion.div
-                  initial={{ opacity: 0, y: 14 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.06 }}
-                  className="bg-white/95 dark:bg-slate-900/95 border border-amber-200/70 dark:border-slate-800 rounded-3xl p-7 sm:p-10 shadow-xl flex flex-col justify-center text-right space-y-4 relative overflow-hidden"
-                >
-                  <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-amber-500 via-emerald-500 to-amber-500 opacity-80" />
-                  {publicTitle && (
-                    <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white leading-snug tracking-tight">
-                      {publicTitle}
+              {(topTitle || topSubtitle) ? (
+                <div className="min-w-0">
+                  {topTitle && (
+                    <h1 className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-50 tracking-tight truncate">
+                      {topTitle}
                     </h1>
                   )}
-                  {publicSubtitle && (
-                    <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-loose font-medium whitespace-pre-line">
-                      {publicSubtitle}
+                  {topSubtitle && (
+                    <p className="text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed">
+                      {topSubtitle}
                     </p>
                   )}
-                </motion.div>
+                </div>
               ) : null}
             </div>
-          </div>
+          </header>
+        )}
+
+        {/* Flexible Main Content (Header Sheet Rows B5:B12 Text & C5:C12 Image — Image Above Text, No Border, No Shadow) */}
+        <main className="flex-1 flex flex-col items-center justify-center px-4 py-10 sm:py-14">
+          {homeSections.length > 0 && (
+            <div className="w-full max-w-3xl mx-auto space-y-10">
+              {homeSections.map((sec, idx) => {
+                const sectionImgUrl = formatDriveImageUrl(sec.imageUrl || '');
+                const sectionText = sec.text?.trim() || '';
+                if (!sectionImgUrl && !sectionText) return null;
+
+                return (
+                  <motion.section
+                    key={sec.row ?? idx}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: idx * 0.05 }}
+                    className="flex flex-col items-center text-center gap-4"
+                  >
+                    {sectionImgUrl && (
+                      <img
+                        src={sectionImgUrl}
+                        alt={sectionText || `عرض ${idx + 1}`}
+                        className="max-w-full max-h-[460px] object-contain border-0 shadow-none"
+                        onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                      />
+                    )}
+                    {sectionText && (
+                      <p className="text-base sm:text-lg text-slate-800 dark:text-slate-100 leading-loose font-bold whitespace-pre-line max-w-2xl">
+                        {sectionText}
+                      </p>
+                    )}
+                  </motion.section>
+                );
+              })}
+            </div>
+          )}
         </main>
 
         {/* Bottom Social Channels Bar ONLY (Header Sheet Cols E2:H2) */}
@@ -821,35 +875,37 @@ export default function App() {
               </div>
             )}
 
-            {/* Admin Access Button */}
-            {isAdminUnlocked ? (
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setIsAdminPanelOpen(true)}
-                  className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/10 transition cursor-pointer"
-                >
-                  <ShieldCheck className="w-4 h-4 text-slate-950" />
-                  <span>لوحة التحكم المركزية</span>
-                </button>
-                {adminAuthUser && adminAccessConfig.requireAdminLogin !== false && (
+            {/* Admin Access Button — shown ONLY when signed-in user has allowAdmin='نعم' */}
+            {canShowControlAdminButton && (
+              isAdminUnlocked ? (
+                <div className="flex items-center gap-1">
                   <button
-                    type="button"
-                    onClick={handleAdminLock}
-                    title="قفل لوحة التحكم المركزية"
-                    className="p-1.5 rounded-xl bg-slate-200/80 hover:bg-rose-500/20 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-rose-500 transition cursor-pointer"
+                    onClick={() => setIsAdminPanelOpen(true)}
+                    className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 shadow-md shadow-amber-500/10 transition cursor-pointer"
                   >
-                    <Lock className="w-3.5 h-3.5" />
+                    <ShieldCheck className="w-4 h-4 text-slate-950" />
+                    <span>لوحة التحكم المركزية والإعدادات</span>
                   </button>
-                )}
-              </div>
-            ) : (
-              <button
-                onClick={() => setShowAdminPassModal(true)}
-                className="px-3 py-1.5 rounded-xl bg-slate-200/80 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
-              >
-                <Lock className="w-3.5 h-3.5 text-amber-500" />
-                <span>دخول لوحة التحكم</span>
-              </button>
+                  {adminAuthUser && adminAccessConfig.requireAdminLogin !== false && (
+                    <button
+                      type="button"
+                      onClick={handleAdminLock}
+                      title="قفل لوحة التحكم المركزية"
+                      className="p-1.5 rounded-xl bg-slate-200/80 hover:bg-rose-500/20 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-rose-500 transition cursor-pointer"
+                    >
+                      <Lock className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowAdminPassModal(true)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-200/80 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <Lock className="w-3.5 h-3.5 text-amber-500" />
+                  <span>دخول لوحة التحكم</span>
+                </button>
+              )
             )}
 
             {/* Dark Mode Toggle */}
@@ -2084,7 +2140,7 @@ export default function App() {
       <AnimatePresence>
         {isAdminPanelOpen && (
           <AdminPanel
-            adminUserName={adminAuthUser?.name}
+            adminUserName={effectiveAdminUser?.name}
             onLockAdmin={adminAuthUser ? handleAdminLock : undefined}
             onClose={() => setIsAdminPanelOpen(false)}
             onStartTeacherTheater={(lesson) => {

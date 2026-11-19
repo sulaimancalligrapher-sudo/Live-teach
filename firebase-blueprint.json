@@ -36,6 +36,40 @@
         "users": { "type": "array" },
         "updatedAt": { "type": "number" }
       }
+    },
+    "LiveVotingConfig": {
+      "collection": "live_sessions",
+      "fields": {
+        "activePoll": { "type": "object" },
+        "presetQuestions": { "type": "array" },
+        "presetOptionSets": { "type": "array" },
+        "updatedAt": { "type": "number" }
+      }
+    },
+    "VoteParticipant": {
+      "collection": "live_sessions/voting/participants",
+      "fields": {
+        "roundId": { "type": "string" },
+        "voterId": { "type": "string" },
+        "voterType": { "type": "string" },
+        "name": { "type": "string", "nullable": true },
+        "sheetNumber": { "type": "string", "nullable": true },
+        "joinedAt": { "type": "number" },
+        "lastSeen": { "type": "number" }
+      }
+    },
+    "VoteSubmission": {
+      "collection": "live_sessions/voting/votes",
+      "fields": {
+        "roundId": { "type": "string" },
+        "voterId": { "type": "string" },
+        "voterType": { "type": "string" },
+        "name": { "type": "string", "nullable": true },
+        "sheetNumber": { "type": "string", "nullable": true },
+        "optionId": { "type": "string" },
+        "optionLabel": { "type": "string" },
+        "votedAt": { "type": "number" }
+      }
     }
   }
 }

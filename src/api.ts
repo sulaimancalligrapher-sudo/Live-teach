@@ -5,30 +5,34 @@ import {
   LiveQuestionItem, LiveLessonRow, LiveAnswerRecord, LiveSessionState, LiveStudentAnswerSubmission,
   LiveDirectQuestionItem, LiveDirectLessonRow, LiveDirectAnswerRecord, LivePdfItem,
   QuizQuestionItem, QuizLessonRow, QuizAnswerRecord, QuizActiveState, QuizStudentProgress,
-  ScriptSubtitleLine, LiveSubtitleState, AdminSheetUser, AdminAccessConfig, HeaderHomeSection, normalizeArabicText
+  ScriptSubtitleLine, LiveSubtitleState, AdminSheetUser, AdminAccessConfig, HeaderHomeSection, VoteSheetRecord, normalizeArabicText
 } from './types';
 import {
   getAdminAccessConfig,
   saveAdminAccessConfig,
 } from './lib/firebaseLiveService';
 
+// الرابط الافتراضي المعتمد حالياً — عند استخراج رابط جديد، غيّر هذا السطر فقط
+export const DEFAULT_WEB_APP_URL =
+  'https://script.google.com/macros/s/AKfycbwy4haxaRGtV07NbmjOKSH80E9V_WT59-ybjCl4Wbz6D_Ahs0aqJU0lMpvoCM6RJV7IVQ/exec';
+
+// قائمة الروابط القديمة لاستبدالها تلقائياً إذا كانت مخزنة مسبقاً في ذاكرة متصفح المستخدم
+const LEGACY_WEB_APP_URL_IDS = [
+  'AKfycbxjUvAgzyEi2TGLxdDzXhJA0rWrTa8yQYh-b5CQukZvU8mjWPNStZQDk7IlIWXskf2ULg',
+  'AKfycbwNv7aLBgsQ72d9SCVA1tfW-kdglU_e8D_Dicfgii1wEaXQquA0zkq2y01JsuYvxr1arQ',
+  'AKfycbwakS_2H_RJGQSy6tUhWQ17S8gpoidY1fFc_Id234ubTFKuzA0k6_qa-DaeCGdbvYpwWg',
+  'AKfycbyBL4Qjs9PgKVHuO9lLv-IriRtblaqw_Hrlie4-BProdWidMUyEdKu61GQalCsBfXYL',
+];
+
 // Helper to get Web App URL from localStorage or environment variables
 export function getWebAppUrl(): string {
-  const NEW_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbyknTX-0c1ruEMyHwIgEz7Iyoe2Qlg63f2MM1zHf2TSAfC-r-Ch-K1imfNasgj944FAaQ/exec';
-  const PREVIOUS_DEFAULT_URL = 'https://script.google.com/macros/s/AKfycbyknTX-0c1ruEMyHwIgEz7Iyoe2Qlg63f2MM1zHf2TSAfC-r-Ch-K1imfNasgj944FAaQ/exec';
-  const OLD_STALE_APP_URL = 'https://script.google.com/macros/s/AKfycbyknTX-0c1ruEMyHwIgEz7Iyoe2Qlg63f2MM1zHf2TSAfC-r-Ch-K1imfNasgj944FAaQ/exec';
-
   // 1. Check localStorage first (allows individual overrides / testing)
   const localUrl = localStorage.getItem('webAppUrl');
   if (localUrl && localUrl.trim().length > 0) {
     const trimmedLocal = localUrl.trim();
-    if (
-      trimmedLocal === PREVIOUS_DEFAULT_URL ||
-      trimmedLocal === OLD_STALE_APP_URL ||
-      trimmedLocal.includes('AKfycbyBL4Qjs9PgKVHuO9lLv-IriRtblaqw_Hrlie4-BProdWidMUyEdKu61GQalCsBfXYL')
-    ) {
-      localStorage.setItem('webAppUrl', NEW_DEFAULT_URL);
-      return NEW_DEFAULT_URL;
+    if (LEGACY_WEB_APP_URL_IDS.some((legacyId) => trimmedLocal.includes(legacyId))) {
+      localStorage.setItem('webAppUrl', DEFAULT_WEB_APP_URL);
+      return DEFAULT_WEB_APP_URL;
     }
     return trimmedLocal;
   }
@@ -40,7 +44,7 @@ export function getWebAppUrl(): string {
   }
 
   // 3. Default fallback hardcoded URL
-  return NEW_DEFAULT_URL;
+  return DEFAULT_WEB_APP_URL;
 }
 
 // Check if the API URL is configured
@@ -3409,4 +3413,99 @@ export async function verifyAdminCredentials(
     source: 'bootstrap',
   };
 }
+
+// ==========================================
+// LIVE VOTING & POLLS (Firestore + Votes-Results Sheet)
+// ==========================================
+export {
+  DEFAULT_VOTE_PRESET_OPTION_SETS,
+  DEFAULT_VOTE_PRESET_QUESTIONS,
+  defaultVotingConfigState,
+  getGuestVoterId,
+  getStudentVoterId,
+  subscribeToVotingConfig,
+  getVotingConfig,
+  subscribeToVotingRoundActivity,
+  startOrUpdatePoll,
+  closeActivePoll,
+  resetPollRound,
+  updateVotingSettings,
+  saveVotingPresets,
+  registerVoteParticipant,
+  submitVoteChoice,
+} from './lib/firebaseLiveService';
+
+export async function setupVotesSheetApi(): Promise<{
+  success: boolean;
+  message?: string;
+}> {
+  if (!isApiConfigured()) {
+    return { success: false, message: 'لم يتم تكوين رابط Google Sheets في الإعدادات بعد' };
+  }
+  try {
+    let res = await fetchGas({ action: 'setupVotesSheet' }, 'GET');
+    if (!res || res.success !== true) {
+      res = await fetchGas({ action: 'setupVotesSheet' }, 'POST', { action: 'setupVotesSheet' });
+    }
+    if (res && res.success === true) {
+      return res;
+    }
+    return {
+      success: false,
+      message:
+        res?.message && res.message !== 'الإجراء المطلوب غير معروف'
+          ? res.message
+          : 'كود Apps Script المنشور حالياً على الشيت لا يحتوي دالة ورقة التصويت! افتح الإعدادات ⚙️ ← انسخ الكود المحدث ← الصقه في Apps Script ← انشر إصداراً جديداً.',
+    };
+  } catch (err: any) {
+    return { success: false, message: err?.message || 'تعذر الاتصال بخادم Google Apps Script' };
+  }
+}
+
+export async function saveVoteResultToSheetApi(record: VoteSheetRecord): Promise<{
+  success: boolean;
+  message?: string;
+}> {
+  if (!isApiConfigured()) {
+    return { success: false, message: 'لم يتم تكوين رابط Google Sheets في الإعدادات بعد' };
+  }
+  try {
+    const res = await fetchGas({ action: 'saveVoteResult' }, 'POST', {
+      action: 'saveVoteResult',
+      record,
+    });
+    if (res && res.success === true) {
+      return res;
+    }
+    return {
+      success: false,
+      message:
+        res?.message && res.message !== 'الإجراء المطلوب غير معروف'
+          ? res.message
+          : 'كود Apps Script المنشور حالياً يحتاج للتحديث لتسجيل نتائج التصويت في ورقة Votes-Results.',
+    };
+  } catch (err: any) {
+    return { success: false, message: err?.message || 'تعذر حفظ نتيجة التصويت في الشيت' };
+  }
+}
+
+export async function fetchVoteResultsFromSheet(): Promise<{
+  success: boolean;
+  data: VoteSheetRecord[];
+  message?: string;
+}> {
+  if (!isApiConfigured()) {
+    return { success: false, data: [], message: 'لم يتم تكوين رابط Google Sheets' };
+  }
+  try {
+    const res = await fetchGas({ action: 'getVoteResults' }, 'GET');
+    if (res && res.success && Array.isArray(res.data)) {
+      return { success: true, data: res.data };
+    }
+    return { success: false, data: [], message: res?.message };
+  } catch (err: any) {
+    return { success: false, data: [], message: err?.message };
+  }
+}
+
 

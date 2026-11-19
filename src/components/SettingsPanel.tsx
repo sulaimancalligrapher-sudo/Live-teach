@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Settings, Check, AlertCircle, Copy, CheckCircle2, HelpCircle, ExternalLink, Globe } from 'lucide-react';
+import { Settings, Check, AlertCircle, Copy, CheckCircle2, HelpCircle, ExternalLink, Globe, ShieldCheck } from 'lucide-react';
 import { getWebAppUrl } from '../api';
 
 interface SettingsPanelProps {
@@ -167,6 +167,20 @@ export default function SettingsPanel({ onClose, onSave }: SettingsPanelProps) {
           )}
         </div>
 
+        {/* Admin Auth Verification Rule Note (Masked - No Real Names/Numbers) */}
+        <div className="mb-6 p-4 rounded-2xl bg-amber-500/5 border border-amber-500/25 text-right space-y-2" dir="rtl">
+          <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+            <ShieldCheck className="w-4 h-4 shrink-0" />
+            <span>تنبيه هام حول بيانات دخول الإدارة والرقم الافتراضي (ورقة Admin)</span>
+          </div>
+          <p className="text-[11px] text-slate-300 leading-relaxed">
+            يعمل النظام بحماية أمنية مشددة مرتبطة مباشرة بجدول البيانات: عند وجود أي صفوف مسجلة داخل ورقة <code className="bg-slate-950 text-amber-300 px-1.5 py-0.5 rounded border border-slate-800 font-mono">Admin</code>، يعتمد النظام عليها <span className="text-white font-bold">حصرياً</span> للتحقق من الاسم والرقم والصلاحيات، ويرفض أي بيانات أخرى غير مطابقة لها — حتى الرقم الافتراضي المبرمج (<span className="font-mono text-amber-300">••••••••••</span>).
+          </p>
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+            لا يتم قبول البيانات الافتراضية (<span className="text-slate-300">[اسم المشرف الافتراضي] / ••••••</span>) إلا في حالة كانت ورقة <code className="bg-slate-950 text-slate-300 px-1 rounded font-mono">Admin</code> فارغة تماماً. فإذا تغيّر الرقم في الشيت مثلاً إلى <span className="font-mono text-emerald-400">•••</span>، لن يُقبل الرقم القديم نهائياً، ويجب الدخول بالبيانات المعتمدة داخل الشيت.
+          </p>
+        </div>
+
         {/* Detailed Guide */}
         <div className="border-t border-slate-800/80 pt-6 text-right" dir="rtl">
           <h3 className="text-sm font-bold text-slate-200 flex items-center gap-2 mb-3">
@@ -308,6 +322,13 @@ function RUN_SETUP_ADMIN_SHEET() {
   return res;
 }
 
+// 8. إنشاء وتهيئة ورقة نتائج التصويت (Votes-Results) بنقرة واحدة
+function RUN_SETUP_VOTES_SHEET() {
+  var res = setupVotesSheet();
+  Logger.log('نتيجة تهيئة ورقة Votes-Results: ' + JSON.stringify(res));
+  return res;
+}
+
 function doGet(e) {
   var action = (e && e.parameter) ? e.parameter.action : '';
   var response;
@@ -371,6 +392,10 @@ function doGet(e) {
       response = getAdminUsers();
     } else if (action === 'verifyAdminUser') {
       response = verifyAdminUser(e.parameter.name, e.parameter.number, e.parameter.target);
+    } else if (action === 'setupVotesSheet') {
+      response = setupVotesSheet();
+    } else if (action === 'getVoteResults') {
+      response = getVoteResults();
     } else if (action === 'getAdminQuestions') {
       response = getAdminQuestions();
     } else if (action === 'getAdminAnswers') {
@@ -553,6 +578,12 @@ function doPost(e) {
       response = saveAdminUsers(payload.users || []);
     } else if (action === 'verifyAdminUser') {
       response = verifyAdminUser(payload.name, payload.number, payload.target);
+    } else if (action === 'setupVotesSheet') {
+      response = setupVotesSheet();
+    } else if (action === 'getVoteResults') {
+      response = getVoteResults();
+    } else if (action === 'saveVoteResult') {
+      response = saveVoteResult(payload.record || payload);
     } else if (action === 'translateBatch') {
       response = translateBatchGas(payload.items || []);
     } else if (action === 'translateLiveCaption') {
@@ -4614,6 +4645,125 @@ function verifyAdminUser(name, number, target) {
       return { success: false, message: 'هذا الحساب لا يملك صلاحية الدخول إلى لوحة التحكم المركزية.' };
     }
     return { success: true, user: found };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+// ==========================================
+// --- دوال ورقة نتائج التصويت (Votes-Results) ---
+// ==========================================
+
+function findVotesSheet() {
+  var ss = getSpreadsheet();
+  return ss.getSheetByName('Votes-Results') || ss.getSheetByName('Votes_Results') || ss.getSheetByName('Votes');
+}
+
+function getOrCreateVotesSheet() {
+  var ss = getSpreadsheet();
+  var sheet = findVotesSheet();
+  var createdNow = false;
+  if (!sheet) {
+    sheet = ss.insertSheet('Votes-Results');
+    createdNow = true;
+  }
+  var headers = [
+    'التاريخ والوقت',
+    'رقم الجولة',
+    'سؤال التصويت',
+    'إجمالي الدخول',
+    'إجمالي المصوّتين',
+    'لم يصوّتوا',
+    'ملخص النتائج',
+    'تفاصيل المصوّتين المسجلين',
+    'ملاحظات'
+  ];
+  var firstRowEmpty = sheet.getLastRow() === 0 || !String(sheet.getRange(1, 1).getValue() || '').trim();
+  if (createdNow || firstRowEmpty) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#d1fae5');
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function setupVotesSheet() {
+  try {
+    var sheet = getOrCreateVotesSheet();
+    var headers = [
+      'التاريخ والوقت',
+      'رقم الجولة',
+      'سؤال التصويت',
+      'إجمالي الدخول',
+      'إجمالي المصوّتين',
+      'لم يصوّتوا',
+      'ملخص النتائج',
+      'تفاصيل المصوّتين المسجلين',
+      'ملاحظات'
+    ];
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold').setBackground('#d1fae5');
+    sheet.setFrozenRows(1);
+    return {
+      success: true,
+      message: 'تم إنشاء وتهيئة ورقة (Votes-Results) لتسجيل نتائج التصويت بنجاح! 🗳️'
+    };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+function saveVoteResult(record) {
+  try {
+    var sheet = getOrCreateVotesSheet();
+    var r = record || {};
+    var ts = r.timestamp || Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Asia/Riyadh', 'yyyy-MM-dd HH:mm:ss');
+    var row = [
+      ts,
+      String(r.roundId || ''),
+      String(r.question || ''),
+      Number(r.totalEntered || 0),
+      Number(r.totalVoted || 0),
+      Number(r.notVoted || 0),
+      String(r.summaryText || ''),
+      String(r.votersBreakdown || ''),
+      String(r.notes || '')
+    ];
+    sheet.appendRow(row);
+    return {
+      success: true,
+      message: 'تم حفظ نتيجة التصويت في ورقة (Votes-Results) بنجاح! ✅'
+    };
+  } catch (err) {
+    return { success: false, message: err.message };
+  }
+}
+
+function getVoteResults() {
+  try {
+    var sheet = findVotesSheet();
+    if (!sheet) return { success: true, data: [], sheetMissing: true };
+    var lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return { success: true, data: [] };
+    var values = sheet.getRange(2, 1, lastRow - 1, Math.max(9, sheet.getLastColumn())).getValues();
+    var list = [];
+    for (var i = values.length - 1; i >= 0; i--) {
+      var r = values[i];
+      if (!String(r[2] || '').trim() && !String(r[1] || '').trim()) continue;
+      list.push({
+        rowIndex: i + 2,
+        timestamp: String(r[0] || ''),
+        roundId: String(r[1] || ''),
+        question: String(r[2] || ''),
+        totalEntered: Number(r[3] || 0),
+        totalVoted: Number(r[4] || 0),
+        notVoted: Number(r[5] || 0),
+        summaryText: String(r[6] || ''),
+        votersBreakdown: String(r[7] || ''),
+        notes: String(r[8] || '')
+      });
+    }
+    return { success: true, data: list };
   } catch (err) {
     return { success: false, message: err.message };
   }

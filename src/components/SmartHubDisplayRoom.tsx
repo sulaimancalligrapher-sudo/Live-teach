@@ -4,23 +4,33 @@ import {
   Tv, Mic, Trophy, Video, Radio, Monitor, Sparkles, 
   Zap, Users, QrCode, ArrowLeft, Maximize2, Minimize2, 
   CheckCircle2, Flame, Award, Sliders, ChevronDown, ChevronUp,
-  Volume2, VolumeX, Eye, HelpCircle
+  Volume2, VolumeX, Eye, HelpCircle, Vote, UserCheck, Clock
 } from 'lucide-react';
-import { LiveSessionState, LiveLessonRow, QuizActiveState } from '../types';
-import { subscribeToLiveSession, fetchLiveQuestionsT, getLiveSessionState } from '../api';
+import { LiveSessionState, LiveLessonRow, QuizActiveState, VotingConfigState, VoteParticipantRecord, VoteSubmissionRecord } from '../types';
+import {
+  subscribeToLiveSession,
+  fetchLiveQuestionsT,
+  getLiveSessionState,
+  subscribeToVotingConfig,
+  subscribeToVotingRoundActivity,
+  defaultVotingConfigState,
+} from '../api';
 import LiveTeacherRoom from './LiveTeacherRoom';
 import LiveDirectDisplayRoom from './LiveDirectDisplayRoom';
 import LiveQuizArenaDisplay from './LiveQuizArenaDisplay';
 
 interface SmartHubDisplayRoomProps {
   onBackToMain?: () => void;
-  initialMode?: 'auto' | 'video' | 'direct' | 'quiz';
+  initialMode?: 'auto' | 'video' | 'direct' | 'quiz' | 'vote';
 }
 
 export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto' }: SmartHubDisplayRoomProps) {
-  // Mode selection: 'auto' | 'video' | 'direct' | 'quiz'
-  const [activeMode, setActiveMode] = useState<'auto' | 'video' | 'direct' | 'quiz'>(initialMode);
+  // Mode selection: 'auto' | 'video' | 'direct' | 'quiz' | 'vote'
+  const [activeMode, setActiveMode] = useState<'auto' | 'video' | 'direct' | 'quiz' | 'vote'>(initialMode);
   const [sessionState, setSessionState] = useState<LiveSessionState | null>(null);
+  const [votingState, setVotingState] = useState<VotingConfigState>(defaultVotingConfigState);
+  const [voteParticipants, setVoteParticipants] = useState<VoteParticipantRecord[]>([]);
+  const [voteSubmissions, setVoteSubmissions] = useState<VoteSubmissionRecord[]>([]);
   const [allLessons, setAllLessons] = useState<LiveLessonRow[]>([]);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isBarExpanded, setIsBarExpanded] = useState(true);
@@ -30,13 +40,29 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
     const unsub = subscribeToLiveSession((state) => {
       setSessionState(state);
     });
+    const unsubVoting = subscribeToVotingConfig((vState) => {
+      setVotingState(vState);
+    });
 
     fetchLiveQuestionsT().then((lessons) => {
       if (lessons && lessons.length > 0) setAllLessons(lessons);
     }).catch(() => {});
 
-    return () => unsub();
+    return () => {
+      unsub();
+      unsubVoting();
+    };
   }, []);
+
+  const pollRoundId = votingState.activePoll?.roundId || '';
+  useEffect(() => {
+    if (!pollRoundId) return;
+    const unsub = subscribeToVotingRoundActivity(pollRoundId, ({ participants, votes }) => {
+      setVoteParticipants(participants);
+      setVoteSubmissions(votes);
+    });
+    return () => unsub();
+  }, [pollRoundId]);
 
   // Fullscreen toggle
   const toggleFullscreen = () => {
@@ -52,13 +78,18 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
   // Determine current effective view with strict channel isolation
   const currentMode = sessionState?.activeMode || sessionState?.mode;
   const isQuizActive = Boolean(sessionState?.quizState?.isActive);
+  const isVoteBigScreenActive = Boolean(
+    votingState.activePoll?.status === 'active' && votingState.activePoll?.showOnBigScreen
+  );
   const isDirectActive = Boolean(currentMode === 'direct');
   const isVideoActive = Boolean(currentMode === 'video');
 
-  let effectiveView: 'standby' | 'video' | 'direct' | 'quiz' = 'standby';
+  let effectiveView: 'standby' | 'video' | 'direct' | 'quiz' | 'vote' = 'standby';
 
   if (activeMode === 'auto') {
-    if (isQuizActive) {
+    if (isVoteBigScreenActive) {
+      effectiveView = 'vote';
+    } else if (isQuizActive) {
       effectiveView = 'quiz';
     } else if (isDirectActive) {
       effectiveView = 'direct';
@@ -94,6 +125,8 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
     ? `${window.location.origin}/?page=live-student&pin=${encodeURIComponent(effectivePin)}`
     : '';
   const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(studentJoinUrl)}`;
+  const guestVoteUrl = typeof window !== 'undefined' ? `${window.location.origin}/?page=vote` : '';
+  const guestVoteQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(guestVoteUrl)}`;
 
   return (
     <div className="relative min-h-screen w-full bg-slate-950 text-slate-100 font-sans overflow-x-hidden selection:bg-amber-500 selection:text-slate-950" dir="rtl">
@@ -170,6 +203,19 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
                 <span className="hidden sm:inline">تحدي كويز</span>
               </button>
 
+              {/* Option 5: Live Voting */}
+              <button
+                onClick={() => setActiveMode('vote')}
+                className={`px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                  activeMode === 'vote'
+                    ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30 ring-1 ring-teal-400'
+                    : 'hover:bg-slate-800 text-slate-300 hover:text-white'
+                }`}
+              >
+                <Vote className="w-3.5 h-3.5 text-teal-400" />
+                <span className="hidden sm:inline">تصويت مباشر</span>
+              </button>
+
               <div className="w-[1px] h-5 bg-slate-700/80 my-auto" />
 
               {/* Fullscreen Button */}
@@ -231,6 +277,119 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
           />
         </div>
       )}
+
+      {/* 3b. LIVE VOTING PROJECTOR VIEW */}
+      {effectiveView === 'vote' && (() => {
+        const poll = votingState.activePoll;
+        const uniqueVoterIds = new Set<string>([
+          ...voteParticipants.map((p) => p.voterId),
+          ...voteSubmissions.map((v) => v.voterId),
+        ]);
+        const totalEntered = uniqueVoterIds.size;
+        const totalVoted = voteSubmissions.length;
+        const notVoted = Math.max(0, totalEntered - totalVoted);
+        const barColors: Record<string, string> = {
+          emerald: 'bg-emerald-500',
+          rose: 'bg-rose-500',
+          sky: 'bg-sky-500',
+          purple: 'bg-purple-500',
+          amber: 'bg-amber-500',
+          slate: 'bg-slate-400',
+        };
+
+        return (
+          <div className="min-h-screen flex flex-col justify-center p-6 sm:p-12 pt-20 max-w-6xl mx-auto space-y-8">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+              {/* Right/Main Column: Question + Live Counters + Bars */}
+              <div className="lg:col-span-8 space-y-6">
+                <div className="space-y-2">
+                  <div className="inline-flex items-center gap-2 text-emerald-400 text-sm font-black">
+                    <Vote className="w-5 h-5" />
+                    <span>
+                      {poll.status === 'active'
+                        ? 'التصويت المباشر مفتوح الآن'
+                        : poll.status === 'closed'
+                        ? 'النتائج النهائية للتصويت'
+                        : 'في انتظار بدء التصويت'}
+                    </span>
+                  </div>
+                  <h2 className="text-3xl sm:text-5xl font-black text-white leading-tight">
+                    {poll.question}
+                  </h2>
+                </div>
+
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                    <div className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
+                      <Users className="w-4 h-4 text-sky-400" />
+                      <span>الدخول الكلي</span>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black font-mono text-sky-400 mt-1">
+                      {totalEntered}
+                    </div>
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                    <div className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
+                      <UserCheck className="w-4 h-4 text-emerald-400" />
+                      <span>المصوّتون</span>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black font-mono text-emerald-400 mt-1">
+                      {totalVoted}
+                    </div>
+                  </div>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                    <div className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-amber-400" />
+                      <span>لم يصوّتوا</span>
+                    </div>
+                    <div className="text-3xl sm:text-4xl font-black font-mono text-amber-400 mt-1">
+                      {notVoted}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5">
+                  {poll.options.map((opt) => {
+                    const count = voteSubmissions.filter(
+                      (v) => v.optionId === opt.id || v.optionLabel === opt.label
+                    ).length;
+                    const pct = totalVoted > 0 ? Math.round((count / totalVoted) * 100) : 0;
+                    return (
+                      <div key={opt.id} className="space-y-2">
+                        <div className="flex items-center justify-between text-lg sm:text-xl font-black">
+                          <span className="text-white">{opt.label}</span>
+                          <span className="font-mono text-slate-200">
+                            {count} صوت ({pct}%)
+                          </span>
+                        </div>
+                        <div className="w-full h-6 rounded-xl bg-slate-950 border border-slate-800 overflow-hidden">
+                          <div
+                            className={`h-full ${barColors[opt.color || 'emerald']} transition-all duration-500`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Left Column: Instant Guest QR Code */}
+              <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
+                <span className="text-sm font-black text-amber-300 block">
+                  امسح الرمز للتصويت الفوري (بدون تسجيل)
+                </span>
+                <div className="w-56 h-56 mx-auto p-3 bg-white rounded-2xl flex items-center justify-center">
+                  <img src={guestVoteQrUrl} alt="Guest Vote QR" className="w-full h-full object-contain" />
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  المشتركون المسجلون يظهر لهم التصويت تلقائياً في شاشاتهم، والضيوف يمسحون هذا الرمز للتصويت مباشرة.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 4. SMART HUB STANDBY SCREEN (قاعة الاستقبال التفاعلية للبروجكتر) */}
       {effectiveView === 'standby' && (

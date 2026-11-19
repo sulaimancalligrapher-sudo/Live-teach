@@ -5,7 +5,7 @@ import {
   ExternalLink, Copy, CheckCircle2, ShieldCheck, 
   Sparkles, KeyRound, Globe, Users, ArrowUpRight, 
   FileSpreadsheet, Play, QrCode, Sliders, Palette, Square,
-  Video, Radio, MessageSquare, Bell, Camera, Captions, Lock
+  Video, Radio, MessageSquare, Bell, Camera, Captions, Lock, Vote
 } from 'lucide-react';
 import { LiveLessonRow, HeaderConfig } from '../types';
 import LiveClassManager from './LiveClassManager';
@@ -15,6 +15,7 @@ import QuizManagerPanel from './QuizManagerPanel';
 import SettingsPanel from './SettingsPanel';
 import ScriptPrompterPanel from './ScriptPrompterPanel';
 import AdminAccessManagerPanel from './AdminAccessManagerPanel';
+import VotingManagerPanel from './VotingManagerPanel';
 import { 
   getLiveSessionState, 
   updateLivePin, 
@@ -27,6 +28,7 @@ import {
   setupPdfLessonsSheetApi,
   setupLiveSubtitlesSheetApi,
   setupAdminSheetApi,
+  setupVotesSheetApi,
   stopAllActiveBroadcasts,
   subscribeToLiveSession
 } from '../api';
@@ -41,7 +43,7 @@ interface AdminPanelProps {
   onOpenLiveDirectDisplay?: () => void;
   onOpenQuizArenaDisplay?: () => void;
   onOpenSmartDisplay?: () => void;
-  initialTab?: 'live' | 'live-direct' | 'quiz-challenge' | 'camera' | 'script-prompter' | 'broadcast' | 'translations' | 'sheets-design';
+  initialTab?: 'live' | 'live-direct' | 'quiz-challenge' | 'camera' | 'script-prompter' | 'voting' | 'broadcast' | 'translations' | 'sheets-design';
 }
 
 export default function AdminPanel({ 
@@ -54,7 +56,7 @@ export default function AdminPanel({
   onOpenSmartDisplay,
   initialTab = 'live'
 }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<'live' | 'live-direct' | 'quiz-challenge' | 'camera' | 'script-prompter' | 'broadcast' | 'translations' | 'sheets-design'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'live' | 'live-direct' | 'quiz-challenge' | 'camera' | 'script-prompter' | 'voting' | 'broadcast' | 'translations' | 'sheets-design'>(initialTab);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
   const [currentPin, setCurrentPin] = useState<string>('1234');
   const [isUpdatingPin, setIsUpdatingPin] = useState(false);
@@ -65,6 +67,7 @@ export default function AdminPanel({
   const [settingUpPdfSheets, setSettingUpPdfSheets] = useState(false);
   const [settingUpSubtitlesSheet, setSettingUpSubtitlesSheet] = useState(false);
   const [settingUpAdminSheet, setSettingUpAdminSheet] = useState(false);
+  const [settingUpVotesSheet, setSettingUpVotesSheet] = useState(false);
   const [isStreamActive, setIsStreamActive] = useState(false);
 
   const [allLiveLessons, setAllLiveLessons] = useState<LiveLessonRow[]>([]);
@@ -231,6 +234,22 @@ export default function AdminPanel({
       setNotice({ text: e.message || 'حدث خطأ أثناء التهيئة', type: 'error' });
     } finally {
       setSettingUpAdminSheet(false);
+    }
+  };
+
+  const handleSetupVotesSheet = async () => {
+    setSettingUpVotesSheet(true);
+    try {
+      const res = await setupVotesSheetApi();
+      if (res.success) {
+        setNotice({ text: res.message || 'تمت تهيئة ورقة (Votes-Results) للتصويت بنجاح! 🗳️', type: 'success' });
+      } else {
+        setNotice({ text: res.message || 'فشلت التهيئة، تأكد من تحديث كود Apps Script وربط الشيت', type: 'error' });
+      }
+    } catch (e: any) {
+      setNotice({ text: e.message || 'حدث خطأ أثناء التهيئة', type: 'error' });
+    } finally {
+      setSettingUpVotesSheet(false);
     }
   };
 
@@ -412,6 +431,19 @@ export default function AdminPanel({
             <span>تحدي كويز</span>
           </button>
 
+          {/* Tab 4b: Live Voting */}
+          <button
+            onClick={() => setActiveTab('voting')}
+            className={`px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl font-black text-xs sm:text-sm flex items-center gap-2.5 shrink-0 transition-all cursor-pointer whitespace-nowrap shadow-sm ${
+              activeTab === 'voting'
+                ? 'bg-amber-500 text-slate-950 shadow-amber-500/20 scale-[1.02]'
+                : 'bg-slate-850 text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/60'
+            }`}
+          >
+            <Vote className={`w-4 h-4 ${activeTab === 'voting' ? 'text-slate-950' : 'text-emerald-400'}`} />
+            <span>تصويت</span>
+          </button>
+
           {/* Tab 5: Broadcast & Displays */}
           <button
             onClick={() => setActiveTab('broadcast')}
@@ -492,6 +524,17 @@ export default function AdminPanel({
             <div className="py-2">
               <QuizManagerPanel 
                 onOpenArenaDisplay={onOpenQuizArenaDisplay || onOpenLiveDirectDisplay}
+              />
+            </div>
+          )}
+
+          {/* TAB: LIVE VOTING */}
+          {activeTab === 'voting' && (
+            <div className="py-2 max-w-5xl mx-auto">
+              <VotingManagerPanel
+                mode="admin"
+                onNotice={(text, type) => setNotice({ text, type })}
+                onOpenBigScreen={onOpenSmartDisplay}
               />
             </div>
           )}
@@ -816,6 +859,28 @@ export default function AdminPanel({
                     >
                       <Sparkles className={`w-3.5 h-3.5 ${settingUpAdminSheet ? 'animate-spin' : ''}`} />
                       {settingUpAdminSheet ? 'جارٍ التهيئة...' : 'إنشاء وتهيئة ورقة Admin بالشيت'}
+                    </button>
+                  </div>
+
+                  {/* Votes Results Sheet Info */}
+                  <div className="p-4 rounded-2xl bg-slate-900/90 border border-emerald-500/40 flex flex-col justify-between">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-bold text-amber-400 text-sm">نتائج التصويت المباشر</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-mono">Votes-Results</span>
+                      </div>
+                      <p className="text-xs text-slate-400 mb-3">
+                        متصل بورقة مستقلة: <br />
+                        • <b>Votes-Results</b>: لتسجيل جولات التصويت، إجمالي الدخول، المصوّتين، ومن لم يصوّتوا والنتائج
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleSetupVotesSheet}
+                      disabled={settingUpVotesSheet}
+                      className="w-full py-2 rounded-xl bg-emerald-500/25 hover:bg-emerald-500 text-emerald-200 hover:text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Sparkles className={`w-3.5 h-3.5 ${settingUpVotesSheet ? 'animate-spin' : ''}`} />
+                      {settingUpVotesSheet ? 'جارٍ التهيئة...' : 'إنشاء وتهيئة ورقة التصويت بالشيت'}
                     </button>
                   </div>
                 </div>

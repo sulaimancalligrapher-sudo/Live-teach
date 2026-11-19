@@ -6,17 +6,18 @@ import {
   Award, ShieldAlert, Wifi, WifiOff, Loader2,
   KeyRound, ShieldCheck, Camera, QrCode, X, MessageSquare, Hand, ThumbsUp, ThumbsDown,
   Image as ImageIcon, Zap, BookOpen, FileText, ZoomIn, ZoomOut, RotateCcw,
-  Facebook, Instagram, Youtube
+  Facebook, Instagram, Youtube, Vote
 } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import { 
   LiveSessionState, LiveQuestionItem, evaluateLiveAnswer, LiveStudentMessage, getQuizStudentKey,
-  HeaderConfig
+  HeaderConfig, VotingConfigState, VoteOption, VoteSubmissionRecord
 } from '../types';
 import { 
   getLiveSessionState, joinLiveSession, pingLiveSession, leaveLiveSession, submitLiveAnswer, 
   formatDriveImageUrl, subscribeToLiveSession, sendStudentMessage, replyToStudentMessage, deleteStudentMessage, clearAllStudentMessages, toggleShowChatInRoom,
-  joinQuizLobby, verifyStudentInSettings, fetchHeaderConfig
+  joinQuizLobby, verifyStudentInSettings, fetchHeaderConfig,
+  subscribeToVotingConfig, subscribeToVotingRoundActivity, registerVoteParticipant, submitVoteChoice, getStudentVoterId, defaultVotingConfigState
 } from '../api';
 import LiveChatModal from './LiveChatModal';
 import StudentQuizView from './StudentQuizView';
@@ -154,6 +155,13 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
   const [isSessionEndedWithGratitude, setIsSessionEndedWithGratitude] = useState(false);
   const joinTimeRef = useRef<number>(0);
 
+  // Live Voting state for registered students
+  const [votingState, setVotingState] = useState<VotingConfigState>(defaultVotingConfigState);
+  const [voteRoundVotes, setVoteRoundVotes] = useState<VoteSubmissionRecord[]>([]);
+  const [myVotedOptions, setMyVotedOptions] = useState<Record<string, VoteOption>>({});
+  const [isSubmittingVote, setIsSubmittingVote] = useState(false);
+  const [isVoteCardMinimized, setIsVoteCardMinimized] = useState(false);
+
   // Student local PDF viewing preferences (default 'contain' so horizontal slides fit completely without clipping)
   const [studentPdfFitMode, setStudentPdfFitMode] = useState<'contain' | 'width'>('contain');
   const [studentPdfZoom, setStudentPdfZoom] = useState<number>(1.0);
@@ -180,6 +188,45 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
       handleJoin(urlUser.trim(), sheetNumber.trim(), effectivePin);
     }
   }, []);
+
+  // Subscribe to real-time Live Voting config
+  useEffect(() => {
+    const unsub = subscribeToVotingConfig((state) => {
+      setVotingState(state);
+    });
+    return () => unsub();
+  }, []);
+
+  // Register joined student in active poll round & listen for own vote / live poll results
+  const activePollRoundId = votingState.activePoll?.roundId || '';
+  const activePollStatus = votingState.activePoll?.status || 'idle';
+  const studentVoterId = getStudentVoterId(username, sheetNumber);
+
+  useEffect(() => {
+    if (!isJoined || !isPinVerified || !activePollRoundId || activePollStatus !== 'active') return;
+    setIsVoteCardMinimized(false);
+    registerVoteParticipant(activePollRoundId, {
+      voterId: studentVoterId,
+      voterType: 'student',
+      name: username.trim(),
+      sheetNumber: sheetNumber.trim(),
+    });
+  }, [isJoined, isPinVerified, activePollRoundId, activePollStatus, studentVoterId, username, sheetNumber]);
+
+  useEffect(() => {
+    if (!isJoined || !isPinVerified || !activePollRoundId) return;
+    const unsub = subscribeToVotingRoundActivity(activePollRoundId, ({ votes }) => {
+      setVoteRoundVotes(votes);
+      const mine = votes.find((v) => v.voterId === studentVoterId);
+      if (mine) {
+        setMyVotedOptions((prev) => ({
+          ...prev,
+          [activePollRoundId]: { id: mine.optionId, label: mine.optionLabel },
+        }));
+      }
+    });
+    return () => unsub();
+  }, [isJoined, isPinVerified, activePollRoundId, studentVoterId]);
 
   // Firebase real-time subscription for live updates
   useEffect(() => {
@@ -1548,6 +1595,148 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
           variant="card"
           suspendAudio={isVideoFullscreen}
         />
+
+        {/* LIVE POLL OVERLAY CARD FOR REGISTERED STUDENTS */}
+        {(() => {
+          const poll = votingState.activePoll;
+          if (!poll || poll.status !== 'active') return null;
+          const myChosen = myVotedOptions[poll.roundId] || null;
+          const isLocked = Boolean(myChosen) && !poll.allowChangeVote;
+          const totalPollVotes = voteRoundVotes.length;
+
+          const voteColorClasses: Record<string, string> = {
+            emerald: 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400/60',
+            rose: 'bg-rose-600 hover:bg-rose-500 text-white border-rose-400/60',
+            sky: 'bg-sky-600 hover:bg-sky-500 text-white border-sky-400/60',
+            purple: 'bg-purple-600 hover:bg-purple-500 text-white border-purple-400/60',
+            amber: 'bg-amber-500 hover:bg-amber-400 text-slate-950 border-amber-300',
+            slate: 'bg-slate-700 hover:bg-slate-600 text-white border-slate-500',
+          };
+
+          const handleStudentVoteTap = async (opt: VoteOption) => {
+            if (isLocked || isSubmittingVote) return;
+            setIsSubmittingVote(true);
+            try {
+              const res = await submitVoteChoice(
+                poll.roundId,
+                {
+                  voterId: studentVoterId,
+                  voterType: 'student',
+                  name: username.trim(),
+                  sheetNumber: sheetNumber.trim(),
+                },
+                opt,
+                Boolean(poll.allowChangeVote)
+              );
+              if (res.success) {
+                setMyVotedOptions((prev) => ({ ...prev, [poll.roundId]: opt }));
+              }
+            } finally {
+              setIsSubmittingVote(false);
+            }
+          };
+
+          if (myChosen && isVoteCardMinimized) {
+            return (
+              <div className="mb-3 px-4 py-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-2 text-xs" dir="rtl">
+                <div className="flex items-center gap-2 text-emerald-300 font-bold truncate">
+                  <Vote className="w-4 h-4 shrink-0" />
+                  <span className="truncate">تم التصويت: {myChosen.label}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsVoteCardMinimized(false)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 font-bold cursor-pointer shrink-0"
+                >
+                  عرض
+                </button>
+              </div>
+            );
+          }
+
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-4 p-4 sm:p-5 rounded-3xl bg-slate-900 border-2 border-emerald-500/50 shadow-2xl space-y-3.5 text-right"
+              dir="rtl"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-black">
+                    <Vote className="w-4 h-4" />
+                    <span>تصويت مباشر الآن</span>
+                  </div>
+                  <h4 className="text-base sm:text-lg font-black text-white leading-snug">
+                    {poll.question}
+                  </h4>
+                </div>
+                {myChosen && (
+                  <button
+                    type="button"
+                    onClick={() => setIsVoteCardMinimized(true)}
+                    className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white cursor-pointer"
+                    title="تصغير بطاقة التصويت"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              <div className={`grid gap-2.5 ${poll.options.length === 2 ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-2'}`}>
+                {poll.options.map((opt) => {
+                  const chosen = myChosen?.id === opt.id;
+                  const cls = voteColorClasses[opt.color || 'emerald'] || voteColorClasses.emerald;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      disabled={isLocked || isSubmittingVote}
+                      onClick={() => handleStudentVoteTap(opt)}
+                      className={`py-3 px-4 rounded-2xl border font-black text-sm sm:text-base transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] ${
+                        chosen
+                          ? `${cls} ring-2 ring-white shadow-lg`
+                          : isLocked
+                          ? 'bg-slate-800/70 border-slate-700 text-slate-500 cursor-not-allowed'
+                          : cls
+                      }`}
+                    >
+                      {chosen && <CheckCircle2 className="w-4 h-4 shrink-0" />}
+                      <span>{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {myChosen && (
+                <div className="text-xs font-bold text-emerald-300 flex items-center justify-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>تم استلام صوتك: {myChosen.label}</span>
+                </div>
+              )}
+
+              {poll.showResultsToVoters && myChosen && (
+                <div className="pt-2 border-t border-slate-800 space-y-2">
+                  {poll.options.map((opt) => {
+                    const c = voteRoundVotes.filter((v) => v.optionId === opt.id || v.optionLabel === opt.label).length;
+                    const pct = totalPollVotes > 0 ? Math.round((c / totalPollVotes) * 100) : 0;
+                    return (
+                      <div key={opt.id} className="space-y-1 text-xs">
+                        <div className="flex justify-between font-bold text-slate-300">
+                          <span>{opt.label}</span>
+                          <span className="font-mono">{c} ({pct}%)</span>
+                        </div>
+                        <div className="w-full h-2.5 rounded-lg bg-slate-950 overflow-hidden">
+                          <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </motion.div>
+          );
+        })()}
 
         {/* Step 1: Floating Challenge Invitation Banner for students in "شرح مباشر" */}
         <AnimatePresence>

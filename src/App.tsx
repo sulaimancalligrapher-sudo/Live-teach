@@ -9,9 +9,9 @@ import {
   X, Clock, CheckCircle2, Check,
   BookOpen, Video, Captions, MessageSquare, ExternalLink,
   LogOut, KeyRound, Eye, EyeOff, Loader2, User, Hash, AlertCircle,
-  Facebook, Instagram, Youtube
+  Facebook, Instagram, Youtube, Vote
 } from 'lucide-react';
-import { HeaderConfig, LiveLessonRow, LiveSessionState, AdminSheetUser, AdminAccessConfig } from './types';
+import { HeaderConfig, LiveLessonRow, LiveSessionState, AdminSheetUser, AdminAccessConfig, VotingConfigState } from './types';
 import { 
   fetchHeaderConfig, 
   formatDriveImageUrl,
@@ -31,7 +31,8 @@ import {
   subscribeToAdminAccessConfig,
   matchAdminUserFromList,
   defaultAdminAccessConfig,
-  fetchAdminUsersFromSheet
+  fetchAdminUsersFromSheet,
+  subscribeToVotingConfig
 } from './api';
 import { showAppConfirm } from './components/AppDialog';
 import AdminPanel from './components/AdminPanel';
@@ -49,6 +50,8 @@ import LiveClassManager from './components/LiveClassManager';
 import LiveDirectManager from './components/LiveDirectManager';
 import LiveCameraManager from './components/LiveCameraManager';
 import LiveChatModal from './components/LiveChatModal';
+import VotingManagerPanel from './components/VotingManagerPanel';
+import GuestVoteView from './components/GuestVoteView';
 import { useLanguage } from './translations';
 
 export default function App() {
@@ -59,7 +62,7 @@ export default function App() {
 
   // Page Routing Mode:
   // 'public-home' (/) | 'control' (?live=control) | 'admin' (?Admin=controlroom2026) | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'chat' | 'script-prompter'
-  type AppPageMode = 'public-home' | 'control' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'chat' | 'script-prompter';
+  type AppPageMode = 'public-home' | 'control' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'chat' | 'script-prompter' | 'vote' | 'vote-teacher';
 
   const resolvePageModeFromSearch = (search: string): AppPageMode => {
     const params = new URLSearchParams(search);
@@ -68,6 +71,8 @@ export default function App() {
     const live = (params.get('live') || '').trim().toLowerCase();
     const adminParam = (params.get('Admin') || params.get('admin') || '').trim();
 
+    if (p === 'vote') return 'vote';
+    if (p === 'vote-teacher') return 'vote-teacher';
     if (p === 'chat' || mode === 'chat') return 'chat';
     if (p === 'script-prompter' || p === 'prompter') return 'script-prompter';
     if (adminParam.toLowerCase() === 'controlroom2026' || p === 'admin') return 'admin';
@@ -131,9 +136,10 @@ export default function App() {
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
 
   // Master Quick-Control Bar & Stackable Open Cards (ordered by opening)
-  type QuickPanelId = 'screen' | 'start' | 'login' | 'video-questions' | 'live-direct' | 'quiz' | 'pdf' | 'camera' | 'translation' | 'chat';
+  type QuickPanelId = 'screen' | 'start' | 'login' | 'video-questions' | 'live-direct' | 'quiz' | 'pdf' | 'camera' | 'translation' | 'voting' | 'chat';
   const [openPanels, setOpenPanels] = useState<QuickPanelId[]>([]);
   const [loginFilterView, setLoginFilterView] = useState<'live' | 'unanswered' | 'answers'>('live');
+  const [votingConfig, setVotingConfig] = useState<VotingConfigState | null>(null);
 
   // Unread student chat notifications (highlights Chat button & shows top alert banner)
   const [unreadChatCount, setUnreadChatCount] = useState(0);
@@ -207,12 +213,16 @@ export default function App() {
     const unsubAdmin = subscribeToAdminAccessConfig((cfg) => {
       setAdminAccessConfig(cfg);
     });
+    const unsubVoting = subscribeToVotingConfig((vCfg) => {
+      setVotingConfig(vCfg);
+    });
     // Quietly sync ورقة أدمن from Google Sheet on load so Sheet edits apply immediately
     fetchAdminUsersFromSheet().catch(() => {});
 
     return () => {
       unsub();
       unsubAdmin();
+      unsubVoting();
     };
   }, [webAppUrl, isConfigured]);
 
@@ -351,7 +361,7 @@ export default function App() {
   };
 
   // URL sync & history navigation
-  const navigateToPage = (mode: 'public-home' | 'control' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'script-prompter') => {
+  const navigateToPage = (mode: 'public-home' | 'control' | 'admin' | 'live-teacher' | 'live-student' | 'live-direct-display' | 'quiz-arena' | 'student-quiz' | 'display' | 'script-prompter' | 'vote' | 'vote-teacher') => {
     setPageMode(mode);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
@@ -470,6 +480,22 @@ export default function App() {
     setCopiedLink(id);
     setTimeout(() => setCopiedLink(null), 2500);
   };
+
+  // Route: Public Guest Voting (?page=vote) - Zero registration
+  if (pageMode === 'vote') {
+    return <GuestVoteView />;
+  }
+
+  // Route: Teacher Dedicated Voting Results Page (?page=vote-teacher)
+  if (pageMode === 'vote-teacher') {
+    return (
+      <VotingManagerPanel
+        mode="teacher-monitor"
+        connectedStudents={liveSession?.connectedStudents || []}
+        onBack={() => navigateToPage('control')}
+      />
+    );
+  }
 
   // Route: Standalone Teacher Chat Window
   if (pageMode === 'chat') {
@@ -1133,6 +1159,15 @@ export default function App() {
               activeClass: 'bg-indigo-500 text-white border-indigo-400 shadow-md shadow-indigo-500/20',
               badge: isSubtitlesShown ? (
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              ) : undefined,
+            },
+            {
+              id: 'voting',
+              label: 'تصويت',
+              renderIcon: (isOpen) => <Vote className={`w-4 h-4 ${isOpen ? 'text-white' : 'text-emerald-500'}`} />,
+              activeClass: 'bg-emerald-600 text-white border-emerald-500 shadow-md shadow-emerald-600/20',
+              badge: votingConfig?.activePoll?.status === 'active' ? (
+                <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping" />
               ) : undefined,
             },
             {
@@ -1826,6 +1861,42 @@ export default function App() {
 
                       <div className="p-4">
                         <ScriptPrompterPanel embeddedTranslationQuickOnly={true} />
+                      </div>
+                    </section>
+                  );
+                }
+
+                if (panelId === 'voting') {
+                  return (
+                    <section
+                      key="voting"
+                      className="rounded-2xl bg-slate-900 border border-slate-800 shadow-lg overflow-hidden text-slate-100"
+                    >
+                      <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3 bg-slate-950/60">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
+                            <Vote className="w-4 h-4" />
+                          </div>
+                          <span className="text-sm sm:text-base font-black text-white">
+                            تصويت — استطلاع سريع للمسجلين والضيوف
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => closeQuickPanel('voting')}
+                          title="إغلاق"
+                          className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition cursor-pointer"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="p-4">
+                        <VotingManagerPanel
+                          mode="quick"
+                          connectedStudents={connectedList}
+                          onOpenBigScreen={() => navigateToPage('display')}
+                        />
                       </div>
                     </section>
                   );

@@ -5,7 +5,10 @@ import {
   updateDoc, 
   onSnapshot, 
   serverTimestamp,
-  runTransaction
+  runTransaction,
+  collection,
+  query,
+  where
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { 
@@ -23,12 +26,22 @@ import {
   ScriptSubtitleLine,
   LiveSubtitleState,
   AdminSheetUser,
-  AdminAccessConfig
+  AdminAccessConfig,
+  VoteOption,
+  VotePresetQuestion,
+  VotePresetOptionSet,
+  ActivePollState,
+  VotingConfigState,
+  VoteParticipantRecord,
+  VoteSubmissionRecord
 } from '../types';
 
 const LIVE_DOC_REF = doc(db, 'live_sessions', 'main');
 const SUBTITLES_DOC_REF = doc(db, 'live_sessions', 'subtitles');
 const ADMIN_ACCESS_DOC_REF = doc(db, 'live_sessions', 'admin_access');
+const VOTING_DOC_REF = doc(db, 'live_sessions', 'voting');
+const VOTING_PARTICIPANTS_COL = collection(db, 'live_sessions', 'voting', 'participants');
+const VOTING_VOTES_COL = collection(db, 'live_sessions', 'voting', 'votes');
 
 export const defaultLiveStreamConfig: LiveStreamConfig = {
   isActive: false,
@@ -2513,6 +2526,457 @@ export async function saveAdminAccessConfig(
     throw err;
   }
 }
+
+// ==========================================
+// --- LIVE VOTING & AUDIENCE POLLS SERVICE ---
+// ==========================================
+
+export const DEFAULT_VOTE_PRESET_OPTION_SETS: VotePresetOptionSet[] = [
+  {
+    id: 'yes_no',
+    name: 'نعم / لا',
+    options: [
+      { id: 'opt_yes', label: 'نعم', color: 'emerald' },
+      { id: 'opt_no', label: 'لا', color: 'rose' },
+    ],
+  },
+  {
+    id: 'gender',
+    name: 'ذكر / أنثى',
+    options: [
+      { id: 'opt_male', label: 'ذكر', color: 'sky' },
+      { id: 'opt_female', label: 'أنثى', color: 'purple' },
+    ],
+  },
+  {
+    id: 'agree_disagree',
+    name: 'موافق / غير موافق',
+    options: [
+      { id: 'opt_agree', label: 'موافق', color: 'emerald' },
+      { id: 'opt_disagree', label: 'غير موافق', color: 'rose' },
+    ],
+  },
+  {
+    id: 'clear_repeat',
+    name: 'واضح / أعد الشرح',
+    options: [
+      { id: 'opt_clear', label: 'واضح', color: 'emerald' },
+      { id: 'opt_repeat', label: 'أعد الشرح', color: 'amber' },
+    ],
+  },
+  {
+    id: 'rating_3',
+    name: 'ممتاز / جيد / يحتاج تحسين',
+    options: [
+      { id: 'opt_exc', label: 'ممتاز', color: 'emerald' },
+      { id: 'opt_good', label: 'جيد', color: 'sky' },
+      { id: 'opt_imp', label: 'يحتاج تحسين', color: 'amber' },
+    ],
+  },
+  {
+    id: 'numbers_4',
+    name: '1 / 2 / 3 / 4',
+    options: [
+      { id: 'opt_1', label: '1', color: 'sky' },
+      { id: 'opt_2', label: '2', color: 'emerald' },
+      { id: 'opt_3', label: '3', color: 'amber' },
+      { id: 'opt_4', label: '4', color: 'purple' },
+    ],
+  },
+];
+
+export const DEFAULT_VOTE_PRESET_QUESTIONS: VotePresetQuestion[] = [
+  {
+    id: 'pq_clear',
+    text: 'هل الشرح واضح ومفهوم؟',
+    defaultOptionSetId: 'yes_no',
+  },
+  {
+    id: 'pq_next',
+    text: 'هل ننتقل للفقرة التالية؟',
+    defaultOptionSetId: 'yes_no',
+  },
+  {
+    id: 'pq_gender',
+    text: 'اختر الجنس للتقييم الصحيح',
+    defaultOptionSetId: 'gender',
+  },
+  {
+    id: 'pq_level',
+    text: 'ما تقييمكم للدرس والتمرين؟',
+    defaultOptionSetId: 'rating_3',
+  },
+  {
+    id: 'pq_audio',
+    text: 'هل الصوت والصورة واضحان؟',
+    defaultOptionSetId: 'yes_no',
+  },
+  {
+    id: 'pq_agree',
+    text: 'هل توافقون على هذا المقترح؟',
+    defaultOptionSetId: 'agree_disagree',
+  },
+];
+
+export const defaultVotingConfigState: VotingConfigState = {
+  activePoll: {
+    roundId: 'poll_initial',
+    question: DEFAULT_VOTE_PRESET_QUESTIONS[0].text,
+    options: DEFAULT_VOTE_PRESET_OPTION_SETS[0].options,
+    status: 'idle',
+    showResultsToVoters: false,
+    showOnBigScreen: true,
+    allowChangeVote: false,
+    startedAt: null,
+    closedAt: null,
+  },
+  presetQuestions: DEFAULT_VOTE_PRESET_QUESTIONS,
+  presetOptionSets: DEFAULT_VOTE_PRESET_OPTION_SETS,
+  updatedAt: 0,
+};
+
+export function getGuestVoterId(): string {
+  try {
+    const existing = localStorage.getItem('liveVoteGuestToken');
+    if (existing && existing.trim().length > 4) return existing.trim();
+    const generated = `guest_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    localStorage.setItem('liveVoteGuestToken', generated);
+    return generated;
+  } catch {
+    return `guest_${Date.now().toString(36)}`;
+  }
+}
+
+export function getStudentVoterId(username: string, sheetNumber?: string): string {
+  const safeName = normalizeArabicText(username || 'student').replace(/[^a-z0-9\u0600-\u06FF]+/gi, '_') || 'student';
+  const safeSheet = String(sheetNumber || '').trim().replace(/[^a-z0-9]+/gi, '');
+  return safeSheet ? `stu_${safeName}_${safeSheet}` : `stu_${safeName}`;
+}
+
+function sanitizeVotingState(data: any): VotingConfigState {
+  const rawPoll = data?.activePoll || {};
+  const rawOptions: VoteOption[] = Array.isArray(rawPoll.options) && rawPoll.options.length > 0
+    ? rawPoll.options.map((o: any, idx: number) => ({
+        id: String(o.id || `opt_${idx + 1}`),
+        label: String(o.label || '').trim(),
+        color: o.color || 'emerald',
+      })).filter((o: VoteOption) => o.label.length > 0)
+    : DEFAULT_VOTE_PRESET_OPTION_SETS[0].options;
+
+  const presetQuestions: VotePresetQuestion[] = Array.isArray(data?.presetQuestions) && data.presetQuestions.length > 0
+    ? data.presetQuestions
+    : DEFAULT_VOTE_PRESET_QUESTIONS;
+
+  const presetOptionSets: VotePresetOptionSet[] = Array.isArray(data?.presetOptionSets) && data.presetOptionSets.length > 0
+    ? data.presetOptionSets
+    : DEFAULT_VOTE_PRESET_OPTION_SETS;
+
+  return {
+    activePoll: {
+      roundId: String(rawPoll.roundId || 'poll_initial'),
+      question: String(rawPoll.question || DEFAULT_VOTE_PRESET_QUESTIONS[0].text),
+      options: rawOptions,
+      status: rawPoll.status === 'active' || rawPoll.status === 'closed' ? rawPoll.status : 'idle',
+      showResultsToVoters: Boolean(rawPoll.showResultsToVoters),
+      showOnBigScreen: rawPoll.showOnBigScreen !== false,
+      allowChangeVote: Boolean(rawPoll.allowChangeVote),
+      startedAt: typeof rawPoll.startedAt === 'number' ? rawPoll.startedAt : null,
+      closedAt: typeof rawPoll.closedAt === 'number' ? rawPoll.closedAt : null,
+    },
+    presetQuestions,
+    presetOptionSets,
+    updatedAt: typeof data?.updatedAt === 'number' ? data.updatedAt : 0,
+  };
+}
+
+export function subscribeToVotingConfig(
+  onUpdate: (state: VotingConfigState) => void
+): () => void {
+  return onSnapshot(
+    VOTING_DOC_REF,
+    (snap) => {
+      if (snap.exists()) {
+        onUpdate(sanitizeVotingState(snap.data()));
+      } else {
+        onUpdate({ ...defaultVotingConfigState });
+      }
+    },
+    (err) => {
+      console.warn('Voting config snapshot warning:', err);
+    }
+  );
+}
+
+export async function getVotingConfig(): Promise<VotingConfigState> {
+  try {
+    const snap = await getDoc(VOTING_DOC_REF);
+    if (snap.exists()) {
+      return sanitizeVotingState(snap.data());
+    }
+    return { ...defaultVotingConfigState };
+  } catch {
+    return { ...defaultVotingConfigState };
+  }
+}
+
+export function subscribeToVotingRoundActivity(
+  roundId: string,
+  onUpdate: (data: {
+    participants: VoteParticipantRecord[];
+    votes: VoteSubmissionRecord[];
+  }) => void
+): () => void {
+  if (!roundId) {
+    onUpdate({ participants: [], votes: [] });
+    return () => {};
+  }
+
+  let latestParticipants: VoteParticipantRecord[] = [];
+  let latestVotes: VoteSubmissionRecord[] = [];
+
+  const emit = () => {
+    onUpdate({
+      participants: latestParticipants,
+      votes: latestVotes,
+    });
+  };
+
+  const pQuery = query(VOTING_PARTICIPANTS_COL, where('roundId', '==', roundId));
+  const vQuery = query(VOTING_VOTES_COL, where('roundId', '==', roundId));
+
+  const unsubP = onSnapshot(
+    pQuery,
+    (snap) => {
+      latestParticipants = snap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as any),
+      }));
+      emit();
+    },
+    (err) => console.warn('Voting participants listener warning:', err)
+  );
+
+  const unsubV = onSnapshot(
+    vQuery,
+    (snap) => {
+      latestVotes = snap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as any),
+      }));
+      emit();
+    },
+    (err) => console.warn('Voting votes listener warning:', err)
+  );
+
+  return () => {
+    unsubP();
+    unsubV();
+  };
+}
+
+export async function startOrUpdatePoll(params: {
+  question: string;
+  options: VoteOption[];
+  showResultsToVoters?: boolean;
+  showOnBigScreen?: boolean;
+  allowChangeVote?: boolean;
+  newRound?: boolean;
+}): Promise<{ success: boolean; roundId: string }> {
+  const existing = await getVotingConfig();
+  const roundId = params.newRound || existing.activePoll.status !== 'active'
+    ? `poll_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+    : existing.activePoll.roundId;
+
+  const cleanOptions = (params.options || [])
+    .map((o, i) => ({
+      id: o.id || `opt_${i + 1}`,
+      label: String(o.label || '').trim(),
+      color: o.color || 'emerald',
+    }))
+    .filter((o) => o.label.length > 0);
+
+  const nextPoll: ActivePollState = {
+    roundId,
+    question: String(params.question || '').trim() || DEFAULT_VOTE_PRESET_QUESTIONS[0].text,
+    options: cleanOptions.length > 0 ? cleanOptions : DEFAULT_VOTE_PRESET_OPTION_SETS[0].options,
+    status: 'active',
+    showResultsToVoters:
+      params.showResultsToVoters !== undefined
+        ? params.showResultsToVoters
+        : existing.activePoll.showResultsToVoters,
+    showOnBigScreen:
+      params.showOnBigScreen !== undefined
+        ? params.showOnBigScreen
+        : existing.activePoll.showOnBigScreen,
+    allowChangeVote:
+      params.allowChangeVote !== undefined
+        ? params.allowChangeVote
+        : existing.activePoll.allowChangeVote,
+    startedAt: Date.now(),
+    closedAt: null,
+  };
+
+  await setDoc(VOTING_DOC_REF, {
+    ...existing,
+    activePoll: nextPoll,
+    updatedAt: Date.now(),
+    serverUpdatedAt: serverTimestamp(),
+  });
+
+  return { success: true, roundId };
+}
+
+export async function closeActivePoll(): Promise<{ success: boolean }> {
+  const existing = await getVotingConfig();
+  await setDoc(VOTING_DOC_REF, {
+    ...existing,
+    activePoll: {
+      ...existing.activePoll,
+      status: 'closed',
+      closedAt: Date.now(),
+    },
+    updatedAt: Date.now(),
+    serverUpdatedAt: serverTimestamp(),
+  });
+  return { success: true };
+}
+
+export async function resetPollRound(keepIdle: boolean = false): Promise<{ success: boolean; roundId: string }> {
+  const existing = await getVotingConfig();
+  const nextRoundId = `poll_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  await setDoc(VOTING_DOC_REF, {
+    ...existing,
+    activePoll: {
+      ...existing.activePoll,
+      roundId: nextRoundId,
+      status: keepIdle ? 'idle' : 'active',
+      startedAt: keepIdle ? null : Date.now(),
+      closedAt: null,
+    },
+    updatedAt: Date.now(),
+    serverUpdatedAt: serverTimestamp(),
+  });
+  return { success: true, roundId: nextRoundId };
+}
+
+export async function updateVotingSettings(
+  partial: Partial<Pick<ActivePollState, 'showResultsToVoters' | 'showOnBigScreen' | 'allowChangeVote' | 'question' | 'options'>>
+): Promise<{ success: boolean }> {
+  const existing = await getVotingConfig();
+  await setDoc(VOTING_DOC_REF, {
+    ...existing,
+    activePoll: {
+      ...existing.activePoll,
+      ...partial,
+    },
+    updatedAt: Date.now(),
+    serverUpdatedAt: serverTimestamp(),
+  });
+  return { success: true };
+}
+
+export async function saveVotingPresets(
+  presetQuestions: VotePresetQuestion[],
+  presetOptionSets: VotePresetOptionSet[]
+): Promise<{ success: boolean }> {
+  const existing = await getVotingConfig();
+  await setDoc(VOTING_DOC_REF, {
+    ...existing,
+    presetQuestions,
+    presetOptionSets,
+    updatedAt: Date.now(),
+    serverUpdatedAt: serverTimestamp(),
+  });
+  return { success: true };
+}
+
+export async function registerVoteParticipant(
+  roundId: string,
+  voter: {
+    voterId: string;
+    voterType: 'student' | 'guest';
+    name?: string;
+    sheetNumber?: string;
+  }
+): Promise<void> {
+  if (!roundId || !voter.voterId) return;
+  const docId = `${roundId}_${voter.voterId}`.replace(/[^a-zA-Z0-9_\u0600-\u06FF-]/g, '_');
+  const now = Date.now();
+  try {
+    const ref = doc(db, 'live_sessions', 'voting', 'participants', docId);
+    await setDoc(
+      ref,
+      {
+        roundId,
+        voterId: voter.voterId,
+        voterType: voter.voterType,
+        name: voter.name || '',
+        sheetNumber: voter.sheetNumber || '',
+        joinedAt: now,
+        lastSeen: now,
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('registerVoteParticipant warning:', err);
+  }
+}
+
+export async function submitVoteChoice(
+  roundId: string,
+  voter: {
+    voterId: string;
+    voterType: 'student' | 'guest';
+    name?: string;
+    sheetNumber?: string;
+  },
+  option: VoteOption,
+  allowChangeVote: boolean = false
+): Promise<{ success: boolean; alreadyVoted?: boolean }> {
+  if (!roundId || !voter.voterId || !option?.id) {
+    return { success: false };
+  }
+  const docId = `${roundId}_${voter.voterId}`.replace(/[^a-zA-Z0-9_\u0600-\u06FF-]/g, '_');
+  const voteRef = doc(db, 'live_sessions', 'voting', 'votes', docId);
+  const partRef = doc(db, 'live_sessions', 'voting', 'participants', docId);
+  const now = Date.now();
+
+  if (!allowChangeVote) {
+    const existingSnap = await getDoc(voteRef);
+    if (existingSnap.exists()) {
+      return { success: false, alreadyVoted: true };
+    }
+  }
+
+  await Promise.all([
+    setDoc(
+      partRef,
+      {
+        roundId,
+        voterId: voter.voterId,
+        voterType: voter.voterType,
+        name: voter.name || '',
+        sheetNumber: voter.sheetNumber || '',
+        joinedAt: now,
+        lastSeen: now,
+      },
+      { merge: true }
+    ),
+    setDoc(voteRef, {
+      roundId,
+      voterId: voter.voterId,
+      voterType: voter.voterType,
+      name: voter.name || '',
+      sheetNumber: voter.sheetNumber || '',
+      optionId: option.id,
+      optionLabel: option.label,
+      votedAt: now,
+    }),
+  ]);
+
+  return { success: true };
+}
+
 
 
 

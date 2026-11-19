@@ -692,3 +692,85 @@ export interface AdminAccessConfig {
   updatedAt?: number;
 }
 
+// ==========================================
+// --- LIVE VOTING & AUDIENCE POLLS (التصويت المباشر) ---
+// ==========================================
+
+export type VoteButtonColor = 'emerald' | 'rose' | 'amber' | 'sky' | 'purple' | 'slate';
+
+export interface VoteOption {
+  id: string;
+  label: string;
+  color?: VoteButtonColor;
+}
+
+export interface VotePresetQuestion {
+  id: string;
+  text: string;
+  defaultOptionSetId?: string;
+  isCustom?: boolean;
+}
+
+export interface VotePresetOptionSet {
+  id: string;
+  name: string;
+  options: VoteOption[];
+  isCustom?: boolean;
+}
+
+export interface ActivePollState {
+  roundId: string;
+  question: string;
+  options: VoteOption[];
+  status: 'idle' | 'active' | 'closed';
+  showResultsToVoters: boolean;
+  showOnBigScreen: boolean;
+  allowChangeVote: boolean;
+  startedAt: number | null;
+  closedAt: number | null;
+}
+
+export interface VotingConfigState {
+  activePoll: ActivePollState;
+  presetQuestions: VotePresetQuestion[];
+  presetOptionSets: VotePresetOptionSet[];
+  updatedAt?: number;
+}
+
+export interface VoteParticipantRecord {
+  id: string;
+  roundId: string;
+  voterId: string;
+  voterType: 'student' | 'guest';
+  name?: string;
+  sheetNumber?: string;
+  joinedAt: number;
+  lastSeen: number;
+}
+
+export interface VoteSubmissionRecord {
+  id: string;
+  roundId: string;
+  voterId: string;
+  voterType: 'student' | 'guest';
+  name?: string;
+  sheetNumber?: string;
+  optionId: string;
+  optionLabel: string;
+  votedAt: number;
+}
+
+export interface VoteSheetRecord {
+  rowIndex?: number;
+  timestamp: string;
+  roundId: string;
+  question: string;
+  totalEntered: number;
+  totalVoted: number;
+  notVoted: number;
+  summaryText: string;
+  votersBreakdown?: string;
+  notes?: string;
+}
+
+

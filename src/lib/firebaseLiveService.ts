@@ -2688,6 +2688,7 @@ export const defaultVotingConfigState: VotingConfigState = {
     status: 'idle',
     showResultsToVoters: false,
     showOnBigScreen: true,
+    showQrOnBigScreen: true,
     allowChangeVote: false,
     startedAt: null,
     closedAt: null,
@@ -2812,6 +2813,7 @@ function sanitizeVotingState(data: any): VotingConfigState {
       status: validStatus,
       showResultsToVoters: Boolean(rawPoll.showResultsToVoters),
       showOnBigScreen: rawPoll.showOnBigScreen !== false,
+      showQrOnBigScreen: rawPoll.showQrOnBigScreen !== false,
       allowChangeVote: Boolean(rawPoll.allowChangeVote),
       startedAt: typeof rawPoll.startedAt === 'number' ? rawPoll.startedAt : null,
       closedAt: typeof rawPoll.closedAt === 'number' ? rawPoll.closedAt : null,
@@ -2918,6 +2920,7 @@ export async function startOrUpdatePoll(params: {
   extraChartType?: VoteChartType;
   showResultsToVoters?: boolean;
   showOnBigScreen?: boolean;
+  showQrOnBigScreen?: boolean;
   allowChangeVote?: boolean;
   newRound?: boolean;
 }): Promise<{ success: boolean; roundId: string }> {
@@ -2978,6 +2981,10 @@ export async function startOrUpdatePoll(params: {
       params.showOnBigScreen !== undefined
         ? params.showOnBigScreen
         : existing.activePoll.showOnBigScreen,
+    showQrOnBigScreen:
+      params.showQrOnBigScreen !== undefined
+        ? params.showQrOnBigScreen
+        : existing.activePoll.showQrOnBigScreen !== false,
     allowChangeVote:
       params.allowChangeVote !== undefined
         ? params.allowChangeVote
@@ -3056,6 +3063,7 @@ export async function updateVotingSettings(
       ActivePollState,
       | 'showResultsToVoters'
       | 'showOnBigScreen'
+      | 'showQrOnBigScreen'
       | 'allowChangeVote'
       | 'question'
       | 'options'

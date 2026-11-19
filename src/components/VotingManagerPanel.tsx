@@ -30,6 +30,9 @@ import {
   Hash,
   AlignLeft,
   Info,
+  Settings,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import {
   LiveConnectedStudent,
@@ -178,6 +181,12 @@ export default function VotingManagerPanel({
   const [showQrModal, setShowQrModal] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [localToast, setLocalToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  // 3 Collapsible Sections + Nested Settings drawer inside Primary Section
+  const [showPrimarySection, setShowPrimarySection] = useState(true);
+  const [showPrimarySettings, setShowPrimarySettings] = useState(false);
+  const [showQuestionsSection, setShowQuestionsSection] = useState(false);
+  const [showResultsSection, setShowResultsSection] = useState(false);
 
   // Sheet history
   const [sheetHistory, setSheetHistory] = useState<VoteSheetRecord[]>([]);
@@ -639,11 +648,86 @@ export default function VotingManagerPanel({
     }
   };
 
+  const buildSheetPayload = () => {
+    const primarySummary = stats.optionStats
+      .map((o) => `${o.label}: ${o.count}`)
+      .join(' | ');
+    const fullSummary = stats.extraSummaryText
+      ? `${primarySummary} || ${stats.extraSummaryText}`
+      : primarySummary;
+
+    const studentsText =
+      stats.studentVotes.length > 0
+        ? stats.studentVotes
+            .map((s) => {
+              const extras = Object.values(s.extraChoices || {})
+                .map((c) => c.label)
+                .join('/');
+              return `${s.name || 'طالب'}: ${s.optionLabel}${extras ? ` (${extras})` : ''}`;
+            })
+            .join(' ، ')
+        : `ضيوف: ${stats.guestVotes.length}`;
+
+    return {
+      timestamp: new Date().toLocaleString('en-GB', { hour12: false }),
+      roundId: activePoll.roundId,
+      question: activePoll.question,
+      totalEntered: stats.totalEntered,
+      totalVoted: stats.totalVoted,
+      notVoted: stats.notVoted,
+      summaryText: fullSummary,
+      votersBreakdown: studentsText,
+      notes: `مسجلون: ${stats.studentVotes.length} | ضيوف: ${stats.guestVotes.length}`,
+    };
+  };
+
   const handleExitAndResetSession = async () => {
     setIsBusy(true);
+    let savedToSheet = false;
+    let saveAttempted = false;
     try {
+      const shouldAutoSave =
+        stats.totalVoted > 0 ||
+        stats.totalEntered > 0 ||
+        activePoll.status === 'active' ||
+        activePoll.status === 'closed';
+
+      if (shouldAutoSave) {
+        saveAttempted = true;
+        setIsSavingSheet(true);
+        try {
+          const saveRes = await saveVoteResultToSheetApi(buildSheetPayload());
+          savedToSheet = Boolean(saveRes.success);
+          if (savedToSheet && mode === 'admin') {
+            loadSheetHistory();
+          }
+        } catch {
+          savedToSheet = false;
+        } finally {
+          setIsSavingSheet(false);
+        }
+      }
+
       await exitAndResetVotingSession();
-      notify('تم إخراج المصوّتين، تصفير الذاكرة، وإظهار رسالة الشكر بنجاح');
+
+      if (saveAttempted && savedToSheet) {
+        notify(
+          t(
+            'vote_exit_autosaved_msg',
+            'تم حفظ النتيجة في الشيت تلقائياً، وإخراج المصوّتين وتصفير الذاكرة مع إظهار رسالة الشكر بنجاح'
+          )
+        );
+      } else if (saveAttempted && !savedToSheet) {
+        notify(
+          t(
+            'vote_exit_save_warn_msg',
+            'تم إخراج المصوّتين وتصفير الذاكرة وإظهار الشكر، ولكن تعذر الحفظ التلقائي في الشيت'
+          ),
+          'error'
+        );
+      } else {
+        notify('تم إخراج المصوّتين، تصفير الذاكرة، وإظهار رسالة الشكر بنجاح');
+      }
     } catch (err: any) {
       notify(err?.message || 'تعذر تنفيذ الخروج', 'error');
     } finally {
@@ -654,36 +738,7 @@ export default function VotingManagerPanel({
   const handleSaveResultToSheet = async () => {
     setIsSavingSheet(true);
     try {
-      const primarySummary = stats.optionStats
-        .map((o) => `${o.label}: ${o.count}`)
-        .join(' | ');
-      const fullSummary = stats.extraSummaryText
-        ? `${primarySummary} || ${stats.extraSummaryText}`
-        : primarySummary;
-
-      const studentsText =
-        stats.studentVotes.length > 0
-          ? stats.studentVotes
-              .map((s) => {
-                const extras = Object.values(s.extraChoices || {})
-                  .map((c) => c.label)
-                  .join('/');
-                return `${s.name || 'طالب'}: ${s.optionLabel}${extras ? ` (${extras})` : ''}`;
-              })
-              .join(' ، ')
-          : `ضيوف: ${stats.guestVotes.length}`;
-
-      const res = await saveVoteResultToSheetApi({
-        timestamp: new Date().toLocaleString('en-GB', { hour12: false }),
-        roundId: activePoll.roundId,
-        question: activePoll.question,
-        totalEntered: stats.totalEntered,
-        totalVoted: stats.totalVoted,
-        notVoted: stats.notVoted,
-        summaryText: fullSummary,
-        votersBreakdown: studentsText,
-        notes: `مسجلون: ${stats.studentVotes.length} | ضيوف: ${stats.guestVotes.length}`,
-      });
+      const res = await saveVoteResultToSheetApi(buildSheetPayload());
       if (res.success) {
         notify(res.message || 'تم تسجيل نتيجة التصويت في ورقة Votes-Results بنجاح');
         if (mode === 'admin') loadSheetHistory();
@@ -752,14 +807,35 @@ export default function VotingManagerPanel({
 
             <div className="flex items-center gap-2 flex-wrap">
               <LanguageSelector iconOnly align="left" />
-              <button
-                type="button"
-                onClick={() => setShowQrModal(true)}
-                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold flex items-center gap-1.5 border border-slate-700 cursor-pointer"
-              >
-                <QrCode className="w-4 h-4" />
-                <span>{t('vote_guest_qr_btn', 'QR الضيوف')}</span>
-              </button>
+              <div className="inline-flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setShowQrModal(true)}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold flex items-center gap-1.5 border border-slate-700 cursor-pointer"
+                >
+                  <QrCode className="w-4 h-4" />
+                  <span>{t('vote_guest_qr_btn', 'QR الضيوف')}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateVotingSettings({ showQrOnBigScreen: !(activePoll.showQrOnBigScreen !== false) })
+                  }
+                  title={t('vote_toggle_projector_qr_hint', 'إظهار / إخفاء رمز QR على شاشة البروجكتر')}
+                  aria-label={t('vote_toggle_projector_qr_hint', 'إظهار / إخفاء رمز QR على شاشة البروجكتر')}
+                  className={`p-2 rounded-xl border transition cursor-pointer ${
+                    activePoll.showQrOnBigScreen !== false
+                      ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
+                      : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {activePoll.showQrOnBigScreen !== false ? (
+                    <Eye className="w-4 h-4" />
+                  ) : (
+                    <EyeOff className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
               <button
                 type="button"
                 onClick={handleSaveResultToSheet}
@@ -1057,190 +1133,307 @@ export default function VotingManagerPanel({
         </div>
       )}
 
-      {/* TOP CONTROL ACTION BAR */}
-      <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
-              <Vote className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-sm sm:text-base font-black text-white">
-                {t('vote_panel_title', 'نظام التصويت المباشر (للمسجلين والضيوف)')}
-              </h3>
-              <p className="text-[11px] text-slate-400">
-                {t('vote_panel_desc', 'اختر السؤال والأزرار والتفاصيل الإضافية بنقرة واحدة ثم اضغط تشغيل')}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            <LanguageSelector iconOnly align="left" />
-
-            {isPollActive ? (
-              <button
-                type="button"
-                onClick={handleClosePoll}
-                disabled={isBusy}
-                className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
-              >
-                <Square className="w-3.5 h-3.5" />
-                <span>{t('vote_close_btn', 'إغلاق التصويت')}</span>
-              </button>
-            ) : null}
-
+      {/* 3-SECTION TOGGLE BAR + LANGUAGE SWITCHER */}
+      <div className="bg-slate-950/75 border border-slate-800 rounded-2xl p-3 space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
+          <div className="grid grid-cols-3 gap-2 flex-1 min-w-[260px]">
             <button
               type="button"
-              onClick={() => handleStartPoll(true)}
-              disabled={isBusy}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer disabled:opacity-50"
-            >
-              <Play className="w-3.5 h-3.5" />
-              <span>
-                {isPollActive
-                  ? t('vote_start_selected_btn', 'بدء تصويت السؤال المختار')
-                  : t('vote_start_btn', 'تشغيل التصويت للجميع')}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleResetPoll}
-              disabled={isBusy}
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold flex items-center gap-1.5 border border-slate-700 cursor-pointer disabled:opacity-50"
-              title={t('vote_reset_btn', 'بدء جولة جديدة وتصفير الأصوات السابقة')}
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>{t('vote_reset_btn', 'جولة جديدة (تصفير)')}</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleExitAndResetSession}
-              disabled={isBusy}
-              className="px-3.5 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-black flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
-              title={t('vote_exit_thanks_btn', 'إخراج المصوّتين وتصفير الذاكرة مع إظهار رسالة شكر لهم حتى يتم إطلاق سؤال جديد')}
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>{t('vote_exit_thanks_btn', 'خروج (تصفير وشكر)')}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Share & Teacher Screen Links */}
-        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
-          <button
-            type="button"
-            onClick={copyGuestLink}
-            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 border border-slate-700 cursor-pointer"
-          >
-            {copiedGuestLink ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-amber-400" />}
-            <span>
-              {copiedGuestLink
-                ? t('vote_guest_link_copied', 'تم نسخ رابط الضيوف!')
-                : t('vote_copy_guest_link', 'نسخ رابط التصويت العام (بدون تسجيل)')}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowQrModal(true)}
-            className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold flex items-center gap-1.5 border border-amber-500/30 cursor-pointer"
-          >
-            <QrCode className="w-3.5 h-3.5" />
-            <span>{t('vote_guest_qr_btn', 'رمز QR للضيوف')}</span>
-          </button>
-
-          <a
-            href={teacherMonitorUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-1.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 text-xs font-bold flex items-center gap-1.5 border border-sky-500/30 cursor-pointer"
-          >
-            <ExternalLink className="w-3.5 h-3.5" />
-            <span>{t('vote_teacher_monitor_link', 'صفحة المعلم لنتائج التصويت')}</span>
-          </a>
-
-          {onOpenBigScreen && (
-            <button
-              type="button"
-              onClick={onOpenBigScreen}
-              className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 text-xs font-bold flex items-center gap-1.5 border border-purple-500/30 cursor-pointer"
-            >
-              <Monitor className="w-3.5 h-3.5" />
-              <span>{t('vote_open_projector_btn', 'عرض على البروجكتر')}</span>
-            </button>
-          )}
-        </div>
-
-        {/* Toggle Settings + Clear Helper Hint for Projector Toggle */}
-        <div className="space-y-2 pt-1">
-          <div className="flex flex-wrap items-center gap-3 text-xs">
-            <button
-              type="button"
-              onClick={() => updateVotingSettings({ showResultsToVoters: !activePoll.showResultsToVoters })}
-              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition cursor-pointer ${
-                activePoll.showResultsToVoters
-                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                  : 'bg-slate-900 border-slate-700 text-slate-400'
+              onClick={() => setShowPrimarySection((v) => !v)}
+              className={`px-3 py-2.5 rounded-xl border text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                showPrimarySection
+                  ? 'bg-emerald-500/15 border-emerald-400 text-emerald-300 shadow-sm'
+                  : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
               }`}
             >
-              {activePoll.showResultsToVoters ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-              <span>
-                {t('vote_toggle_show_results', 'إظهار النتائج للمصوّتين')}:{' '}
-                {activePoll.showResultsToVoters ? t('vote_yes_word', 'نعم') : t('vote_no_word', 'لا')}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => updateVotingSettings({ allowChangeVote: !activePoll.allowChangeVote })}
-              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition cursor-pointer ${
-                activePoll.allowChangeVote
-                  ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
-                  : 'bg-slate-900 border-slate-700 text-slate-400'
-              }`}
-            >
-              <Sliders className="w-3.5 h-3.5" />
-              <span>
-                {t('vote_toggle_allow_change', 'السماح بتغيير الصوت')}:{' '}
-                {activePoll.allowChangeVote ? t('vote_yes_word', 'نعم') : t('vote_no_word', 'لا')}
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => updateVotingSettings({ showOnBigScreen: !activePoll.showOnBigScreen })}
-              title={t(
-                'vote_toggle_projector_hint',
-                'وظيفة توجيه البروجكتر: عند «نعم» تتحول شاشة البروجكتر تلقائياً لعرض التصويت ونتائجه، وعند «لا» يبقى البروجكتر على الشرح الحالي.'
+              <Play className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">{t('vote_section_primary_btn', 'الأزرار الأساسية')}</span>
+              {showPrimarySection ? (
+                <ChevronUp className="w-3.5 h-3.5 shrink-0 opacity-80" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-80" />
               )}
-              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition cursor-pointer ${
-                activePoll.showOnBigScreen
-                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                  : 'bg-slate-900 border-slate-700 text-slate-400'
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowQuestionsSection((v) => !v)}
+              className={`px-3 py-2.5 rounded-xl border text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                showQuestionsSection
+                  ? 'bg-sky-500/15 border-sky-400 text-sky-300 shadow-sm'
+                  : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
               }`}
             >
-              <Monitor className="w-3.5 h-3.5" />
-              <span>
-                {t('vote_toggle_projector_auto', 'توجيه البروجكتر للتصويت تلقائياً')}:{' '}
-                {activePoll.showOnBigScreen ? t('vote_yes_word', 'نعم') : t('vote_no_word', 'لا')}
-              </span>
+              <Edit3 className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">{t('vote_section_questions_btn', 'الأسئلة والأزرار')}</span>
+              {showQuestionsSection ? (
+                <ChevronUp className="w-3.5 h-3.5 shrink-0 opacity-80" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-80" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowResultsSection((v) => !v)}
+              className={`px-3 py-2.5 rounded-xl border text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                showResultsSection
+                  ? 'bg-purple-500/15 border-purple-400 text-purple-300 shadow-sm'
+                  : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
+              }`}
+            >
+              <BarChart3 className="w-3.5 h-3.5 shrink-0" />
+              <span className="truncate">{t('vote_section_results_btn', 'النتائج')}</span>
+              {stats.totalVoted > 0 && (
+                <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono text-[10px] tabular-nums">
+                  {stats.totalVoted}
+                </span>
+              )}
+              {showResultsSection ? (
+                <ChevronUp className="w-3.5 h-3.5 shrink-0 opacity-80" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5 shrink-0 opacity-80" />
+              )}
             </button>
           </div>
 
-          <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800/90 text-[11px] text-slate-400 flex items-start gap-2 leading-relaxed">
-            <Info className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-            <span>
-              {t(
-                'vote_toggle_projector_hint',
-                'وظيفة توجيه البروجكتر: عند «نعم» تتحول شاشة البروجكتر (التحويل الذكي) تلقائياً لعرض التصويت ونتائجه عند البدء، وعند «لا» يبقى البروجكتر على الشرح/الفيديو الحالي ويصوّت الحضور من أجهزتهم فقط.'
-              )}
-            </span>
-          </div>
+          <LanguageSelector iconOnly align="left" />
         </div>
       </div>
 
+      {/* SECTION 1: PRIMARY CONTROLS + COLLAPSIBLE SETTINGS DRAWER */}
+      {showPrimarySection && (
+        <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
+                <Vote className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm sm:text-base font-black text-white">
+                  {t('vote_panel_title', 'نظام التصويت المباشر (للمسجلين والضيوف)')}
+                </h3>
+                <p className="text-[11px] text-slate-400">
+                  {t('vote_panel_desc', 'اختر السؤال والأزرار والتفاصيل الإضافية بنقرة واحدة ثم اضغط تشغيل')}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {isPollActive ? (
+                <button
+                  type="button"
+                  onClick={handleClosePoll}
+                  disabled={isBusy}
+                  className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                >
+                  <Square className="w-3.5 h-3.5" />
+                  <span>{t('vote_close_btn', 'إغلاق التصويت')}</span>
+                </button>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => handleStartPoll(true)}
+                disabled={isBusy}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer disabled:opacity-50"
+              >
+                <Play className="w-3.5 h-3.5" />
+                <span>
+                  {isPollActive
+                    ? t('vote_start_selected_btn', 'بدء تصويت السؤال المختار')
+                    : t('vote_start_btn', 'تشغيل التصويت للجميع')}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetPoll}
+                disabled={isBusy}
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold flex items-center gap-1.5 border border-slate-700 cursor-pointer disabled:opacity-50"
+                title={t('vote_reset_btn', 'بدء جولة جديدة وتصفير الأصوات السابقة')}
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>{t('vote_reset_btn', 'جولة جديدة (تصفير)')}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExitAndResetSession}
+                disabled={isBusy}
+                className="px-3.5 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-black flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
+                title={t('vote_exit_thanks_btn', 'إخراج المصوّتين وتصفير الذاكرة مع إظهار رسالة شكر لهم حتى يتم إطلاق سؤال جديد')}
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>{t('vote_exit_thanks_btn', 'خروج (تصفير وشكر)')}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Single Settings Toggle Button (keeps Primary Controls always visible above) */}
+          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setShowPrimarySettings((v) => !v)}
+              className={`px-3.5 py-2 rounded-xl border text-xs font-black flex items-center gap-2 transition cursor-pointer ${
+                showPrimarySettings
+                  ? 'bg-amber-500/15 border-amber-400 text-amber-300'
+                  : 'bg-slate-900 border-slate-700 text-slate-300 hover:border-slate-500'
+              }`}
+            >
+              <Settings className="w-4 h-4" />
+              <span>{t('vote_settings_toggle_btn', 'إعدادات')}</span>
+              {showPrimarySettings ? (
+                <ChevronUp className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronDown className="w-3.5 h-3.5" />
+              )}
+            </button>
+          </div>
+
+          {showPrimarySettings && (
+            <div className="space-y-3 pt-2 border-t border-slate-800/70">
+              {/* Share & Teacher Screen Links */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={copyGuestLink}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 border border-slate-700 cursor-pointer"
+                >
+                  {copiedGuestLink ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-amber-400" />}
+                  <span>
+                    {copiedGuestLink
+                      ? t('vote_guest_link_copied', 'تم نسخ رابط الضيوف!')
+                      : t('vote_copy_guest_link', 'نسخ رابط التصويت العام (بدون تسجيل)')}
+                  </span>
+                </button>
+
+                <div className="inline-flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowQrModal(true)}
+                    className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold flex items-center gap-1.5 border border-amber-500/30 cursor-pointer"
+                  >
+                    <QrCode className="w-3.5 h-3.5" />
+                    <span>{t('vote_guest_qr_btn', 'رمز QR للضيوف')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateVotingSettings({ showQrOnBigScreen: !(activePoll.showQrOnBigScreen !== false) })
+                    }
+                    title={t('vote_toggle_projector_qr_hint', 'إظهار / إخفاء رمز QR على شاشة البروجكتر')}
+                    aria-label={t('vote_toggle_projector_qr_hint', 'إظهار / إخفاء رمز QR على شاشة البروجكتر')}
+                    className={`p-1.5 rounded-xl border transition cursor-pointer ${
+                      activePoll.showQrOnBigScreen !== false
+                        ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 hover:bg-amber-500/25'
+                        : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {activePoll.showQrOnBigScreen !== false ? (
+                      <Eye className="w-3.5 h-3.5" />
+                    ) : (
+                      <EyeOff className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+
+                <a
+                  href={teacherMonitorUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 text-xs font-bold flex items-center gap-1.5 border border-sky-500/30 cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>{t('vote_teacher_monitor_link', 'صفحة المعلم لنتائج التصويت')}</span>
+                </a>
+
+                {onOpenBigScreen && (
+                  <button
+                    type="button"
+                    onClick={onOpenBigScreen}
+                    className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 text-xs font-bold flex items-center gap-1.5 border border-purple-500/30 cursor-pointer"
+                  >
+                    <Monitor className="w-3.5 h-3.5" />
+                    <span>{t('vote_open_projector_btn', 'عرض على البروجكتر')}</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Toggle Settings + Clear Helper Hint for Projector Toggle */}
+              <div className="space-y-2 pt-1">
+                <div className="flex flex-wrap items-center gap-3 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => updateVotingSettings({ showResultsToVoters: !activePoll.showResultsToVoters })}
+                    className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                      activePoll.showResultsToVoters
+                        ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                        : 'bg-slate-900 border-slate-700 text-slate-400'
+                    }`}
+                  >
+                    {activePoll.showResultsToVoters ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+                    <span>
+                      {t('vote_toggle_show_results', 'إظهار النتائج للمصوّتين')}:{' '}
+                      {activePoll.showResultsToVoters ? t('vote_yes_word', 'نعم') : t('vote_no_word', 'لا')}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => updateVotingSettings({ allowChangeVote: !activePoll.allowChangeVote })}
+                    className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                      activePoll.allowChangeVote
+                        ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
+                        : 'bg-slate-900 border-slate-700 text-slate-400'
+                    }`}
+                  >
+                    <Sliders className="w-3.5 h-3.5" />
+                    <span>
+                      {t('vote_toggle_allow_change', 'السماح بتغيير الصوت')}:{' '}
+                      {activePoll.allowChangeVote ? t('vote_yes_word', 'نعم') : t('vote_no_word', 'لا')}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => updateVotingSettings({ showOnBigScreen: !activePoll.showOnBigScreen })}
+                    title={t(
+                      'vote_toggle_projector_hint',
+                      'وظيفة توجيه البروجكتر: عند «نعم» تتحول شاشة البروجكتر تلقائياً لعرض التصويت ونتائجه، وعند «لا» يبقى البروجكتر على الشرح الحالي.'
+                    )}
+                    className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                      activePoll.showOnBigScreen
+                        ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                        : 'bg-slate-900 border-slate-700 text-slate-400'
+                    }`}
+                  >
+                    <Monitor className="w-3.5 h-3.5" />
+                    <span>
+                      {t('vote_toggle_projector_auto', 'توجيه البروجكتر للتصويت تلقائياً')}:{' '}
+                      {activePoll.showOnBigScreen ? t('vote_yes_word', 'نعم') : t('vote_no_word', 'لا')}
+                    </span>
+                  </button>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800/90 text-[11px] text-slate-400 flex items-start gap-2 leading-relaxed">
+                  <Info className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                  <span>
+                    {t(
+                      'vote_toggle_projector_hint',
+                      'وظيفة توجيه البروجكتر: عند «نعم» تتحول شاشة البروجكتر (التحويل الذكي) تلقائياً لعرض التصويت ونتائجه عند البدء، وعند «لا» يبقى البروجكتر على الشرح/الفيديو الحالي ويصوّت الحضور من أجهزتهم فقط.'
+                    )}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* SECTION 2 COLLAPSIBLE WRAPPER: QUESTIONS, BUTTONS & EXTRA DETAILS */}
+      {showQuestionsSection && (
+        <div className="space-y-4">
       {/* SECTION 1: Preset Questions (Select + Edit + Delete on EVERY item) */}
       <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1876,7 +2069,12 @@ export default function VotingManagerPanel({
           )}
         </div>
       </div>
+        </div>
+      )}
 
+      {/* SECTION 3 COLLAPSIBLE WRAPPER: RESULTS & SHEET ARCHIVE */}
+      {showResultsSection && (
+        <div className="space-y-4">
       {/* SECTION 4: LIVE VOTING RESULTS, EXTRA DETAILS BREAKDOWN & COUNTERS */}
       <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2174,6 +2372,8 @@ export default function VotingManagerPanel({
               </table>
             </div>
           )}
+        </div>
+      )}
         </div>
       )}
 

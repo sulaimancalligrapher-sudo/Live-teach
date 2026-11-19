@@ -756,6 +756,7 @@ export interface ActivePollState {
   status: 'idle' | 'active' | 'closed' | 'exited';
   showResultsToVoters: boolean;
   showOnBigScreen: boolean;
+  showQrOnBigScreen?: boolean;
   allowChangeVote: boolean;
   startedAt: number | null;
   closedAt: number | null;

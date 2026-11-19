@@ -300,12 +300,13 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
         const analytics = computeVoteAnalytics(poll, voteParticipants, voteSubmissions, language);
         const voteDir = language === 'ar' ? 'rtl' : 'ltr';
         const localizedQuestion = getLocalizedVoteText(poll.question, language, poll.questionI18n);
+        const showQrOnProjector = poll.showQrOnBigScreen !== false;
 
         return (
           <div className="min-h-screen flex flex-col justify-center p-6 sm:p-10 pt-20 max-w-6xl mx-auto space-y-6" dir={voteDir}>
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
               {/* Main Column: Question + Live Counters + Selected Chart Type */}
-              <div className="lg:col-span-8 space-y-5">
+              <div className={`${showQrOnProjector ? 'lg:col-span-8' : 'lg:col-span-12'} space-y-5`}>
                 <div className="space-y-2">
                   <div className="inline-flex items-center gap-2 text-emerald-400 text-sm font-black">
                     <Vote className="w-5 h-5" />
@@ -423,20 +424,22 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
               </div>
 
               {/* Side Column: Instant Guest QR Code */}
-              <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
-                <span className="text-sm font-black text-amber-300 block">
-                  {t('vote_projector_scan_title', 'امسح الرمز للتصويت الفوري (بدون تسجيل)')}
-                </span>
-                <div className="w-56 h-56 mx-auto p-3 bg-white rounded-2xl flex items-center justify-center">
-                  <img src={guestVoteQrUrl} alt="Guest Vote QR" className="w-full h-full object-contain" />
+              {showQrOnProjector && (
+                <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
+                  <span className="text-sm font-black text-amber-300 block">
+                    {t('vote_projector_scan_title', 'امسح الرمز للتصويت الفوري (بدون تسجيل)')}
+                  </span>
+                  <div className="w-56 h-56 mx-auto p-3 bg-white rounded-2xl flex items-center justify-center">
+                    <img src={guestVoteQrUrl} alt="Guest Vote QR" className="w-full h-full object-contain" />
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    {t(
+                      'vote_projector_scan_desc',
+                      'المشتركون المسجلون يظهر لهم التصويت تلقائياً في شاشاتهم، والضيوف يمسحون هذا الرمز للتصويت مباشرة.'
+                    )}
+                  </p>
                 </div>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  {t(
-                    'vote_projector_scan_desc',
-                    'المشتركون المسجلون يظهر لهم التصويت تلقائياً في شاشاتهم، والضيوف يمسحون هذا الرمز للتصويت مباشرة.'
-                  )}
-                </p>
-              </div>
+              )}
             </div>
           </div>
         );

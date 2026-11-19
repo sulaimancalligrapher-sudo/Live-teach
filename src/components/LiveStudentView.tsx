@@ -20,6 +20,7 @@ import {
   subscribeToVotingConfig, subscribeToVotingRoundActivity, registerVoteParticipant, submitVoteChoice, submitVoteExtraDetails, getStudentVoterId, defaultVotingConfigState
 } from '../api';
 import { computeVoteAnalytics, isExtraDetailsComplete } from '../lib/voteAnalytics';
+import { getLocalizedVoteText } from '../lib/voteTranslations';
 import VoteChartRenderer from './VoteChartRenderer';
 import VoterExtraDetailsBox from './VoterExtraDetailsBox';
 import LiveChatModal from './LiveChatModal';
@@ -211,7 +212,7 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
   const activePollStatus = votingState.activePoll?.status || 'idle';
   const studentVoterId = getStudentVoterId(username, sheetNumber);
 
-  // Cleanly reset per-round voting state whenever roundId changes or poll exits
+  // Cleanly reset per-round voting state ONLY when roundId actually changes
   useEffect(() => {
     setVoteRoundVotes([]);
     setVoteExtraChoices({});
@@ -220,10 +221,27 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
     setShowVoteExtraPrompt(false);
     setIsSavingVoteExtra(false);
     setIsVoteCardMinimized(false);
+  }, [activePollRoundId]);
+
+  // Keep votes intact when poll closes so final results stay visible to registered students;
+  // only clear myVotedOptions/votes on full session exit.
+  useEffect(() => {
     if (activePollStatus === 'exited') {
+      setVoteRoundVotes([]);
+      setVoteExtraChoices({});
+      setVoteExtraNumbers({});
+      setVoteExtraCompletedLocal(false);
+      setShowVoteExtraPrompt(false);
+      setIsSavingVoteExtra(false);
+      setIsVoteCardMinimized(false);
       setMyVotedOptions({});
+    } else if (activePollStatus === 'closed') {
+      setShowVoteExtraPrompt(false);
+      if (votingState.activePoll?.showResultsToVoters) {
+        setIsVoteCardMinimized(false);
+      }
     }
-  }, [activePollRoundId, activePollStatus]);
+  }, [activePollStatus, votingState.activePoll?.showResultsToVoters]);
 
   useEffect(() => {
     if (!isJoined || !isPinVerified || !activePollRoundId || activePollStatus !== 'active') return;
@@ -1644,6 +1662,8 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
           const poll = votingState.activePoll;
           if (!poll) return null;
 
+          const voteDir = language === 'ar' ? 'rtl' : 'ltr';
+
           // Exited Thank-You Card (dismissible so student stays in classroom)
           if (poll.status === 'exited') {
             if (dismissedExitRoundId === poll.roundId) return null;
@@ -1651,17 +1671,22 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="mb-4 p-4 rounded-3xl bg-slate-900 border border-emerald-500/40 shadow-xl flex items-center justify-between gap-3 text-right"
-                dir="rtl"
+                className="mb-4 p-4 rounded-3xl bg-slate-900 border border-emerald-500/40 shadow-xl flex items-center justify-between gap-3 text-start"
+                dir={voteDir}
               >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
                     <Award className="w-5 h-5" />
                   </div>
                   <div>
-                    <div className="text-sm font-black text-white">شكراً لمشاركتكم في التصويت!</div>
+                    <div className="text-sm font-black text-white">
+                      {t('vote_exited_thank_title', 'شكراً لمشاركتكم في التصويت!')}
+                    </div>
                     <div className="text-xs text-slate-400">
-                      تم إنهاء جلسة التصويت وتصفير الذاكرة. سيظهر أي سؤال جديد تلقائياً هنا.
+                      {t(
+                        'vote_exited_thank_desc',
+                        'تم إنهاء جلسة التصويت وتصفير الذاكرة. سيظهر أي سؤال جديد تلقائياً هنا.'
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1669,7 +1694,7 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
                   type="button"
                   onClick={() => setDismissedExitRoundId(poll.roundId)}
                   className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer shrink-0"
-                  title="إخفاء"
+                  title={t('close', 'إخفاء')}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1680,6 +1705,13 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
           if (poll.status === 'idle') return null;
 
           const myChosen = myVotedOptions[poll.roundId] || null;
+          const myChosenMatchedOpt = myChosen
+            ? poll.options.find((o) => o.id === myChosen.id) || myChosen
+            : null;
+          const myChosenDisplayLabel = myChosenMatchedOpt
+            ? getLocalizedVoteText(myChosenMatchedOpt.label, language, myChosenMatchedOpt.i18n)
+            : '';
+
           const isPollClosed = poll.status === 'closed';
           // Only show closed card if results are shown to voters (otherwise wait quietly for next round or exit)
           if (isPollClosed && !poll.showResultsToVoters) return null;
@@ -1690,9 +1722,10 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
             const tr = String(v || '').trim();
             if (tr !== '' && !isNaN(Number(tr))) parsedNumericMap[k] = Number(tr);
           });
-          const extraCheck = isExtraDetailsComplete(extraGroups, voteExtraChoices, parsedNumericMap);
+          const extraCheck = isExtraDetailsComplete(extraGroups, voteExtraChoices, parsedNumericMap, language);
           const isLocked = isPollClosed || (Boolean(myChosen) && !poll.allowChangeVote);
-          const analytics = computeVoteAnalytics(poll, [], voteRoundVotes);
+          const analytics = computeVoteAnalytics(poll, [], voteRoundVotes, language);
+          const localizedPollQuestion = getLocalizedVoteText(poll.question, language, poll.questionI18n);
 
           const voteColorClasses: Record<string, string> = {
             emerald: 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400/60',
@@ -1706,7 +1739,7 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
           const handleStudentVoteTap = async (opt: VoteOption) => {
             if (isLocked || isSubmittingVote || isPollClosed) return;
             setIsSubmittingVote(true);
-            const currentCheck = isExtraDetailsComplete(extraGroups, voteExtraChoices, parsedNumericMap);
+            const currentCheck = isExtraDetailsComplete(extraGroups, voteExtraChoices, parsedNumericMap, language);
             try {
               const res = await submitVoteChoice(
                 poll.roundId,
@@ -1748,7 +1781,7 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
               const tr = String(v || '').trim();
               if (tr !== '' && !isNaN(Number(tr))) numRec[k] = Number(tr);
             });
-            const chk = isExtraDetailsComplete(extraGroups, nextChoices, numRec);
+            const chk = isExtraDetailsComplete(extraGroups, nextChoices, numRec, language);
             setIsSavingVoteExtra(true);
             try {
               await submitVoteExtraDetails(
@@ -1790,7 +1823,7 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
                 const tr = String(v || '').trim();
                 if (tr !== '' && !isNaN(Number(tr))) numRec[k] = Number(tr);
               });
-              const chk = isExtraDetailsComplete(extraGroups, nextChoices, numRec);
+              const chk = isExtraDetailsComplete(extraGroups, nextChoices, numRec, language);
               const hasUnfilledNumber = extraGroups.some((g) =>
                 g.items.some((i) => i.inputType === 'number' && !String(voteExtraNumbers[`${g.id}__${i.id}`] || '').trim())
               );
@@ -1800,19 +1833,21 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
             }
           };
 
-          if (myChosen && isVoteCardMinimized) {
+          if (myChosen && isVoteCardMinimized && !isPollClosed) {
             return (
-              <div className="mb-3 px-4 py-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-2 text-xs" dir="rtl">
+              <div className="mb-3 px-4 py-2.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between gap-2 text-xs" dir={voteDir}>
                 <div className="flex items-center gap-2 text-emerald-300 font-bold truncate">
                   <Vote className="w-4 h-4 shrink-0" />
-                  <span className="truncate">تم التصويت: {myChosen.label}</span>
+                  <span className="truncate">
+                    {t('vote_recorded_success', 'تم التصويت:')} {myChosenDisplayLabel}
+                  </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setIsVoteCardMinimized(false)}
                   className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-200 font-bold cursor-pointer shrink-0"
                 >
-                  عرض
+                  {language === 'en' ? 'Show' : language === 'th' ? 'แสดง' : 'عرض'}
                 </button>
               </div>
             );
@@ -1822,17 +1857,21 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mb-4 p-4 sm:p-5 rounded-3xl bg-slate-900 border-2 border-emerald-500/50 shadow-2xl space-y-3.5 text-right"
-              dir="rtl"
+              className="mb-4 p-4 sm:p-5 rounded-3xl bg-slate-900 border-2 border-emerald-500/50 shadow-2xl space-y-3.5 text-start"
+              dir={voteDir}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="space-y-1">
                   <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-black">
                     <Vote className="w-4 h-4" />
-                    <span>{isPollClosed ? 'النتائج النهائية للتصويت' : 'تصويت مباشر الآن'}</span>
+                    <span>
+                      {isPollClosed
+                        ? t('vote_final_results_heading', 'النتائج النهائية للتصويت')
+                        : t('vote_student_badge_live', 'تصويت مباشر الآن')}
+                    </span>
                   </div>
                   <h4 className="text-base sm:text-lg font-black text-white leading-snug">
-                    {poll.question}
+                    {localizedPollQuestion}
                   </h4>
                 </div>
                 {(myChosen || isPollClosed) && (
@@ -1840,7 +1879,7 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
                     type="button"
                     onClick={() => setIsVoteCardMinimized(true)}
                     className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white cursor-pointer"
-                    title="تصغير بطاقة التصويت"
+                    title={language === 'en' ? 'Minimize' : language === 'th' ? 'ย่อขนาด' : 'تصغير بطاقة التصويت'}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1868,7 +1907,7 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
                           }`}
                         >
                           {chosen && <CheckCircle2 className="w-4 h-4 shrink-0" />}
-                          <span>{opt.label}</span>
+                          <span>{getLocalizedVoteText(opt.label, language, opt.i18n)}</span>
                         </button>
                       );
                     })}
@@ -1904,17 +1943,23 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
                       : 'text-emerald-300'
                   }`}
                 >
-                  <CheckCircle2 className="w-4 h-4" />
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
                   <span>
                     {extraGroups.length > 0 && !extraCheck.complete
-                      ? `تم استلام صوتك (${myChosen.label}) — يرجى استكمال التفاصيل الإضافية أعلاه`
-                      : `تم استلام صوتك بنجاح: ${myChosen.label}`}
+                      ? `(${myChosenDisplayLabel}) — ${t('vote_need_extra_notice', 'يرجى استكمال التفاصيل الإضافية أدناه:')}`
+                      : `${t('vote_recorded_success', 'تم استلام صوتك بنجاح:')} ${myChosenDisplayLabel}`}
                   </span>
                 </div>
               )}
 
               {poll.showResultsToVoters && (myChosen || isPollClosed) && (
                 <div className="pt-3 border-t border-slate-800 space-y-3">
+                  <div className="text-[11px] font-bold text-slate-400">
+                    {isPollClosed
+                      ? t('vote_final_results_heading', 'النتائج النهائية للتصويت')
+                      : t('vote_live_results_count_heading', 'النتائج المباشرة')}{' '}
+                    ({t('vote_total_votes_label', 'إجمالي الأصوات')}: {analytics.totalVoted})
+                  </div>
                   <VoteChartRenderer
                     entries={analytics.optionStats}
                     chartType={poll.primaryChartType || 'horizontal_bar'}
@@ -1923,7 +1968,7 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
                   />
                   {analytics.extraGroupAnalytics.map((ga) => (
                     <div key={ga.group.id} className="pt-2 border-t border-slate-800/80 space-y-2">
-                      <div className="text-[11px] font-black text-sky-300">{ga.group.name}</div>
+                      <div className="text-[11px] font-black text-sky-300">{ga.localizedGroupName}</div>
                       {ga.hasChoiceItems && (
                         <VoteChartRenderer
                           entries={ga.choiceEntries}

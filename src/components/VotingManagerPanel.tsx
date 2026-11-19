@@ -29,6 +29,7 @@ import {
   PieChart,
   Hash,
   AlignLeft,
+  Info,
 } from 'lucide-react';
 import {
   LiveConnectedStudent,
@@ -63,6 +64,9 @@ import {
   updateVotingSettings,
 } from '../api';
 import { computeVoteAnalytics } from '../lib/voteAnalytics';
+import { getLocalizedVoteText, translatePollPackageOnce } from '../lib/voteTranslations';
+import { useLanguage } from '../translations';
+import LanguageSelector from './LanguageSelector';
 import VoteChartRenderer, { VOTE_CHART_OPTIONS, VOTE_COLOR_MAP } from './VoteChartRenderer';
 
 interface VotingManagerPanelProps {
@@ -84,6 +88,7 @@ function ChartTypeSelector({
   label: string;
   accentClass?: string;
 }) {
+  const { t } = useLanguage();
   const icons: Record<VoteChartType, React.ReactNode> = {
     numbers: <Hash className="w-3.5 h-3.5" />,
     horizontal_bar: <AlignLeft className="w-3.5 h-3.5" />,
@@ -109,7 +114,7 @@ function ChartTypeSelector({
               }`}
             >
               {icons[opt.value]}
-              <span>{opt.label}</span>
+              <span>{t(opt.labelKey, opt.label)}</span>
             </button>
           );
         })}
@@ -124,6 +129,8 @@ export default function VotingManagerPanel({
   onBack,
   onOpenBigScreen,
 }: VotingManagerPanelProps) {
+  const { language, t } = useLanguage();
+  const dir = language === 'ar' ? 'rtl' : 'ltr';
   const [votingState, setVotingState] = useState<VotingConfigState>(defaultVotingConfigState);
   const [participants, setParticipants] = useState<VoteParticipantRecord[]>([]);
   const [votes, setVotes] = useState<VoteSubmissionRecord[]>([]);
@@ -248,8 +255,8 @@ export default function VotingManagerPanel({
 
   // Compute full analytics (totals, options, extra breakdowns, "لم يحدد", cross-tabs)
   const stats = useMemo(
-    () => computeVoteAnalytics(activePoll, participants, votes),
-    [activePoll, participants, votes]
+    () => computeVoteAnalytics(activePoll, participants, votes, language),
+    [activePoll, participants, votes, language]
   );
 
   // Selected Extra Groups resolved objects
@@ -293,19 +300,32 @@ export default function VotingManagerPanel({
     if (!txt) return;
 
     let nextQuestions: VotePresetQuestion[];
-    let targetId = editingQuestionId || `pq_${Date.now()}`;
+    const targetId = editingQuestionId || `pq_${Date.now()}`;
+
+    const translated = await translatePollPackageOnce({
+      question: txt,
+      options: [],
+      extraGroups: [],
+    });
 
     if (questionFormMode === 'edit' && editingQuestionId) {
-      nextQuestions = presetQuestions.map((q) =>
-        q.id === editingQuestionId
-          ? { ...q, text: txt, defaultOptionSetId: formQuestionSetId || undefined }
-          : q
-      );
+      nextQuestions = presetQuestions.map((q) => {
+        if (q.id !== editingQuestionId) return q;
+        const updated: VotePresetQuestion = {
+          id: q.id,
+          text: txt,
+          i18n: translated.questionI18n,
+          ...(formQuestionSetId ? { defaultOptionSetId: formQuestionSetId } : {}),
+          ...(q.isCustom !== undefined ? { isCustom: q.isCustom } : {}),
+        };
+        return updated;
+      });
     } else {
       const newItem: VotePresetQuestion = {
         id: targetId,
         text: txt,
-        defaultOptionSetId: formQuestionSetId || undefined,
+        i18n: translated.questionI18n,
+        ...(formQuestionSetId ? { defaultOptionSetId: formQuestionSetId } : {}),
         isCustom: true,
       };
       nextQuestions = [...presetQuestions, newItem];
@@ -390,18 +410,27 @@ export default function VotingManagerPanel({
     }
 
     const labelName = formSetName.trim() || validOpts.map((o) => o.label).join(' / ');
+    const translated = await translatePollPackageOnce({
+      question: labelName,
+      options: validOpts,
+      extraGroups: [],
+    });
+
     let nextSets: VotePresetOptionSet[];
-    let targetSetId = editingSetId || `set_${Date.now()}`;
+    const targetSetId = editingSetId || `set_${Date.now()}`;
 
     if (buttonSetFormMode === 'edit' && editingSetId) {
       nextSets = presetOptionSets.map((s) =>
-        s.id === editingSetId ? { ...s, name: labelName, options: validOpts } : s
+        s.id === editingSetId
+          ? { ...s, name: labelName, nameI18n: translated.questionI18n, options: translated.options }
+          : s
       );
     } else {
       const newSet: VotePresetOptionSet = {
         id: targetSetId,
         name: labelName,
-        options: validOpts,
+        nameI18n: translated.questionI18n,
+        options: translated.options,
         isCustom: true,
       };
       nextSets = [...presetOptionSets, newSet];
@@ -410,7 +439,7 @@ export default function VotingManagerPanel({
     try {
       await saveVotingPresets(presetQuestions, nextSets, presetExtraGroups);
       setSelectedOptionSetId(targetSetId);
-      setDraftOptions(validOpts);
+      setDraftOptions(translated.options);
       setButtonSetFormMode('none');
       setEditingSetId(null);
       setFormSetName('');
@@ -486,22 +515,34 @@ export default function VotingManagerPanel({
     }
 
     const grpName = formExtraGroupName.trim() || cleanItems.map((i) => i.label).join(' / ');
-    let nextGroups: VoteExtraGroup[];
     const targetId = editingExtraGroupId || `extra_${Date.now()}`;
+    const candidateGroup: VoteExtraGroup = {
+      id: targetId,
+      name: grpName,
+      items: cleanItems,
+      required: true,
+      ...(extraFormMode === 'edit' ? {} : { isCustom: true }),
+    };
 
+    const translated = await translatePollPackageOnce({
+      question: grpName,
+      options: [],
+      extraGroups: [candidateGroup],
+    });
+    const translatedGroup = translated.extraGroups[0] || candidateGroup;
+
+    let nextGroups: VoteExtraGroup[];
     if (extraFormMode === 'edit' && editingExtraGroupId) {
       nextGroups = presetExtraGroups.map((g) =>
-        g.id === editingExtraGroupId ? { ...g, name: grpName, items: cleanItems, required: true } : g
+        g.id === editingExtraGroupId
+          ? {
+              ...translatedGroup,
+              ...(g.isCustom !== undefined ? { isCustom: g.isCustom } : {}),
+            }
+          : g
       );
     } else {
-      const newGroup: VoteExtraGroup = {
-        id: targetId,
-        name: grpName,
-        items: cleanItems,
-        required: true,
-        isCustom: true,
-      };
-      nextGroups = [...presetExtraGroups, newGroup];
+      nextGroups = [...presetExtraGroups, { ...translatedGroup, isCustom: true }];
     }
 
     try {
@@ -548,10 +589,20 @@ export default function VotingManagerPanel({
   const handleStartPoll = async (forceNewRound: boolean = true) => {
     setIsBusy(true);
     try {
-      await startOrUpdatePoll({
-        question: customQuestionText.trim() || DEFAULT_VOTE_PRESET_QUESTIONS[0].text,
+      const qText = customQuestionText.trim() || DEFAULT_VOTE_PRESET_QUESTIONS[0].text;
+      const matchedPresetQ = presetQuestions.find((pq) => pq.text.trim() === qText);
+      const translatedPkg = await translatePollPackageOnce({
+        question: qText,
+        questionI18n: matchedPresetQ?.i18n,
         options: draftOptions,
         extraGroups: selectedExtraGroups,
+      });
+
+      await startOrUpdatePoll({
+        question: qText,
+        questionI18n: translatedPkg.questionI18n,
+        options: translatedPkg.options,
+        extraGroups: translatedPkg.extraGroups,
         primaryChartType,
         extraChartType,
         newRound: forceNewRound,
@@ -604,7 +655,7 @@ export default function VotingManagerPanel({
     setIsSavingSheet(true);
     try {
       const primarySummary = stats.optionStats
-        .map((o) => `${o.label}: ${o.count} (${o.percent}%)`)
+        .map((o) => `${o.label}: ${o.count}`)
         .join(' | ');
       const fullSummary = stats.extraSummaryText
         ? `${primarySummary} || ${stats.extraSummaryText}`
@@ -670,11 +721,16 @@ export default function VotingManagerPanel({
   };
 
   const isPollActive = activePoll?.status === 'active';
+  const localizedActiveQuestion = getLocalizedVoteText(
+    activePoll.question,
+    language,
+    activePoll.questionI18n
+  );
 
   // Standalone Teacher Monitor Mode (?page=vote-teacher)
   if (mode === 'teacher-monitor') {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-8 font-sans" dir="rtl">
+      <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-8 font-sans" dir={dir}>
         <div className="max-w-5xl mx-auto space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
             <div className="flex items-center gap-3">
@@ -682,21 +738,27 @@ export default function VotingManagerPanel({
                 <Vote className="w-6 h-6" />
               </div>
               <div>
-                <h1 className="text-xl sm:text-2xl font-black text-white">شاشة نتائج التصويت المباشر — المعلم</h1>
+                <h1 className="text-xl sm:text-2xl font-black text-white">
+                  {t('vote_teacher_screen_title', 'شاشة نتائج التصويت المباشر — المعلم')}
+                </h1>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  متابعة لحظية للدخول الكلي، المصوّتين، ومن لم يصوّتوا، وتحليل التفاصيل الإضافية
+                  {t(
+                    'vote_teacher_screen_desc',
+                    'متابعة لحظية للدخول الكلي، المصوّتين، ومن لم يصوّتوا، وتحليل التفاصيل الإضافية'
+                  )}
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
+              <LanguageSelector iconOnly align="left" />
               <button
                 type="button"
                 onClick={() => setShowQrModal(true)}
                 className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold flex items-center gap-1.5 border border-slate-700 cursor-pointer"
               >
                 <QrCode className="w-4 h-4" />
-                <span>QR الضيوف</span>
+                <span>{t('vote_guest_qr_btn', 'QR الضيوف')}</span>
               </button>
               <button
                 type="button"
@@ -705,7 +767,11 @@ export default function VotingManagerPanel({
                 className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
                 <FileSpreadsheet className="w-4 h-4" />
-                <span>{isSavingSheet ? 'جارٍ الحفظ...' : 'حفظ في الشيت'}</span>
+                <span>
+                  {isSavingSheet
+                    ? t('vote_saving_sheet_btn', 'جارٍ الحفظ...')
+                    : t('vote_save_to_sheet_btn', 'حفظ في الشيت')}
+                </span>
               </button>
               {onBack && (
                 <button
@@ -714,7 +780,7 @@ export default function VotingManagerPanel({
                   className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" />
-                  <span>عودة</span>
+                  <span>{t('back', 'عودة')}</span>
                 </button>
               )}
             </div>
@@ -745,12 +811,12 @@ export default function VotingManagerPanel({
                 }`}
               >
                 {isPollActive
-                  ? 'التصويت مفتوح الآن'
+                  ? t('vote_status_open', 'التصويت مفتوح الآن')
                   : activePoll.status === 'closed'
-                  ? 'التصويت مغلق'
+                  ? t('vote_status_closed', 'التصويت مغلق')
                   : activePoll.status === 'exited'
-                  ? 'تم إخراج المصوّتين وتصفير الذاكرة'
-                  : 'في انتظار البدء'}
+                  ? t('vote_status_exited', 'تم إخراج المصوّتين وتصفير الذاكرة')
+                  : t('vote_status_ready', 'في انتظار البدء')}
               </span>
 
               <div className="flex items-center gap-2 flex-wrap">
@@ -762,7 +828,7 @@ export default function VotingManagerPanel({
                     className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
                   >
                     <Square className="w-3.5 h-3.5" />
-                    <span>إغلاق التصويت</span>
+                    <span>{t('vote_close_btn', 'إغلاق التصويت')}</span>
                   </button>
                 ) : (
                   <button
@@ -772,7 +838,7 @@ export default function VotingManagerPanel({
                     className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
                   >
                     <Play className="w-3.5 h-3.5" />
-                    <span>تشغيل جولة جديدة</span>
+                    <span>{t('vote_start_btn', 'تشغيل جولة جديدة')}</span>
                   </button>
                 )}
                 <button
@@ -782,7 +848,7 @@ export default function VotingManagerPanel({
                   className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold flex items-center gap-1.5 border border-slate-700 cursor-pointer"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
-                  <span>تصفير</span>
+                  <span>{t('vote_reset_short_btn', 'تصفير')}</span>
                 </button>
                 <button
                   type="button"
@@ -791,13 +857,13 @@ export default function VotingManagerPanel({
                   className="px-3.5 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
-                  <span>خروج وشكر</span>
+                  <span>{t('vote_exit_thanks_short_btn', 'خروج وشكر')}</span>
                 </button>
               </div>
             </div>
 
             <h2 className="text-2xl sm:text-3xl font-black text-white leading-snug">
-              {activePoll.question}
+              {localizedActiveQuestion}
             </h2>
           </div>
 
@@ -805,10 +871,12 @@ export default function VotingManagerPanel({
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center justify-between">
               <div>
-                <div className="text-xs font-bold text-slate-400">إجمالي الدخول الكلي</div>
+                <div className="text-xs font-bold text-slate-400">
+                  {t('vote_total_entered_label', 'إجمالي الدخول الكلي')}
+                </div>
                 <div className="text-3xl font-black font-mono tabular-nums text-sky-400 mt-1">{stats.totalEntered}</div>
                 <div className="text-[11px] text-slate-500 mt-1">
-                  مسجلون: {stats.studentParticipantsCount} · ضيوف: {stats.guestParticipantsCount}
+                  {t('vote_registered_word', 'مسجلون')}: {stats.studentParticipantsCount} · {t('vote_guests_word', 'ضيوف')}: {stats.guestParticipantsCount}
                 </div>
               </div>
               <Users className="w-9 h-9 text-sky-500/40" />
@@ -816,10 +884,12 @@ export default function VotingManagerPanel({
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center justify-between">
               <div>
-                <div className="text-xs font-bold text-slate-400">عدد المصوّتين فعلياً</div>
+                <div className="text-xs font-bold text-slate-400">
+                  {t('vote_total_voted_label', 'عدد المصوّتين فعلياً')}
+                </div>
                 <div className="text-3xl font-black font-mono tabular-nums text-emerald-400 mt-1">{stats.totalVoted}</div>
-                <div className="text-[11px] text-slate-500 mt-1">
-                  نسبة المشاركة: {stats.totalEntered > 0 ? Math.round((stats.totalVoted / stats.totalEntered) * 100) : 0}%
+                <div className="text-[11px] text-slate-500 mt-1 font-mono tabular-nums">
+                  {stats.totalVoted} / {stats.totalEntered}
                 </div>
               </div>
               <UserCheck className="w-9 h-9 text-emerald-500/40" />
@@ -827,9 +897,13 @@ export default function VotingManagerPanel({
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center justify-between">
               <div>
-                <div className="text-xs font-bold text-slate-400">عدد من لم يصوّتوا بعد</div>
+                <div className="text-xs font-bold text-slate-400">
+                  {t('vote_not_voted_label', 'عدد من لم يصوّتوا بعد')}
+                </div>
                 <div className="text-3xl font-black font-mono tabular-nums text-amber-400 mt-1">{stats.notVoted}</div>
-                <div className="text-[11px] text-slate-500 mt-1">منتظرون داخل صفحة التصويت</div>
+                <div className="text-[11px] text-slate-500 mt-1">
+                  {t('vote_waiting_title', 'منتظرون داخل صفحة التصويت')}
+                </div>
               </div>
               <Clock className="w-9 h-9 text-amber-500/40" />
             </div>
@@ -837,7 +911,9 @@ export default function VotingManagerPanel({
 
           {/* Primary Chart Section */}
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
-            <h3 className="text-sm font-black text-slate-200">توزيع الأصوات حسب الخيارات الأساسية</h3>
+            <h3 className="text-sm font-black text-slate-200">
+              {t('vote_live_results_heading', 'توزيع الأصوات حسب الخيارات الأساسية')}
+            </h3>
             <VoteChartRenderer
               entries={stats.optionStats}
               chartType={primaryChartType}
@@ -845,7 +921,7 @@ export default function VotingManagerPanel({
               size="normal"
             />
             <ChartTypeSelector
-              label="تغيير عرض النتائج الأساسية"
+              label={t('vote_primary_chart_label', 'تغيير عرض النتائج الأساسية')}
               value={primaryChartType}
               onChange={(next) => updateVotingSettings({ primaryChartType: next })}
               accentClass="text-sky-300"
@@ -856,12 +932,14 @@ export default function VotingManagerPanel({
           {stats.extraGroupAnalytics.length > 0 && (
             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-black text-amber-300">تحليل التفاصيل الإضافية والفئات</h3>
+                <h3 className="text-sm font-black text-amber-300">
+                  {t('vote_crosstab_title', 'تحليل التفاصيل الإضافية والفئات')}
+                </h3>
               </div>
 
               {stats.extraGroupAnalytics.map((ga) => (
                 <div key={ga.group.id} className="space-y-4 pt-3 border-t border-slate-800 first:border-t-0 first:pt-0">
-                  <div className="text-xs font-black text-white">{ga.group.name}</div>
+                  <div className="text-xs font-black text-white">{ga.localizedGroupName}</div>
 
                   {ga.hasChoiceItems && (
                     <div className="space-y-3">
@@ -872,11 +950,11 @@ export default function VotingManagerPanel({
                         size="normal"
                       />
                       <div className="overflow-x-auto bg-slate-950/80 border border-slate-800 rounded-2xl p-3">
-                        <table className="w-full text-xs text-right">
+                        <table className="w-full text-xs text-start">
                           <thead>
                             <tr className="border-b border-slate-800 text-slate-400">
-                              <th className="py-2 px-2">الفئة</th>
-                              <th className="py-2 px-2">المجموع</th>
+                              <th className="py-2 px-2">{t('vote_crosstab_col_category', 'الفئة')}</th>
+                              <th className="py-2 px-2">{t('vote_crosstab_col_total', 'المجموع')}</th>
                               {stats.optionStats.map((po) => (
                                 <th key={po.id} className="py-2 px-2">{po.label}</th>
                               ))}
@@ -889,7 +967,7 @@ export default function VotingManagerPanel({
                                 <td className="py-2 px-2 font-mono tabular-nums text-sky-400">{row.total}</td>
                                 {row.byPrimary.map((bp) => (
                                   <td key={bp.optionId} className="py-2 px-2 font-mono tabular-nums text-slate-300">
-                                    {bp.count} ({bp.percent}%)
+                                    {bp.count}
                                   </td>
                                 ))}
                               </tr>
@@ -903,10 +981,10 @@ export default function VotingManagerPanel({
                   {ga.numberFields.map((nf) => (
                     <div key={nf.item.id} className="space-y-3">
                       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                        <span className="font-bold text-sky-300">{nf.item.label}</span>
+                        <span className="font-bold text-sky-300">{nf.localizedItemLabel}</span>
                         <span className="font-mono tabular-nums text-slate-300">
-                          أجاب: {nf.answeredCount} · لم يحدد: {nf.missingCount}
-                          {nf.average !== null ? ` · المتوسط: ${nf.average} (${nf.min}–${nf.max})` : ''}
+                          {nf.answeredCount} / {stats.totalVoted} · {t('vote_not_specified', 'لم يحدد')}: {nf.missingCount}
+                          {nf.average !== null ? ` · ${t('vote_avg_label', 'المتوسط')}: ${nf.average} (${nf.min}–${nf.max})` : ''}
                         </span>
                       </div>
                       <VoteChartRenderer
@@ -921,7 +999,7 @@ export default function VotingManagerPanel({
               ))}
 
               <ChartTypeSelector
-                label="تغيير عرض نتائج التفاصيل الإضافية"
+                label={t('vote_extra_chart_label', 'تغيير عرض نتائج التفاصيل الإضافية')}
                 value={extraChartType}
                 onChange={(next) => updateVotingSettings({ extraChartType: next })}
                 accentClass="text-amber-300"
@@ -932,10 +1010,10 @@ export default function VotingManagerPanel({
 
         {/* QR Modal */}
         {showQrModal && (
-          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" dir={dir}>
             <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-sm w-full text-center space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-black text-white">رمز التصويت العام للضيوف (QR)</span>
+                <span className="text-sm font-black text-white">{t('vote_guest_qr_btn', 'رمز التصويت العام للضيوف (QR)')}</span>
                 <button type="button" onClick={() => setShowQrModal(false)} className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white cursor-pointer">
                   <X className="w-4 h-4" />
                 </button>
@@ -946,14 +1024,14 @@ export default function VotingManagerPanel({
                 </div>
               )}
               <p className="text-xs text-slate-300 leading-relaxed">
-                للحاضرين غير المسجلين: مسح الكود يفتح صفحة التصويت فوراً بدون تسجيل أو رقم.
+                {t('vote_projector_scan_desc', 'للحاضرين غير المسجلين: مسح الكود يفتح صفحة التصويت فوراً بدون تسجيل أو رقم.')}
               </p>
               <button
                 type="button"
                 onClick={copyGuestLink}
                 className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs cursor-pointer"
               >
-                {copiedGuestLink ? 'تم نسخ الرابط بنجاح' : 'نسخ رابط التصويت العام'}
+                {copiedGuestLink ? t('vote_guest_link_copied', 'تم نسخ الرابط بنجاح') : t('vote_copy_guest_link', 'نسخ رابط التصويت العام')}
               </button>
             </div>
           </div>
@@ -963,7 +1041,7 @@ export default function VotingManagerPanel({
   }
 
   return (
-    <div className="space-y-5 text-right" dir="rtl">
+    <div className="space-y-5 text-start" dir={dir}>
       {localToast && (
         <div
           className={`p-3 rounded-xl text-xs font-bold flex items-center justify-between gap-2 border ${
@@ -983,20 +1061,22 @@ export default function VotingManagerPanel({
       <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
               <Vote className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-black text-white">
-                نظام التصويت المباشر (للمسجلين والضيوف)
+                {t('vote_panel_title', 'نظام التصويت المباشر (للمسجلين والضيوف)')}
               </h3>
               <p className="text-[11px] text-slate-400">
-                اختر السؤال والأزرار والتفاصيل الإضافية بنقرة واحدة ثم اضغط تشغيل
+                {t('vote_panel_desc', 'اختر السؤال والأزرار والتفاصيل الإضافية بنقرة واحدة ثم اضغط تشغيل')}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
+            <LanguageSelector iconOnly align="left" />
+
             {isPollActive ? (
               <button
                 type="button"
@@ -1005,7 +1085,7 @@ export default function VotingManagerPanel({
                 className="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
               >
                 <Square className="w-3.5 h-3.5" />
-                <span>إغلاق التصويت</span>
+                <span>{t('vote_close_btn', 'إغلاق التصويت')}</span>
               </button>
             ) : null}
 
@@ -1016,7 +1096,11 @@ export default function VotingManagerPanel({
               className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 shadow-md shadow-emerald-600/20 cursor-pointer disabled:opacity-50"
             >
               <Play className="w-3.5 h-3.5" />
-              <span>{isPollActive ? 'بدء تصويت السؤال المختار' : 'تشغيل التصويت للجميع'}</span>
+              <span>
+                {isPollActive
+                  ? t('vote_start_selected_btn', 'بدء تصويت السؤال المختار')
+                  : t('vote_start_btn', 'تشغيل التصويت للجميع')}
+              </span>
             </button>
 
             <button
@@ -1024,10 +1108,10 @@ export default function VotingManagerPanel({
               onClick={handleResetPoll}
               disabled={isBusy}
               className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-bold flex items-center gap-1.5 border border-slate-700 cursor-pointer disabled:opacity-50"
-              title="بدء جولة جديدة وتصفير الأصوات السابقة"
+              title={t('vote_reset_btn', 'بدء جولة جديدة وتصفير الأصوات السابقة')}
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>جولة جديدة (تصفير)</span>
+              <span>{t('vote_reset_btn', 'جولة جديدة (تصفير)')}</span>
             </button>
 
             <button
@@ -1035,10 +1119,10 @@ export default function VotingManagerPanel({
               onClick={handleExitAndResetSession}
               disabled={isBusy}
               className="px-3.5 py-2 rounded-xl bg-orange-600 hover:bg-orange-500 text-white text-xs font-black flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
-              title="إخراج المصوّتين وتصفير الذاكرة مع إظهار رسالة شكر لهم حتى يتم إطلاق سؤال جديد"
+              title={t('vote_exit_thanks_btn', 'إخراج المصوّتين وتصفير الذاكرة مع إظهار رسالة شكر لهم حتى يتم إطلاق سؤال جديد')}
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span>خروج (تصفير وشكر)</span>
+              <span>{t('vote_exit_thanks_btn', 'خروج (تصفير وشكر)')}</span>
             </button>
           </div>
         </div>
@@ -1051,7 +1135,11 @@ export default function VotingManagerPanel({
             className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 border border-slate-700 cursor-pointer"
           >
             {copiedGuestLink ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-amber-400" />}
-            <span>{copiedGuestLink ? 'تم نسخ رابط الضيوف!' : 'نسخ رابط التصويت العام (بدون تسجيل)'}</span>
+            <span>
+              {copiedGuestLink
+                ? t('vote_guest_link_copied', 'تم نسخ رابط الضيوف!')
+                : t('vote_copy_guest_link', 'نسخ رابط التصويت العام (بدون تسجيل)')}
+            </span>
           </button>
 
           <button
@@ -1060,7 +1148,7 @@ export default function VotingManagerPanel({
             className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold flex items-center gap-1.5 border border-amber-500/30 cursor-pointer"
           >
             <QrCode className="w-3.5 h-3.5" />
-            <span>رمز QR للضيوف</span>
+            <span>{t('vote_guest_qr_btn', 'رمز QR للضيوف')}</span>
           </button>
 
           <a
@@ -1070,7 +1158,7 @@ export default function VotingManagerPanel({
             className="px-3 py-1.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 text-xs font-bold flex items-center gap-1.5 border border-sky-500/30 cursor-pointer"
           >
             <ExternalLink className="w-3.5 h-3.5" />
-            <span>صفحة المعلم لنتائج التصويت</span>
+            <span>{t('vote_teacher_monitor_link', 'صفحة المعلم لنتائج التصويت')}</span>
           </a>
 
           {onOpenBigScreen && (
@@ -1080,51 +1168,76 @@ export default function VotingManagerPanel({
               className="px-3 py-1.5 rounded-xl bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 text-xs font-bold flex items-center gap-1.5 border border-purple-500/30 cursor-pointer"
             >
               <Monitor className="w-3.5 h-3.5" />
-              <span>عرض على البروجكتر</span>
+              <span>{t('vote_open_projector_btn', 'عرض على البروجكتر')}</span>
             </button>
           )}
         </div>
 
-        {/* Toggle Settings */}
-        <div className="flex flex-wrap items-center gap-3 pt-1 text-xs">
-          <button
-            type="button"
-            onClick={() => updateVotingSettings({ showResultsToVoters: !activePoll.showResultsToVoters })}
-            className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition cursor-pointer ${
-              activePoll.showResultsToVoters
-                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
-                : 'bg-slate-900 border-slate-700 text-slate-400'
-            }`}
-          >
-            {activePoll.showResultsToVoters ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-            <span>إظهار النتائج للمصوّتين: {activePoll.showResultsToVoters ? 'نعم' : 'لا'}</span>
-          </button>
+        {/* Toggle Settings + Clear Helper Hint for Projector Toggle */}
+        <div className="space-y-2 pt-1">
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            <button
+              type="button"
+              onClick={() => updateVotingSettings({ showResultsToVoters: !activePoll.showResultsToVoters })}
+              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                activePoll.showResultsToVoters
+                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                  : 'bg-slate-900 border-slate-700 text-slate-400'
+              }`}
+            >
+              {activePoll.showResultsToVoters ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+              <span>
+                {t('vote_toggle_show_results', 'إظهار النتائج للمصوّتين')}:{' '}
+                {activePoll.showResultsToVoters ? t('vote_yes_word', 'نعم') : t('vote_no_word', 'لا')}
+              </span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => updateVotingSettings({ allowChangeVote: !activePoll.allowChangeVote })}
-            className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition cursor-pointer ${
-              activePoll.allowChangeVote
-                ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
-                : 'bg-slate-900 border-slate-700 text-slate-400'
-            }`}
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            <span>السماح بتغيير الصوت: {activePoll.allowChangeVote ? 'نعم' : 'لا'}</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => updateVotingSettings({ allowChangeVote: !activePoll.allowChangeVote })}
+              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                activePoll.allowChangeVote
+                  ? 'bg-sky-500/15 border-sky-500/40 text-sky-300'
+                  : 'bg-slate-900 border-slate-700 text-slate-400'
+              }`}
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              <span>
+                {t('vote_toggle_allow_change', 'السماح بتغيير الصوت')}:{' '}
+                {activePoll.allowChangeVote ? t('vote_yes_word', 'نعم') : t('vote_no_word', 'لا')}
+              </span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => updateVotingSettings({ showOnBigScreen: !activePoll.showOnBigScreen })}
-            className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition cursor-pointer ${
-              activePoll.showOnBigScreen
-                ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                : 'bg-slate-900 border-slate-700 text-slate-400'
-            }`}
-          >
-            <Monitor className="w-3.5 h-3.5" />
-            <span>توجيه البروجكتر للتصويت تلقائياً: {activePoll.showOnBigScreen ? 'نعم' : 'لا'}</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => updateVotingSettings({ showOnBigScreen: !activePoll.showOnBigScreen })}
+              title={t(
+                'vote_toggle_projector_hint',
+                'وظيفة توجيه البروجكتر: عند «نعم» تتحول شاشة البروجكتر تلقائياً لعرض التصويت ونتائجه، وعند «لا» يبقى البروجكتر على الشرح الحالي.'
+              )}
+              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                activePoll.showOnBigScreen
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                  : 'bg-slate-900 border-slate-700 text-slate-400'
+              }`}
+            >
+              <Monitor className="w-3.5 h-3.5" />
+              <span>
+                {t('vote_toggle_projector_auto', 'توجيه البروجكتر للتصويت تلقائياً')}:{' '}
+                {activePoll.showOnBigScreen ? t('vote_yes_word', 'نعم') : t('vote_no_word', 'لا')}
+              </span>
+            </button>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800/90 text-[11px] text-slate-400 flex items-start gap-2 leading-relaxed">
+            <Info className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+            <span>
+              {t(
+                'vote_toggle_projector_hint',
+                'وظيفة توجيه البروجكتر: عند «نعم» تتحول شاشة البروجكتر (التحويل الذكي) تلقائياً لعرض التصويت ونتائجه عند البدء، وعند «لا» يبقى البروجكتر على الشرح/الفيديو الحالي ويصوّت الحضور من أجهزتهم فقط.'
+              )}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -1132,7 +1245,7 @@ export default function VotingManagerPanel({
       <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs sm:text-sm font-black text-amber-300">
-            1. الأسئلة الافتراضية (اختر بنقرة واحدة)
+            {t('vote_sec1_questions_title', '1. الأسئلة الافتراضية (اختر بنقرة واحدة)')}
           </span>
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -1141,7 +1254,11 @@ export default function VotingManagerPanel({
               className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
             >
               <Edit3 className="w-3 h-3" />
-              <span>{showCustomQuestionInput ? 'إخفاء كتابة نص' : 'كتابة نص سريع'}</span>
+              <span>
+                {showCustomQuestionInput
+                  ? t('vote_hide_quick_text', 'إخفاء كتابة نص')
+                  : t('vote_write_quick_text', 'كتابة نص سريع')}
+              </span>
             </button>
             <button
               type="button"
@@ -1149,16 +1266,16 @@ export default function VotingManagerPanel({
               className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>إضافة سؤال</span>
+              <span>{t('vote_add_question_btn', 'إضافة سؤال')}</span>
             </button>
             <button
               type="button"
               onClick={handleRestoreDefaults}
               className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-700 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
-              title="استعادة القيم الافتراضية للأسئلة والأزرار والتفاصيل"
+              title={t('vote_restore_defaults_btn', 'استعادة القيم الافتراضية للأسئلة والأزرار والتفاصيل')}
             >
               <RefreshCw className="w-3 h-3" />
-              <span>استعادة الافتراضي</span>
+              <span>{t('vote_restore_defaults_btn', 'استعادة الافتراضي')}</span>
             </button>
           </div>
         </div>
@@ -1186,7 +1303,9 @@ export default function VotingManagerPanel({
                   >
                     {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                   </span>
-                  <span className="text-xs font-bold leading-snug truncate">{pq.text}</span>
+                  <span className="text-xs font-bold leading-snug truncate">
+                    {getLocalizedVoteText(pq.text, language, pq.i18n)}
+                  </span>
                 </div>
 
                 <div className="flex items-center gap-1 shrink-0">
@@ -1282,7 +1401,7 @@ export default function VotingManagerPanel({
       <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs sm:text-sm font-black text-sky-300">
-            2. الأزرار الافتراضية الرئيسية (الكبيرة)
+            {t('vote_sec2_buttons_title', '2. الأزرار الافتراضية الرئيسية (الكبيرة)')}
           </span>
           <button
             type="button"
@@ -1290,7 +1409,7 @@ export default function VotingManagerPanel({
             className="px-2.5 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/30 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>إضافة أزرار جديدة</span>
+            <span>{t('vote_add_buttons_btn', 'إضافة أزرار جديدة')}</span>
           </button>
         </div>
 
@@ -1318,7 +1437,9 @@ export default function VotingManagerPanel({
                     {isSelected && <span className="w-2 h-2 rounded-full bg-slate-950" />}
                   </span>
                   <div className="min-w-0">
-                    <div className="text-xs font-black truncate">{setItem.name}</div>
+                    <div className="text-xs font-black truncate">
+                      {getLocalizedVoteText(setItem.name, language, setItem.nameI18n)}
+                    </div>
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       {setItem.options.map((o) => (
                         <span
@@ -1326,7 +1447,7 @@ export default function VotingManagerPanel({
                           className="text-[10px] text-slate-400 flex items-center gap-1"
                         >
                           <span className={`w-1.5 h-1.5 rounded-full ${VOTE_COLOR_MAP[o.color || 'emerald'].dot}`} />
-                          <span>{o.label}</span>
+                          <span>{getLocalizedVoteText(o.label, language, o.i18n)}</span>
                         </span>
                       ))}
                     </div>
@@ -1460,7 +1581,7 @@ export default function VotingManagerPanel({
 
         {/* Primary Results Display Format Selector */}
         <ChartTypeSelector
-          label="طريقة إظهار نتائج الأزرار الأساسية"
+          label={t('vote_primary_chart_label', 'طريقة إظهار نتائج الأزرار الأساسية')}
           value={primaryChartType}
           onChange={(next) => updateVotingSettings({ primaryChartType: next })}
           accentClass="text-sky-300"
@@ -1472,10 +1593,13 @@ export default function VotingManagerPanel({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <span className="text-xs sm:text-sm font-black text-purple-300">
-              3. تفاصيل إضافية (تظهر أسفل الأزرار وإجبارية للمصوّت)
+              {t('vote_sec3_extra_title', '3. تفاصيل إضافية (تظهر أسفل الأزرار وإجبارية للمصوّت)')}
             </span>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              اختر مجموعة أو أكثر (مثل ذكر/أنثى أو العمر) ليظهر للمصوّت أسفل السؤال، ومن لم يُجب يُسجّل «لم يحدد»
+              {t(
+                'vote_sec3_extra_desc',
+                'اختر مجموعة أو أكثر (مثل ذكر/أنثى أو العمر) ليظهر للمصوّت أسفل السؤال، ومن لم يُجب يُسجّل «لم يحدد»'
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1485,7 +1609,7 @@ export default function VotingManagerPanel({
                 onClick={() => setSelectedExtraGroupIds([])}
                 className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold cursor-pointer"
               >
-                إلغاء تحديد الكل ({selectedExtraGroupIds.length})
+                {t('vote_unselect_all', 'إلغاء تحديد الكل')} ({selectedExtraGroupIds.length})
               </button>
             )}
             <button
@@ -1494,7 +1618,7 @@ export default function VotingManagerPanel({
               className="px-2.5 py-1 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 text-purple-300 border border-purple-500/30 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>إضافة تفاصيل إضافية</span>
+              <span>{t('vote_add_extra_btn', 'إضافة تفاصيل إضافية')}</span>
             </button>
           </div>
         </div>
@@ -1523,7 +1647,9 @@ export default function VotingManagerPanel({
                     {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                   </span>
                   <div className="min-w-0">
-                    <div className="text-xs font-black truncate">{grp.name}</div>
+                    <div className="text-xs font-black truncate">
+                      {getLocalizedVoteText(grp.name, language, grp.nameI18n)}
+                    </div>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
                       {grp.items.map((it) => (
                         <span
@@ -1532,7 +1658,7 @@ export default function VotingManagerPanel({
                         >
                           <span className={`w-1.5 h-1.5 rounded-full ${VOTE_COLOR_MAP[it.color || 'sky'].dot}`} />
                           <span>
-                            {it.label} ({it.inputType === 'number' ? 'عدد' : 'صح'})
+                            {getLocalizedVoteText(it.label, language, it.i18n)}
                           </span>
                         </span>
                       ))}
@@ -1713,7 +1839,7 @@ export default function VotingManagerPanel({
 
         {/* Extra Details Results Display Format Selector */}
         <ChartTypeSelector
-          label="طريقة إظهار نتائج التفاصيل الإضافية"
+          label={t('vote_extra_chart_label', 'طريقة إظهار نتائج التفاصيل الإضافية')}
           value={extraChartType}
           onChange={(next) => updateVotingSettings({ extraChartType: next })}
           accentClass="text-purple-300"
@@ -1721,22 +1847,30 @@ export default function VotingManagerPanel({
 
         {/* Draft Preview Summary Strip */}
         <div className="pt-2 border-t border-slate-800/70 flex flex-wrap items-center gap-2 text-xs text-slate-400">
-          <span>السؤال الجاهز: <b className="text-white">{customQuestionText}</b></span>
+          <span>
+            <b className="text-white">
+              {(() => {
+                const matchedQ = presetQuestions.find((pq) => pq.text.trim() === customQuestionText.trim());
+                return getLocalizedVoteText(customQuestionText, language, matchedQ?.i18n);
+              })()}
+            </b>
+          </span>
           <span aria-hidden="true">·</span>
-          <span>الأزرار:</span>
           {draftOptions.map((o) => (
             <span
               key={o.id}
               className={`px-2 py-0.5 rounded-lg border text-[11px] font-bold ${VOTE_COLOR_MAP[o.color || 'emerald'].badge}`}
             >
-              {o.label}
+              {getLocalizedVoteText(o.label, language, o.i18n)}
             </span>
           ))}
           {selectedExtraGroups.length > 0 && (
             <>
               <span aria-hidden="true">·</span>
               <span className="text-purple-300 font-bold">
-                تفاصيل إضافية: {selectedExtraGroups.map((g) => g.name).join(' + ')}
+                {selectedExtraGroups
+                  .map((g) => getLocalizedVoteText(g.name, language, g.nameI18n))
+                  .join(' + ')}
               </span>
             </>
           )}
@@ -1748,7 +1882,7 @@ export default function VotingManagerPanel({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h4 className="text-sm font-black text-white flex items-center gap-2">
-              <span>النتائج الحية للجولة الحالية</span>
+              <span>{t('vote_live_results_heading', 'النتائج الحية للجولة الحالية')}</span>
               <span
                 className={`text-[11px] font-bold ${
                   isPollActive
@@ -1760,16 +1894,16 @@ export default function VotingManagerPanel({
               >
                 (
                 {isPollActive
-                  ? 'مفتوح الآن'
+                  ? t('vote_status_open', 'مفتوح الآن')
                   : activePoll.status === 'closed'
-                  ? 'مغلق'
+                  ? t('vote_status_closed', 'مغلق')
                   : activePoll.status === 'exited'
-                  ? 'تم الخروج والتصفير'
-                  : 'جاهز'}
+                  ? t('vote_status_exited', 'تم الخروج والتصفير')
+                  : t('vote_status_ready', 'جاهز')}
                 )
               </span>
             </h4>
-            <p className="text-xs text-slate-400 mt-0.5">{activePoll.question}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{localizedActiveQuestion}</p>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap">
@@ -1780,17 +1914,25 @@ export default function VotingManagerPanel({
               className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
               <FileSpreadsheet className="w-3.5 h-3.5" />
-              <span>{isSavingSheet ? 'جارٍ التسجيل...' : 'تسجيل النتائج في الشيت'}</span>
+              <span>
+                {isSavingSheet
+                  ? t('vote_saving_sheet_btn', 'جارٍ التسجيل...')
+                  : t('vote_save_to_sheet_btn', 'تسجيل النتائج في الشيت')}
+              </span>
             </button>
             <button
               type="button"
               onClick={handleSetupVotesSheet}
               disabled={isSettingUpSheet}
               className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-xs flex items-center gap-1.5 border border-slate-700 cursor-pointer disabled:opacity-50"
-              title="إنشاء وتهيئة ورقة Votes-Results في قوقل شيت"
+              title={t('vote_setup_sheet_btn', 'إنشاء وتهيئة ورقة Votes-Results في قوقل شيت')}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSettingUpSheet ? 'animate-spin' : ''}`} />
-              <span>{isSettingUpSheet ? 'جارٍ التهيئة...' : 'تهيئة ورقة الشيت'}</span>
+              <span>
+                {isSettingUpSheet
+                  ? t('vote_saving_sheet_btn', 'جارٍ التهيئة...')
+                  : t('vote_setup_sheet_btn', 'تهيئة ورقة الشيت')}
+              </span>
             </button>
           </div>
         </div>
@@ -1798,25 +1940,33 @@ export default function VotingManagerPanel({
         {/* 3 Real-Time Counters */}
         <div className="grid grid-cols-3 gap-2.5">
           <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-            <div className="text-[11px] font-bold text-slate-400">عدد الدخول الكلي</div>
+            <div className="text-[11px] font-bold text-slate-400">
+              {t('vote_total_entered_label', 'عدد الدخول الكلي')}
+            </div>
             <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-sky-400">{stats.totalEntered}</div>
             <div className="text-[10px] text-slate-500">
-              مسجلون: {stats.studentParticipantsCount} · ضيوف: {stats.guestParticipantsCount}
+              {t('vote_registered_word', 'مسجلون')}: {stats.studentParticipantsCount} · {t('vote_guests_word', 'ضيوف')}: {stats.guestParticipantsCount}
             </div>
           </div>
 
           <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-            <div className="text-[11px] font-bold text-slate-400">إجمالي المصوّتين</div>
+            <div className="text-[11px] font-bold text-slate-400">
+              {t('vote_total_voted_label', 'إجمالي المصوّتين')}
+            </div>
             <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-emerald-400">{stats.totalVoted}</div>
-            <div className="text-[10px] text-slate-500">
-              نسبة: {stats.totalEntered > 0 ? Math.round((stats.totalVoted / stats.totalEntered) * 100) : 0}%
+            <div className="text-[10px] text-slate-500 font-mono tabular-nums">
+              {stats.totalVoted} / {stats.totalEntered}
             </div>
           </div>
 
           <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-            <div className="text-[11px] font-bold text-slate-400">الذين لم يصوّتوا</div>
+            <div className="text-[11px] font-bold text-slate-400">
+              {t('vote_not_voted_label', 'الذين لم يصوّتوا')}
+            </div>
             <div className="text-xl sm:text-2xl font-black font-mono tabular-nums text-amber-400">{stats.notVoted}</div>
-            <div className="text-[10px] text-slate-500">بانتظار النقر</div>
+            <div className="text-[10px] text-slate-500">
+              {t('vote_unit_label', 'صوت')}
+            </div>
           </div>
         </div>
 
@@ -1832,12 +1982,12 @@ export default function VotingManagerPanel({
         {stats.extraGroupAnalytics.length > 0 && (
           <div className="pt-3 border-t border-slate-800 space-y-4">
             <div className="text-xs font-black text-purple-300">
-              نتائج التفاصيل الإضافية والتحليل الدقيق حسب الفئة
+              {t('vote_crosstab_title', 'نتائج التفاصيل الإضافية والتحليل الدقيق حسب الفئة')}
             </div>
 
             {stats.extraGroupAnalytics.map((ga) => (
               <div key={ga.group.id} className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
-                <div className="text-xs font-black text-white">{ga.group.name}</div>
+                <div className="text-xs font-black text-white">{ga.localizedGroupName}</div>
 
                 {ga.hasChoiceItems && (
                   <div className="space-y-3">
@@ -1848,11 +1998,11 @@ export default function VotingManagerPanel({
                       size="compact"
                     />
                     <div className="overflow-x-auto bg-slate-950/70 border border-slate-800/90 rounded-xl p-2.5">
-                      <table className="w-full text-[11px] text-right">
+                      <table className="w-full text-[11px] text-start">
                         <thead>
                           <tr className="border-b border-slate-800 text-slate-400">
-                            <th className="py-1.5 px-2">الفئة</th>
-                            <th className="py-1.5 px-2">الإجمالي</th>
+                            <th className="py-1.5 px-2">{t('vote_crosstab_col_category', 'الفئة')}</th>
+                            <th className="py-1.5 px-2">{t('vote_crosstab_col_total', 'الإجمالي')}</th>
                             {stats.optionStats.map((po) => (
                               <th key={po.id} className="py-1.5 px-2">{po.label}</th>
                             ))}
@@ -1865,7 +2015,7 @@ export default function VotingManagerPanel({
                               <td className="py-1.5 px-2 font-mono tabular-nums text-sky-400">{row.total}</td>
                               {row.byPrimary.map((bp) => (
                                 <td key={bp.optionId} className="py-1.5 px-2 font-mono tabular-nums text-slate-300">
-                                  {bp.count} ({bp.percent}%)
+                                  {bp.count}
                                 </td>
                               ))}
                             </tr>
@@ -1879,10 +2029,10 @@ export default function VotingManagerPanel({
                 {ga.numberFields.map((nf) => (
                   <div key={nf.item.id} className="space-y-2.5">
                     <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <span className="font-bold text-amber-300">{nf.item.label}</span>
+                      <span className="font-bold text-amber-300">{nf.localizedItemLabel}</span>
                       <span className="font-mono tabular-nums text-slate-300 text-[11px]">
-                        أجاب: {nf.answeredCount} · لم يحدد: {nf.missingCount}
-                        {nf.average !== null ? ` · المتوسط: ${nf.average} (من ${nf.min} إلى ${nf.max})` : ''}
+                        {nf.answeredCount} / {stats.totalVoted} · {t('vote_not_specified', 'لم يحدد')}: {nf.missingCount}
+                        {nf.average !== null ? ` · ${t('vote_avg_label', 'المتوسط')}: ${nf.average} (${nf.min} – ${nf.max})` : ''}
                       </span>
                     </div>
                     <VoteChartRenderer
@@ -1892,11 +2042,11 @@ export default function VotingManagerPanel({
                       size="compact"
                     />
                     <div className="overflow-x-auto bg-slate-950/70 border border-slate-800/90 rounded-xl p-2.5">
-                      <table className="w-full text-[11px] text-right">
+                      <table className="w-full text-[11px] text-start">
                         <thead>
                           <tr className="border-b border-slate-800 text-slate-400">
-                            <th className="py-1.5 px-2">الشريحة</th>
-                            <th className="py-1.5 px-2">العدد</th>
+                            <th className="py-1.5 px-2">{t('vote_crosstab_col_category', 'الشريحة')}</th>
+                            <th className="py-1.5 px-2">{t('vote_crosstab_col_total', 'العدد')}</th>
                             {stats.optionStats.map((po) => (
                               <th key={po.id} className="py-1.5 px-2">{po.label}</th>
                             ))}
@@ -1909,7 +2059,7 @@ export default function VotingManagerPanel({
                               <td className="py-1.5 px-2 font-mono tabular-nums text-sky-400">{row.total}</td>
                               {row.byPrimary.map((bp) => (
                                 <td key={bp.optionId} className="py-1.5 px-2 font-mono tabular-nums text-slate-300">
-                                  {bp.count} ({bp.percent}%)
+                                  {bp.count}
                                 </td>
                               ))}
                             </tr>
@@ -1929,18 +2079,26 @@ export default function VotingManagerPanel({
           <div className="pt-2 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             <div className="bg-slate-900 rounded-xl p-3 border border-slate-800 max-h-40 overflow-y-auto space-y-1">
               <div className="font-bold text-emerald-400 mb-1.5">
-                المسجلون المصوّتون ({stats.studentVotes.length})
+                {t('vote_registered_word', 'المسجلون')} — {t('vote_total_voted_label', 'المصوّتون')} ({stats.studentVotes.length})
               </div>
               {stats.studentVotes.map((sv) => {
+                const matchedOpt = activePoll.options.find((o) => o.id === sv.optionId);
+                const localizedChoice = matchedOpt
+                  ? getLocalizedVoteText(matchedOpt.label, language, matchedOpt.i18n)
+                  : getLocalizedVoteText(sv.optionLabel, language);
                 const extras = [
-                  ...Object.values(sv.extraChoices || {}).map((c) => c.label),
+                  ...Object.entries(sv.extraChoices || {}).map(([gId, c]) => {
+                    const grp = (activePoll.extraGroups || []).find((g) => g.id === gId);
+                    const itm = grp?.items.find((i) => i.id === c.itemId);
+                    return getLocalizedVoteText(c.label, language, itm?.i18n);
+                  }),
                   ...Object.values(sv.extraNumbers || {}).map((n) => String(n)),
                 ];
                 return (
                   <div key={sv.id} className="flex items-center justify-between gap-2 text-slate-300">
-                    <span className="truncate">{sv.name || 'طالب'}</span>
+                    <span className="truncate">{sv.name || 'Student'}</span>
                     <span className="font-bold text-emerald-300 shrink-0">
-                      {sv.optionLabel}
+                      {localizedChoice}
                       {extras.length > 0 ? ` (${extras.join(' · ')})` : ''}
                     </span>
                   </div>
@@ -1950,12 +2108,12 @@ export default function VotingManagerPanel({
 
             <div className="bg-slate-900 rounded-xl p-3 border border-slate-800 max-h-40 overflow-y-auto space-y-1">
               <div className="font-bold text-amber-400 mb-1.5">
-                مسجلون لم يصوّتوا بعد ({stats.unvotedRegistered.length})
+                {t('vote_registered_word', 'المسجلون')} — {t('vote_not_voted_label', 'لم يصوّتوا بعد')} ({stats.unvotedRegistered.length})
               </div>
               {stats.unvotedRegistered.map((ur) => (
                 <div key={ur.id} className="flex items-center justify-between text-slate-300">
-                  <span className="truncate">{ur.name || 'طالب'}</span>
-                  <span className="text-[11px] text-amber-400">منتظر</span>
+                  <span className="truncate">{ur.name || 'Student'}</span>
+                  <span className="text-[11px] text-amber-400">{t('vote_status_ready', 'منتظر')}</span>
                 </div>
               ))}
             </div>
@@ -1969,7 +2127,7 @@ export default function VotingManagerPanel({
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-black text-white flex items-center gap-2">
               <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-              <span>سجل نتائج التصويت المحفوظة (ورقة Votes-Results)</span>
+              <span>Votes-Results</span>
             </h4>
             <button
               type="button"
@@ -1978,25 +2136,25 @@ export default function VotingManagerPanel({
               className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${loadingHistory ? 'animate-spin' : ''}`} />
-              <span>تحديث السجل</span>
+              <span>{t('refresh', 'تحديث السجل')}</span>
             </button>
           </div>
 
           {sheetHistory.length === 0 ? (
             <p className="text-xs text-slate-500 py-3 text-center">
-              لا توجد جولات تصويت مسجلة في ورقة Votes-Results بعد.
+              {t('vote_no_chart_data', 'لا توجد جولات تصويت مسجلة في ورقة Votes-Results بعد.')}
             </p>
           ) : (
             <div className="overflow-x-auto max-h-64 overflow-y-auto">
-              <table className="w-full text-xs text-right border-collapse">
+              <table className="w-full text-xs text-start border-collapse">
                 <thead>
                   <tr className="border-b border-slate-800 text-slate-400">
-                    <th className="py-2 px-2">التاريخ</th>
-                    <th className="py-2 px-2">السؤال</th>
-                    <th className="py-2 px-2">الدخول</th>
-                    <th className="py-2 px-2">المصوّتون</th>
-                    <th className="py-2 px-2">لم يصوّت</th>
-                    <th className="py-2 px-2">النتيجة</th>
+                    <th className="py-2 px-2">Date</th>
+                    <th className="py-2 px-2">Question</th>
+                    <th className="py-2 px-2">{t('vote_total_entered_label', 'الدخول')}</th>
+                    <th className="py-2 px-2">{t('vote_total_voted_label', 'المصوّتون')}</th>
+                    <th className="py-2 px-2">{t('vote_not_voted_label', 'لم يصوّت')}</th>
+                    <th className="py-2 px-2">{t('vote_crosstab_col_total', 'النتيجة')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/70">
@@ -2021,10 +2179,10 @@ export default function VotingManagerPanel({
 
       {/* QR Code Modal for Guests */}
       {showQrModal && (
-        <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
+        <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" dir={dir}>
           <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-black text-white">رمز التصويت السريع للضيوف (QR)</span>
+              <span className="text-sm font-black text-white">{t('vote_guest_qr_btn', 'رمز التصويت السريع للضيوف (QR)')}</span>
               <button
                 type="button"
                 onClick={() => setShowQrModal(false)}
@@ -2039,7 +2197,7 @@ export default function VotingManagerPanel({
               </div>
             )}
             <p className="text-xs text-slate-300 leading-relaxed">
-              للحضور العام غير المسجلين: مسح هذا الرمز يفتح شاشة التصويت الفورية مباشرة بدون اسم أو رقم.
+              {t('vote_projector_scan_desc', 'للحضور العام غير المسجلين: مسح هذا الرمز يفتح شاشة التصويت الفورية مباشرة بدون اسم أو رقم.')}
             </p>
             <div className="flex gap-2">
               <button
@@ -2047,7 +2205,7 @@ export default function VotingManagerPanel({
                 onClick={copyGuestLink}
                 className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs cursor-pointer"
               >
-                {copiedGuestLink ? 'تم نسخ الرابط' : 'نسخ رابط الضيوف'}
+                {copiedGuestLink ? t('vote_guest_link_copied', 'تم نسخ الرابط') : t('vote_copy_guest_link', 'نسخ رابط الضيوف')}
               </button>
               <a
                 href={guestVoteUrl}
@@ -2056,7 +2214,7 @@ export default function VotingManagerPanel({
                 className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center gap-1"
               >
                 <ExternalLink className="w-3.5 h-3.5" />
-                <span>فتح</span>
+                <span>↗</span>
               </a>
             </div>
           </div>

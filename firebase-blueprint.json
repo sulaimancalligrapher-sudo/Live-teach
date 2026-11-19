@@ -43,6 +43,7 @@
         "activePoll": { "type": "object" },
         "presetQuestions": { "type": "array" },
         "presetOptionSets": { "type": "array" },
+        "presetExtraGroups": { "type": "array" },
         "updatedAt": { "type": "number" }
       }
     },

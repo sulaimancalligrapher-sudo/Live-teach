@@ -1,6 +1,7 @@
 import React from 'react';
 import { VoteButtonColor, VoteChartType } from '../types';
 import { VoteChartEntry } from '../lib/voteAnalytics';
+import { useLanguage } from '../translations';
 
 export const VOTE_COLOR_MAP: Record<
   VoteButtonColor,
@@ -56,11 +57,16 @@ export const VOTE_COLOR_MAP: Record<
   },
 };
 
-export const VOTE_CHART_OPTIONS: Array<{ value: VoteChartType; label: string; shortLabel: string }> = [
-  { value: 'numbers', label: 'أرقام (%) فقط', shortLabel: 'أرقام %' },
-  { value: 'horizontal_bar', label: 'أرقام (%) وشريط أفقي', shortLabel: 'شريط أفقي' },
-  { value: 'vertical_bar', label: 'أرقام (%) وشريط عمودي', shortLabel: 'شريط عمودي' },
-  { value: 'donut', label: 'أرقام (%) ودائرة ملونة', shortLabel: 'دائرة ملونة' },
+export const VOTE_CHART_OPTIONS: Array<{
+  value: VoteChartType;
+  labelKey: string;
+  label: string;
+  shortLabel: string;
+}> = [
+  { value: 'numbers', labelKey: 'vote_chart_numbers_only', label: 'عدد فقط', shortLabel: 'عدد' },
+  { value: 'horizontal_bar', labelKey: 'vote_chart_horizontal_bar', label: 'عدد وشريط أفقي', shortLabel: 'شريط أفقي' },
+  { value: 'vertical_bar', labelKey: 'vote_chart_vertical_bar', label: 'عدد وشريط عمودي', shortLabel: 'شريط عمودي' },
+  { value: 'donut', labelKey: 'vote_chart_donut', label: 'عدد ودائرة ملونة', shortLabel: 'دائرة ملونة' },
 ];
 
 interface VoteChartRendererProps {
@@ -76,20 +82,23 @@ export default function VoteChartRenderer({
   totalVotes,
   size = 'normal',
 }: VoteChartRendererProps) {
+  const { t } = useLanguage();
   const effectiveTotal =
     totalVotes !== undefined
       ? totalVotes
       : entries.reduce((sum, item) => sum + item.count, 0);
 
+  const voteUnit = t('vote_unit_label', 'صوت');
+
   if (entries.length === 0) {
     return (
       <div className="text-xs text-slate-500 py-3 text-center">
-        لا توجد بيانات للعرض بعد
+        {t('vote_no_chart_data', 'لا توجد بيانات للعرض بعد')}
       </div>
     );
   }
 
-  // 1. Numbers (%) only
+  // 1. Numbers (counts) only
   if (chartType === 'numbers') {
     return (
       <div
@@ -124,14 +133,14 @@ export default function VoteChartRenderer({
                     size === 'projector'
                       ? 'text-3xl sm:text-4xl'
                       : size === 'compact'
-                      ? 'text-lg'
+                      ? 'text-xl'
                       : 'text-2xl'
                   }`}
                 >
-                  {entry.percent}%
+                  {entry.count}
                 </span>
-                <span className="text-xs font-mono tabular-nums text-slate-400">
-                  {entry.count} صوت
+                <span className="text-xs font-bold text-slate-400">
+                  {voteUnit}
                 </span>
               </div>
             </div>
@@ -155,19 +164,20 @@ export default function VoteChartRenderer({
         >
           {entries.map((entry) => {
             const c = VOTE_COLOR_MAP[entry.color || 'emerald'] || VOTE_COLOR_MAP.emerald;
-            const visualHeight = entry.count > 0 ? Math.max(entry.percent, 8) : 2;
+            const visualRatio = effectiveTotal > 0 ? Math.round((entry.count / effectiveTotal) * 100) : entry.percent;
+            const visualHeight = entry.count > 0 ? Math.max(visualRatio, 8) : 2;
             return (
               <div key={entry.id} className="flex flex-col items-center gap-2 min-w-0">
                 <div className="text-center">
                   <span
                     className={`font-black font-mono tabular-nums block ${c.text} ${
-                      size === 'projector' ? 'text-xl' : 'text-xs sm:text-sm'
+                      size === 'projector' ? 'text-2xl' : 'text-sm sm:text-base'
                     }`}
                   >
-                    {entry.percent}%
+                    {entry.count}
                   </span>
-                  <span className="text-[11px] font-mono tabular-nums text-slate-400">
-                    ({entry.count})
+                  <span className="text-[10px] font-bold text-slate-400">
+                    {voteUnit}
                   </span>
                 </div>
 
@@ -245,7 +255,7 @@ export default function VoteChartRenderer({
                 );
               })}
           </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none px-2">
             <span
               className={`font-black font-mono tabular-nums text-white ${
                 size === 'projector' ? 'text-3xl' : 'text-xl'
@@ -253,7 +263,9 @@ export default function VoteChartRenderer({
             >
               {effectiveTotal}
             </span>
-            <span className="text-[10px] font-bold text-slate-400">إجمالي الأصوات</span>
+            <span className="text-[10px] font-bold text-slate-400 leading-tight">
+              {t('vote_total_votes_label', 'إجمالي الأصوات')}
+            </span>
           </div>
         </div>
 
@@ -283,7 +295,7 @@ export default function VoteChartRenderer({
                     size === 'projector' ? 'text-base sm:text-lg' : 'text-xs sm:text-sm'
                   }`}
                 >
-                  {entry.count} ({entry.percent}%)
+                  {entry.count} {voteUnit}
                 </span>
               </div>
             );
@@ -298,6 +310,7 @@ export default function VoteChartRenderer({
     <div className="space-y-2.5">
       {entries.map((entry) => {
         const c = VOTE_COLOR_MAP[entry.color || 'emerald'] || VOTE_COLOR_MAP.emerald;
+        const barWidth = effectiveTotal > 0 ? Math.round((entry.count / effectiveTotal) * 100) : entry.percent;
         return (
           <div key={entry.id} className="space-y-1">
             <div
@@ -310,7 +323,7 @@ export default function VoteChartRenderer({
                 <span className="truncate">{entry.label}</span>
               </span>
               <span className="font-mono tabular-nums text-slate-200 shrink-0">
-                {entry.count} صوت ({entry.percent}%)
+                {entry.count} {voteUnit}
               </span>
             </div>
             <div
@@ -320,7 +333,7 @@ export default function VoteChartRenderer({
             >
               <div
                 className={`h-full ${c.bar} transition-all duration-500`}
-                style={{ width: `${entry.percent}%` }}
+                style={{ width: `${barWidth}%` }}
               />
             </div>
           </div>
@@ -329,3 +342,4 @@ export default function VoteChartRenderer({
     </div>
   );
 }
+

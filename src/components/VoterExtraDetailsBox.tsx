@@ -1,6 +1,8 @@
 import React from 'react';
 import { AlertCircle, Check, CheckCircle2, Loader2 } from 'lucide-react';
 import { VoteButtonColor, VoteExtraGroup, VoteExtraItem } from '../types';
+import { useLanguage } from '../translations';
+import { getLocalizedVoteText } from '../lib/voteTranslations';
 
 const SUB_BTN_COLOR: Record<
   VoteButtonColor,
@@ -63,34 +65,40 @@ export default function VoterExtraDetailsBox({
   onChangeNumber,
   onConfirmExtra,
 }: VoterExtraDetailsBoxProps) {
+  const { language, t } = useLanguage();
   if (!extraGroups || extraGroups.length === 0) return null;
 
   const hasNumberInputs = extraGroups.some((g) =>
     g.items.some((i) => i.inputType === 'number')
   );
 
+  const dir = language === 'ar' ? 'rtl' : 'ltr';
+  const sep = language === 'ar' ? ' ، ' : ', ';
+
   return (
     <div
-      className={`rounded-2xl border p-3.5 text-right space-y-3 transition-all ${
+      className={`rounded-2xl border p-3.5 text-start space-y-3 transition-all ${
         showUrgentPrompt && missingGroupIds.length > 0
           ? 'bg-amber-500/10 border-amber-400 ring-2 ring-amber-400/35'
           : extraCompleted && hasPrimaryVote
           ? 'bg-emerald-500/5 border-emerald-500/30'
           : 'bg-slate-950/70 border-slate-800'
       }`}
-      dir="rtl"
+      dir={dir}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs font-black text-slate-200">
-          تفاصيل إضافية (إجباري الإجابة)
+          {t('vote_extra_box_title', 'تفاصيل إضافية (إجباري الإجابة)')}
         </span>
         {extraCompleted && hasPrimaryVote ? (
           <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>مكتمل</span>
+            <span>{t('vote_extra_completed_badge', 'مكتمل')}</span>
           </span>
         ) : (
-          <span className="text-[11px] font-bold text-amber-300">مطلوب</span>
+          <span className="text-[11px] font-bold text-amber-300">
+            {t('vote_extra_required_badge', 'مطلوب')}
+          </span>
         )}
       </div>
 
@@ -99,9 +107,9 @@ export default function VoterExtraDetailsBox({
         <div className="p-2.5 rounded-xl bg-amber-500/15 border border-amber-400/50 text-amber-200 text-xs font-black flex items-start gap-2">
           <AlertCircle className="w-4 h-4 text-amber-300 shrink-0 mt-0.5" />
           <span>
-            أرجو أن تجيب على هذا أيضاً لإكمال التصويت:{' '}
+            {t('vote_extra_urgent_prompt', 'أرجو أن تجيب على هذا أيضاً لإكمال التصويت:')}{' '}
             <span className="text-white underline decoration-amber-400/60">
-              {missingGroupNames.join(' ، ')}
+              {missingGroupNames.join(sep)}
             </span>
           </span>
         </div>
@@ -123,7 +131,9 @@ export default function VoterExtraDetailsBox({
                   : 'bg-slate-900/60 border-slate-800/90'
               }`}
             >
-              <div className="text-[11px] font-bold text-slate-300">{group.name}</div>
+              <div className="text-[11px] font-bold text-slate-300">
+                {getLocalizedVoteText(group.name, language, group.nameI18n)}
+              </div>
 
               {/* Compact small sub-choice buttons */}
               {choiceItems.length > 0 && (
@@ -150,14 +160,14 @@ export default function VoterExtraDetailsBox({
                         >
                           <Check className="w-3 h-3 stroke-[3]" />
                         </span>
-                        <span>{item.label}</span>
+                        <span>{getLocalizedVoteText(item.label, language, item.i18n)}</span>
                       </button>
                     );
                   })}
                 </div>
               )}
 
-              {/* Compact number fields (e.g., Age) */}
+              {/* Compact auto-expanding 3-digit number fields (e.g., Age) */}
               {numberItems.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
                   {numberItems.map((item) => {
@@ -166,21 +176,30 @@ export default function VoterExtraDetailsBox({
                     return (
                       <label
                         key={item.id}
-                        className="flex items-center gap-2 bg-slate-950 border border-slate-700 rounded-xl px-2.5 py-1.5 flex-1 min-w-[140px]"
+                        className="inline-flex items-center gap-2 bg-slate-950 border border-slate-700 focus-within:border-sky-400 rounded-xl px-2.5 py-1.5 w-fit max-w-full transition-colors"
                       >
                         <span className="text-[11px] font-bold text-slate-300 whitespace-nowrap">
-                          {item.label}:
+                          {getLocalizedVoteText(item.label, language, item.i18n)}:
                         </span>
                         <input
-                          type="number"
+                          type="text"
                           inputMode="numeric"
-                          min={0}
-                          max={150}
+                          dir="ltr"
                           disabled={disabled || isSavingExtra}
                           value={rawVal}
-                          onChange={(e) => onChangeNumber(group.id, item.id, e.target.value)}
-                          placeholder="أدخل العدد..."
-                          className="w-full bg-transparent text-xs font-black font-mono text-white outline-none placeholder:text-slate-600"
+                          onChange={(e) => {
+                            const normalized = e.target.value
+                              .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+                              .replace(/[^\d.]/g, '');
+                            onChangeNumber(group.id, item.id, normalized);
+                          }}
+                          placeholder="000"
+                          style={{
+                            width: `${Math.max(3, rawVal.length) + 1.8}ch`,
+                            minWidth: '4.4ch',
+                            maxWidth: '100%',
+                          }}
+                          className="bg-transparent text-xs font-black font-mono tabular-nums text-white text-center outline-none placeholder:text-slate-600 transition-[width] duration-150"
                         />
                       </label>
                     );
@@ -205,9 +224,10 @@ export default function VoterExtraDetailsBox({
           ) : (
             <CheckCircle2 className="w-4 h-4" />
           )}
-          <span>تأكيد حفظ التفاصيل الإضافية</span>
+          <span>{t('vote_extra_confirm_btn', 'تأكيد حفظ التفاصيل الإضافية')}</span>
         </button>
       )}
     </div>
   );
 }
+

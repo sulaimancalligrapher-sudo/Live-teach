@@ -6,6 +6,8 @@ import {
   VoteParticipantRecord,
   VoteSubmissionRecord,
 } from '../types';
+import { Language } from '../translations';
+import { getLocalizedVoteText } from './voteTranslations';
 
 export interface VoteChartEntry {
   id: string;
@@ -33,6 +35,7 @@ export interface CrossTabRow {
 
 export interface NumberFieldAnalytics {
   item: VoteExtraItem;
+  localizedItemLabel: string;
   answeredCount: number;
   missingCount: number;
   average: number | null;
@@ -44,6 +47,7 @@ export interface NumberFieldAnalytics {
 
 export interface ExtraGroupAnalytics {
   group: VoteExtraGroup;
+  localizedGroupName: string;
   hasChoiceItems: boolean;
   choiceEntries: VoteChartEntry[];
   choiceCrossTab: CrossTabRow[];
@@ -67,7 +71,8 @@ export interface ComputedVoteAnalytics {
 export function isExtraDetailsComplete(
   extraGroups: VoteExtraGroup[] | undefined,
   extraChoices: Record<string, { itemId: string; label: string }>,
-  extraNumbers: Record<string, number>
+  extraNumbers: Record<string, number>,
+  lang: Language = 'ar'
 ): { complete: boolean; missingGroupIds: string[]; missingGroupNames: string[] } {
   if (!extraGroups || extraGroups.length === 0) {
     return { complete: true, missingGroupIds: [], missingGroupNames: [] };
@@ -103,7 +108,7 @@ export function isExtraDetailsComplete(
 
     if (!grpComplete) {
       missingGroupIds.push(grp.id);
-      missingGroupNames.push(grp.name);
+      missingGroupNames.push(getLocalizedVoteText(grp.name, lang, grp.nameI18n));
     }
   }
 
@@ -114,12 +119,38 @@ export function isExtraDetailsComplete(
   };
 }
 
+function getAnalyticsPhrase(lang: Language) {
+  if (lang === 'th') {
+    return {
+      notSpecified: 'ไม่ได้ระบุ',
+      lessThan: 'น้อยกว่า',
+      andAbove: 'ขึ้นไป',
+      greaterThan: 'มากกว่า',
+    };
+  }
+  if (lang === 'en') {
+    return {
+      notSpecified: 'Not Specified',
+      lessThan: 'Less than',
+      andAbove: 'and above',
+      greaterThan: 'Greater than',
+    };
+  }
+  return {
+    notSpecified: 'لم يحدد',
+    lessThan: 'أقل من',
+    andAbove: 'فأكثر',
+    greaterThan: 'أكبر من',
+  };
+}
+
 function buildCrossTabRow(
   categoryId: string,
   categoryLabel: string,
   color: VoteButtonColor,
   matchingVotes: VoteSubmissionRecord[],
-  primaryOptions: ActivePollState['options']
+  primaryOptions: ActivePollState['options'],
+  lang: Language
 ): CrossTabRow {
   const total = matchingVotes.length;
   const byPrimary: CrossTabPrimaryBreakdown[] = primaryOptions.map((opt) => {
@@ -128,7 +159,7 @@ function buildCrossTabRow(
     ).length;
     return {
       optionId: opt.id,
-      optionLabel: opt.label,
+      optionLabel: getLocalizedVoteText(opt.label, lang, opt.i18n),
       count: c,
       percent: total > 0 ? Math.round((c / total) * 100) : 0,
       color: opt.color || 'emerald',
@@ -147,10 +178,12 @@ function buildCrossTabRow(
 export function computeVoteAnalytics(
   poll: ActivePollState | undefined,
   participants: VoteParticipantRecord[],
-  votes: VoteSubmissionRecord[]
+  votes: VoteSubmissionRecord[],
+  lang: Language = 'ar'
 ): ComputedVoteAnalytics {
   const activeOptions = poll?.options || [];
   const extraGroups = poll?.extraGroups || [];
+  const phr = getAnalyticsPhrase(lang);
 
   const uniqueVoterIds = new Set<string>();
   participants.forEach((p) => {
@@ -169,7 +202,7 @@ export function computeVoteAnalytics(
     const percent = totalVoted > 0 ? Math.round((count / totalVoted) * 100) : 0;
     return {
       id: opt.id,
-      label: opt.label,
+      label: getLocalizedVoteText(opt.label, lang, opt.i18n),
       count,
       percent,
       color: opt.color || 'emerald',
@@ -188,6 +221,7 @@ export function computeVoteAnalytics(
 
   // Extra Groups Analytics (including "لم يحدد" and Cross-Tabs)
   const extraGroupAnalytics: ExtraGroupAnalytics[] = extraGroups.map((group) => {
+    const localizedGroupName = getLocalizedVoteText(group.name, lang, group.nameI18n);
     const choiceItems = group.items.filter((it) => it.inputType === 'choice');
     const numberItems = group.items.filter((it) => it.inputType === 'number');
     const hasChoiceItems = choiceItems.length > 0;
@@ -205,21 +239,22 @@ export function computeVoteAnalytics(
         });
         matched.forEach((v) => assignedVotes.add(v.voterId));
         const pct = totalVoted > 0 ? Math.round((matched.length / totalVoted) * 100) : 0;
+        const localizedItLabel = getLocalizedVoteText(it.label, lang, it.i18n);
         return {
           entry: {
             id: it.id,
-            label: it.label,
+            label: localizedItLabel,
             count: matched.length,
             percent: pct,
             color: it.color || 'sky',
           } as VoteChartEntry,
-          cross: buildCrossTabRow(it.id, it.label, it.color || 'sky', matched, activeOptions),
+          cross: buildCrossTabRow(it.id, localizedItLabel, it.color || 'sky', matched, activeOptions, lang),
         };
       });
 
       const missingVotes = votes.filter((v) => !assignedVotes.has(v.voterId));
       const missingPct = totalVoted > 0 ? Math.round((missingVotes.length / totalVoted) * 100) : 0;
-      const missingLabel = `لم يحدد (${group.name})`;
+      const missingLabel = `${phr.notSpecified} (${localizedGroupName})`;
 
       choiceEntries = [
         ...itemRows.map((r) => r.entry),
@@ -234,12 +269,13 @@ export function computeVoteAnalytics(
 
       choiceCrossTab = [
         ...itemRows.map((r) => r.cross),
-        buildCrossTabRow(`${group.id}_missing`, missingLabel, 'slate', missingVotes, activeOptions),
+        buildCrossTabRow(`${group.id}_missing`, missingLabel, 'slate', missingVotes, activeOptions, lang),
       ];
     }
 
     const numberFields: NumberFieldAnalytics[] = numberItems.map((nItem) => {
       const numKey = `${group.id}__${nItem.id}`;
+      const localizedNLabel = getLocalizedVoteText(nItem.label, lang, nItem.i18n);
       const validPairs: Array<{ vote: VoteSubmissionRecord; val: number }> = [];
       const missingVotes: VoteSubmissionRecord[] = [];
 
@@ -279,13 +315,13 @@ export function computeVoteAnalytics(
         buckets.push(
           {
             id: `${nItem.id}_lt`,
-            label: `${nItem.label}: أقل من ${splitThreshold}`,
+            label: `${localizedNLabel}: ${phr.lessThan} ${splitThreshold}`,
             color: 'amber',
             votes: lower,
           },
           {
             id: `${nItem.id}_gte`,
-            label: `${nItem.label}: ${splitThreshold} فأكثر`,
+            label: `${localizedNLabel}: ${splitThreshold} ${phr.andAbove}`,
             color: 'purple',
             votes: upper,
           }
@@ -295,15 +331,15 @@ export function computeVoteAnalytics(
         const b2 = validPairs.filter((p) => p.val >= 18 && p.val <= 35).map((p) => p.vote);
         const b3 = validPairs.filter((p) => p.val > 35).map((p) => p.vote);
         buckets.push(
-          { id: `${nItem.id}_b1`, label: `${nItem.label}: أقل من 18`, color: 'amber', votes: b1 },
-          { id: `${nItem.id}_b2`, label: `${nItem.label}: 18 – 35`, color: 'sky', votes: b2 },
-          { id: `${nItem.id}_b3`, label: `${nItem.label}: أكبر من 35`, color: 'purple', votes: b3 }
+          { id: `${nItem.id}_b1`, label: `${localizedNLabel}: ${phr.lessThan} 18`, color: 'amber', votes: b1 },
+          { id: `${nItem.id}_b2`, label: `${localizedNLabel}: 18 – 35`, color: 'sky', votes: b2 },
+          { id: `${nItem.id}_b3`, label: `${localizedNLabel}: ${phr.greaterThan} 35`, color: 'purple', votes: b3 }
         );
       }
 
       buckets.push({
         id: `${nItem.id}_missing`,
-        label: `لم يحدد (${nItem.label})`,
+        label: `${phr.notSpecified} (${localizedNLabel})`,
         color: 'slate',
         votes: missingVotes,
       });
@@ -317,11 +353,12 @@ export function computeVoteAnalytics(
       }));
 
       const crossTabRows: CrossTabRow[] = buckets.map((b) =>
-        buildCrossTabRow(b.id, b.label, b.color, b.votes, activeOptions)
+        buildCrossTabRow(b.id, b.label, b.color, b.votes, activeOptions, lang)
       );
 
       return {
         item: nItem,
+        localizedItemLabel: localizedNLabel,
         answeredCount,
         missingCount,
         average,
@@ -334,6 +371,7 @@ export function computeVoteAnalytics(
 
     return {
       group,
+      localizedGroupName,
       hasChoiceItems,
       choiceEntries,
       choiceCrossTab,
@@ -351,15 +389,15 @@ export function computeVoteAnalytics(
           return `${r.categoryLabel} (${r.total} ← ${inner})`;
         })
         .join(' | ');
-      if (detail) extraSummaryParts.push(`${ga.group.name}: ${detail}`);
+      if (detail) extraSummaryParts.push(`${ga.localizedGroupName}: ${detail}`);
     }
     ga.numberFields.forEach((nf) => {
-      const avgTxt = nf.average !== null ? `المتوسط ${nf.average}` : 'لا توجد أرقام';
+      const avgTxt = nf.average !== null ? `${phr.notSpecified === 'لم يحدد' ? 'المتوسط' : 'Avg'} ${nf.average}` : '—';
       const brTxt = nf.bracketEntries
         .filter((b) => b.count > 0)
         .map((b) => `${b.label}: ${b.count}`)
         .join(' | ');
-      extraSummaryParts.push(`${nf.item.label} (${avgTxt}): ${brTxt}`);
+      extraSummaryParts.push(`${getLocalizedVoteText(nf.item.label, lang, nf.item.i18n)} (${avgTxt}): ${brTxt}`);
     });
   });
 

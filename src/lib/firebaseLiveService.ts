@@ -2538,52 +2538,58 @@ export const DEFAULT_VOTE_PRESET_OPTION_SETS: VotePresetOptionSet[] = [
   {
     id: 'yes_no',
     name: 'نعم / لا',
+    nameI18n: { ar: 'نعم / لا', th: 'ใช่ / ไม่ใช่', en: 'Yes / No' },
     options: [
-      { id: 'opt_yes', label: 'نعم', color: 'emerald' },
-      { id: 'opt_no', label: 'لا', color: 'rose' },
+      { id: 'opt_yes', label: 'نعم', i18n: { ar: 'نعم', th: 'ใช่', en: 'Yes' }, color: 'emerald' },
+      { id: 'opt_no', label: 'لا', i18n: { ar: 'لا', th: 'ไม่ใช่', en: 'No' }, color: 'rose' },
     ],
   },
   {
     id: 'gender',
     name: 'ذكر / أنثى',
+    nameI18n: { ar: 'ذكر / أنثى', th: 'ชาย / หญิง', en: 'Male / Female' },
     options: [
-      { id: 'opt_male', label: 'ذكر', color: 'sky' },
-      { id: 'opt_female', label: 'أنثى', color: 'purple' },
+      { id: 'opt_male', label: 'ذكر', i18n: { ar: 'ذكر', th: 'ชาย', en: 'Male' }, color: 'sky' },
+      { id: 'opt_female', label: 'أنثى', i18n: { ar: 'أنثى', th: 'หญิง', en: 'Female' }, color: 'purple' },
     ],
   },
   {
     id: 'agree_disagree',
     name: 'موافق / غير موافق',
+    nameI18n: { ar: 'موافق / غير موافق', th: 'เห็นด้วย / ไม่เห็นด้วย', en: 'Agree / Disagree' },
     options: [
-      { id: 'opt_agree', label: 'موافق', color: 'emerald' },
-      { id: 'opt_disagree', label: 'غير موافق', color: 'rose' },
+      { id: 'opt_agree', label: 'موافق', i18n: { ar: 'موافق', th: 'เห็นด้วย', en: 'Agree' }, color: 'emerald' },
+      { id: 'opt_disagree', label: 'غير موافق', i18n: { ar: 'غير موافق', th: 'ไม่เห็นด้วย', en: 'Disagree' }, color: 'rose' },
     ],
   },
   {
     id: 'clear_repeat',
     name: 'واضح / أعد الشرح',
+    nameI18n: { ar: 'واضح / أعد الشرح', th: 'เข้าใจแล้ว / อธิบายอีกครั้ง', en: 'Clear / Explain Again' },
     options: [
-      { id: 'opt_clear', label: 'واضح', color: 'emerald' },
-      { id: 'opt_repeat', label: 'أعد الشرح', color: 'amber' },
+      { id: 'opt_clear', label: 'واضح', i18n: { ar: 'واضح', th: 'เข้าใจแล้ว', en: 'Clear' }, color: 'emerald' },
+      { id: 'opt_repeat', label: 'أعد الشرح', i18n: { ar: 'أعد الشرح', th: 'อธิบายอีกครั้ง', en: 'Explain Again' }, color: 'amber' },
     ],
   },
   {
     id: 'rating_3',
     name: 'ممتاز / جيد / يحتاج تحسين',
+    nameI18n: { ar: 'ممتاز / جيد / يحتاج تحسين', th: 'ดีเยี่ยม / ดี / ควรปรับปรุง', en: 'Excellent / Good / Needs Improvement' },
     options: [
-      { id: 'opt_exc', label: 'ممتاز', color: 'emerald' },
-      { id: 'opt_good', label: 'جيد', color: 'sky' },
-      { id: 'opt_imp', label: 'يحتاج تحسين', color: 'amber' },
+      { id: 'opt_exc', label: 'ممتاز', i18n: { ar: 'ممتاز', th: 'ดีเยี่ยม', en: 'Excellent' }, color: 'emerald' },
+      { id: 'opt_good', label: 'جيد', i18n: { ar: 'جيد', th: 'ดี', en: 'Good' }, color: 'sky' },
+      { id: 'opt_imp', label: 'يحتاج تحسين', i18n: { ar: 'يحتاج تحسين', th: 'ควรปรับปรุง', en: 'Needs Improvement' }, color: 'amber' },
     ],
   },
   {
     id: 'numbers_4',
     name: '1 / 2 / 3 / 4',
+    nameI18n: { ar: '1 / 2 / 3 / 4', th: '1 / 2 / 3 / 4', en: '1 / 2 / 3 / 4' },
     options: [
-      { id: 'opt_1', label: '1', color: 'sky' },
-      { id: 'opt_2', label: '2', color: 'emerald' },
-      { id: 'opt_3', label: '3', color: 'amber' },
-      { id: 'opt_4', label: '4', color: 'purple' },
+      { id: 'opt_1', label: '1', i18n: { ar: '1', th: '1', en: '1' }, color: 'sky' },
+      { id: 'opt_2', label: '2', i18n: { ar: '2', th: '2', en: '2' }, color: 'emerald' },
+      { id: 'opt_3', label: '3', i18n: { ar: '3', th: '3', en: '3' }, color: 'amber' },
+      { id: 'opt_4', label: '4', i18n: { ar: '4', th: '4', en: '4' }, color: 'purple' },
     ],
   },
 ];
@@ -2592,31 +2598,37 @@ export const DEFAULT_VOTE_PRESET_QUESTIONS: VotePresetQuestion[] = [
   {
     id: 'pq_clear',
     text: 'هل الشرح واضح ومفهوم؟',
+    i18n: { ar: 'هل الشرح واضح ومفهوم؟', th: 'คำอธิบายชัดเจนและเข้าใจง่ายหรือไม่?', en: 'Is the explanation clear and easy to understand?' },
     defaultOptionSetId: 'yes_no',
   },
   {
     id: 'pq_next',
     text: 'هل ننتقل للفقرة التالية؟',
+    i18n: { ar: 'هل ننتقل للفقرة التالية؟', th: 'เราควรไปหัวข้อถัดไปเลยหรือไม่?', en: 'Should we move on to the next section?' },
     defaultOptionSetId: 'yes_no',
   },
   {
     id: 'pq_gender',
     text: 'اختر الجنس للتقييم الصحيح',
+    i18n: { ar: 'اختر الجنس للتقييم الصحيح', th: 'เลือกเพศเพื่อการประเมินที่ถูกต้อง', en: 'Select gender for accurate evaluation' },
     defaultOptionSetId: 'gender',
   },
   {
     id: 'pq_level',
     text: 'ما تقييمكم للدرس والتمرين؟',
+    i18n: { ar: 'ما تقييمكم للدرس والتمرين؟', th: 'คุณประเมินบทเรียนและแบบฝึกหัดนี้อย่างไร?', en: 'How do you rate this lesson and exercise?' },
     defaultOptionSetId: 'rating_3',
   },
   {
     id: 'pq_audio',
     text: 'هل الصوت والصورة واضحان؟',
+    i18n: { ar: 'هل الصوت والصورة واضحان؟', th: 'เสียงและภาพชัดเจนหรือไม่?', en: 'Are the audio and video clear?' },
     defaultOptionSetId: 'yes_no',
   },
   {
     id: 'pq_agree',
     text: 'هل توافقون على هذا المقترح؟',
+    i18n: { ar: 'هل توافقون على هذا المقترح؟', th: 'คุณเห็นด้วยกับข้อเสนอนี้หรือไม่?', en: 'Do you agree with this proposal?' },
     defaultOptionSetId: 'agree_disagree',
   },
 ];
@@ -2625,37 +2637,41 @@ export const DEFAULT_VOTE_EXTRA_GROUPS: VoteExtraGroup[] = [
   {
     id: 'extra_gender',
     name: 'ذكر / أنثى',
+    nameI18n: { ar: 'ذكر / أنثى', th: 'ชาย / หญิง', en: 'Male / Female' },
     required: true,
     items: [
-      { id: 'ex_male', label: 'ذكر', inputType: 'choice', color: 'sky' },
-      { id: 'ex_female', label: 'أنثى', inputType: 'choice', color: 'rose' },
+      { id: 'ex_male', label: 'ذكر', i18n: { ar: 'ذكر', th: 'ชาย', en: 'Male' }, inputType: 'choice', color: 'sky' },
+      { id: 'ex_female', label: 'أنثى', i18n: { ar: 'أنثى', th: 'หญิง', en: 'Female' }, inputType: 'choice', color: 'rose' },
     ],
   },
   {
     id: 'extra_age_group',
     name: 'العمر (صغير / كبير)',
+    nameI18n: { ar: 'العمر (صغير / كبير)', th: 'อายุ (เด็ก / ผู้ใหญ่)', en: 'Age (Young / Adult)' },
     required: true,
     items: [
-      { id: 'ex_young', label: 'صغير', inputType: 'choice', color: 'amber' },
-      { id: 'ex_adult', label: 'كبير', inputType: 'choice', color: 'purple' },
+      { id: 'ex_young', label: 'صغير', i18n: { ar: 'صغير', th: 'เด็ก', en: 'Young' }, inputType: 'choice', color: 'amber' },
+      { id: 'ex_adult', label: 'كبير', i18n: { ar: 'كبير', th: 'ผู้ใหญ่', en: 'Adult' }, inputType: 'choice', color: 'purple' },
     ],
   },
   {
     id: 'extra_age_number',
     name: 'العمر (إضافة عدد)',
+    nameI18n: { ar: 'العمر (إضافة عدد)', th: 'อายุ (กรอกตัวเลข)', en: 'Age (Enter Number)' },
     required: true,
     items: [
-      { id: 'ex_age_num', label: 'العمر', inputType: 'number', color: 'sky', splitAt: 18 },
+      { id: 'ex_age_num', label: 'العمر', i18n: { ar: 'العمر', th: 'อายุ', en: 'Age' }, inputType: 'number', color: 'sky', splitAt: 18 },
     ],
   },
   {
     id: 'extra_gender_age',
     name: 'ذكر / أنثى + العمر (عدد)',
+    nameI18n: { ar: 'ذكر / أنثى + العمر (عدد)', th: 'ชาย / หญิง + อายุ (ตัวเลข)', en: 'Male / Female + Age (Number)' },
     required: true,
     items: [
-      { id: 'ex_ga_male', label: 'ذكر', inputType: 'choice', color: 'sky' },
-      { id: 'ex_ga_female', label: 'أنثى', inputType: 'choice', color: 'rose' },
-      { id: 'ex_ga_age', label: 'العمر', inputType: 'number', color: 'amber', splitAt: 18 },
+      { id: 'ex_ga_male', label: 'ذكر', i18n: { ar: 'ذكر', th: 'ชาย', en: 'Male' }, inputType: 'choice', color: 'sky' },
+      { id: 'ex_ga_female', label: 'أنثى', i18n: { ar: 'أنثى', th: 'หญิง', en: 'Female' }, inputType: 'choice', color: 'rose' },
+      { id: 'ex_ga_age', label: 'العمر', i18n: { ar: 'العمر', th: 'อายุ', en: 'Age' }, inputType: 'number', color: 'amber', splitAt: 18 },
     ],
   },
 ];
@@ -2664,6 +2680,7 @@ export const defaultVotingConfigState: VotingConfigState = {
   activePoll: {
     roundId: 'poll_initial',
     question: DEFAULT_VOTE_PRESET_QUESTIONS[0].text,
+    questionI18n: DEFAULT_VOTE_PRESET_QUESTIONS[0].i18n,
     options: DEFAULT_VOTE_PRESET_OPTION_SETS[0].options,
     extraGroups: [],
     primaryChartType: 'horizontal_bar',
@@ -2707,37 +2724,59 @@ function sanitizeChartType(val: any): VoteChartType {
   return 'horizontal_bar';
 }
 
+function sanitizeVoteI18n(raw: any): { ar?: string; th?: string; en?: string } | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out: { ar?: string; th?: string; en?: string } = {};
+  if (typeof raw.ar === 'string' && raw.ar.trim()) out.ar = raw.ar.trim();
+  if (typeof raw.th === 'string' && raw.th.trim()) out.th = raw.th.trim();
+  if (typeof raw.en === 'string' && raw.en.trim()) out.en = raw.en.trim();
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 function sanitizeExtraGroups(rawGroups: any): VoteExtraGroup[] {
   if (!Array.isArray(rawGroups)) return [];
   return rawGroups
-    .map((g: any, gIdx: number) => ({
-      id: String(g?.id || `extra_grp_${gIdx + 1}`),
-      name: String(g?.name || '').trim(),
-      required: g?.required !== false,
-      isCustom: g?.isCustom !== undefined ? Boolean(g.isCustom) : undefined,
-      items: Array.isArray(g?.items)
-        ? g.items
-            .map((it: any, iIdx: number): VoteExtraItem => ({
-              id: String(it?.id || `ex_it_${iIdx + 1}`),
-              label: String(it?.label || '').trim(),
-              inputType: it?.inputType === 'number' ? 'number' : 'choice',
-              color: it?.color || 'sky',
-              ...(typeof it?.splitAt === 'number' && !isNaN(it.splitAt) ? { splitAt: it.splitAt } : {}),
-            }))
-            .filter((it: VoteExtraItem) => it.label.length > 0)
-        : [],
-    }))
+    .map((g: any, gIdx: number) => {
+      const nameI18n = sanitizeVoteI18n(g?.nameI18n);
+      const grp: VoteExtraGroup = {
+        id: String(g?.id || `extra_grp_${gIdx + 1}`),
+        name: String(g?.name || '').trim(),
+        required: g?.required !== false,
+        items: Array.isArray(g?.items)
+          ? g.items
+              .map((it: any, iIdx: number): VoteExtraItem => {
+                const itI18n = sanitizeVoteI18n(it?.i18n);
+                return {
+                  id: String(it?.id || `ex_it_${iIdx + 1}`),
+                  label: String(it?.label || '').trim(),
+                  inputType: it?.inputType === 'number' ? 'number' : 'choice',
+                  color: it?.color || 'sky',
+                  ...(itI18n ? { i18n: itI18n } : {}),
+                  ...(typeof it?.splitAt === 'number' && !isNaN(it.splitAt) ? { splitAt: it.splitAt } : {}),
+                };
+              })
+              .filter((it: VoteExtraItem) => it.label.length > 0)
+          : [],
+      };
+      if (nameI18n) grp.nameI18n = nameI18n;
+      if (g?.isCustom !== undefined) grp.isCustom = Boolean(g.isCustom);
+      return grp;
+    })
     .filter((g: VoteExtraGroup) => g.name.length > 0 && g.items.length > 0);
 }
 
 function sanitizeVotingState(data: any): VotingConfigState {
   const rawPoll = data?.activePoll || {};
   const rawOptions: VoteOption[] = Array.isArray(rawPoll.options) && rawPoll.options.length > 0
-    ? rawPoll.options.map((o: any, idx: number) => ({
-        id: String(o.id || `opt_${idx + 1}`),
-        label: String(o.label || '').trim(),
-        color: o.color || 'emerald',
-      })).filter((o: VoteOption) => o.label.length > 0)
+    ? rawPoll.options.map((o: any, idx: number) => {
+        const i18n = sanitizeVoteI18n(o?.i18n);
+        return {
+          id: String(o.id || `opt_${idx + 1}`),
+          label: String(o.label || '').trim(),
+          color: o.color || 'emerald',
+          ...(i18n ? { i18n } : {}),
+        };
+      }).filter((o: VoteOption) => o.label.length > 0)
     : DEFAULT_VOTE_PRESET_OPTION_SETS[0].options;
 
   const presetQuestions: VotePresetQuestion[] = Array.isArray(data?.presetQuestions) && data.presetQuestions.length > 0
@@ -2759,10 +2798,13 @@ function sanitizeVotingState(data: any): VotingConfigState {
       ? rawPoll.status
       : 'idle';
 
+  const qI18n = sanitizeVoteI18n(rawPoll.questionI18n);
+
   return {
     activePoll: {
       roundId: String(rawPoll.roundId || 'poll_initial'),
       question: String(rawPoll.question || DEFAULT_VOTE_PRESET_QUESTIONS[0].text),
+      ...(qI18n ? { questionI18n: qI18n } : {}),
       options: rawOptions,
       extraGroups: sanitizeExtraGroups(rawPoll.extraGroups),
       primaryChartType: sanitizeChartType(rawPoll.primaryChartType),
@@ -2869,6 +2911,7 @@ export function subscribeToVotingRoundActivity(
 
 export async function startOrUpdatePoll(params: {
   question: string;
+  questionI18n?: { ar?: string; th?: string; en?: string };
   options: VoteOption[];
   extraGroups?: VoteExtraGroup[];
   primaryChartType?: VoteChartType;
@@ -2880,12 +2923,16 @@ export async function startOrUpdatePoll(params: {
 }): Promise<{ success: boolean; roundId: string }> {
   const existing = await getVotingConfig();
   const nextQuestion = String(params.question || '').trim() || DEFAULT_VOTE_PRESET_QUESTIONS[0].text;
-  const cleanOptions = (params.options || [])
-    .map((o, i) => ({
-      id: o.id || `opt_${i + 1}`,
-      label: String(o.label || '').trim(),
-      color: o.color || 'emerald',
-    }))
+  const cleanOptions: VoteOption[] = (params.options || [])
+    .map((o, i) => {
+      const i18n = sanitizeVoteI18n(o.i18n);
+      return {
+        id: o.id || `opt_${i + 1}`,
+        label: String(o.label || '').trim(),
+        color: o.color || 'emerald',
+        ...(i18n ? { i18n } : {}),
+      };
+    })
     .filter((o) => o.label.length > 0);
   const effectiveOptions = cleanOptions.length > 0 ? cleanOptions : DEFAULT_VOTE_PRESET_OPTION_SETS[0].options;
   const effectiveExtraGroups = params.extraGroups !== undefined
@@ -2912,9 +2959,12 @@ export async function startOrUpdatePoll(params: {
     ? `poll_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
     : existing.activePoll.roundId;
 
+  const qI18n = sanitizeVoteI18n(params.questionI18n) || (questionChanged ? undefined : sanitizeVoteI18n(existing.activePoll.questionI18n));
+
   const nextPoll: ActivePollState = {
     roundId,
     question: nextQuestion,
+    ...(qI18n ? { questionI18n: qI18n } : {}),
     options: effectiveOptions,
     extraGroups: effectiveExtraGroups,
     primaryChartType: params.primaryChartType || existing.activePoll.primaryChartType || 'horizontal_bar',

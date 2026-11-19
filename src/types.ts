@@ -702,15 +702,19 @@ export type VoteChartType = 'numbers' | 'horizontal_bar' | 'vertical_bar' | 'don
 
 export type VoteExtraInputType = 'choice' | 'number';
 
+export type VoteI18nMap = Partial<Record<'ar' | 'th' | 'en', string>>;
+
 export interface VoteOption {
   id: string;
   label: string;
+  i18n?: VoteI18nMap;
   color?: VoteButtonColor;
 }
 
 export interface VoteExtraItem {
   id: string;
   label: string;
+  i18n?: VoteI18nMap;
   inputType: VoteExtraInputType;
   color?: VoteButtonColor;
   splitAt?: number; // Optional numeric classification cutoff (e.g. 18 => <18 vs >=18)
@@ -719,6 +723,7 @@ export interface VoteExtraItem {
 export interface VoteExtraGroup {
   id: string;
   name: string;
+  nameI18n?: VoteI18nMap;
   items: VoteExtraItem[];
   required?: boolean;
   isCustom?: boolean;
@@ -727,6 +732,7 @@ export interface VoteExtraGroup {
 export interface VotePresetQuestion {
   id: string;
   text: string;
+  i18n?: VoteI18nMap;
   defaultOptionSetId?: string;
   isCustom?: boolean;
 }
@@ -734,6 +740,7 @@ export interface VotePresetQuestion {
 export interface VotePresetOptionSet {
   id: string;
   name: string;
+  nameI18n?: VoteI18nMap;
   options: VoteOption[];
   isCustom?: boolean;
 }
@@ -741,6 +748,7 @@ export interface VotePresetOptionSet {
 export interface ActivePollState {
   roundId: string;
   question: string;
+  questionI18n?: VoteI18nMap;
   options: VoteOption[];
   extraGroups?: VoteExtraGroup[];
   primaryChartType?: VoteChartType;

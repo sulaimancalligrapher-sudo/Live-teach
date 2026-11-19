@@ -16,6 +16,9 @@ import {
   defaultVotingConfigState,
 } from '../api';
 import { computeVoteAnalytics } from '../lib/voteAnalytics';
+import { getLocalizedVoteText } from '../lib/voteTranslations';
+import { useLanguage } from '../translations';
+import LanguageSelector from './LanguageSelector';
 import VoteChartRenderer, { VOTE_COLOR_MAP } from './VoteChartRenderer';
 import LiveTeacherRoom from './LiveTeacherRoom';
 import LiveDirectDisplayRoom from './LiveDirectDisplayRoom';
@@ -27,6 +30,7 @@ interface SmartHubDisplayRoomProps {
 }
 
 export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto' }: SmartHubDisplayRoomProps) {
+  const { language, t } = useLanguage();
   // Mode selection: 'auto' | 'video' | 'direct' | 'quiz' | 'vote'
   const [activeMode, setActiveMode] = useState<'auto' | 'video' | 'direct' | 'quiz' | 'vote'>(initialMode);
   const [sessionState, setSessionState] = useState<LiveSessionState | null>(null);
@@ -223,10 +227,12 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
                 }`}
               >
                 <Vote className="w-3.5 h-3.5 text-teal-400" />
-                <span className="hidden sm:inline">تصويت مباشر</span>
+                <span className="hidden sm:inline">{t('vote_guest_badge_live', 'تصويت مباشر')}</span>
               </button>
 
               <div className="w-[1px] h-5 bg-slate-700/80 my-auto" />
+
+              <LanguageSelector iconOnly align="left" />
 
               {/* Fullscreen Button */}
               <button
@@ -291,30 +297,32 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
       {/* 3b. LIVE VOTING PROJECTOR VIEW */}
       {effectiveView === 'vote' && (() => {
         const poll = votingState.activePoll;
-        const analytics = computeVoteAnalytics(poll, voteParticipants, voteSubmissions);
+        const analytics = computeVoteAnalytics(poll, voteParticipants, voteSubmissions, language);
+        const voteDir = language === 'ar' ? 'rtl' : 'ltr';
+        const localizedQuestion = getLocalizedVoteText(poll.question, language, poll.questionI18n);
 
         return (
-          <div className="min-h-screen flex flex-col justify-center p-6 sm:p-10 pt-20 max-w-6xl mx-auto space-y-6">
+          <div className="min-h-screen flex flex-col justify-center p-6 sm:p-10 pt-20 max-w-6xl mx-auto space-y-6" dir={voteDir}>
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-              {/* Right/Main Column: Question + Live Counters + Selected Chart Type */}
+              {/* Main Column: Question + Live Counters + Selected Chart Type */}
               <div className="lg:col-span-8 space-y-5">
                 <div className="space-y-2">
                   <div className="inline-flex items-center gap-2 text-emerald-400 text-sm font-black">
                     <Vote className="w-5 h-5" />
                     <span>
                       {poll.status === 'active'
-                        ? 'التصويت المباشر مفتوح الآن'
+                        ? t('vote_status_open', 'التصويت المباشر مفتوح الآن')
                         : poll.status === 'closed'
-                        ? 'النتائج النهائية للتصويت'
+                        ? t('vote_final_results_heading', 'النتائج النهائية للتصويت')
                         : poll.status === 'exited'
-                        ? 'تم إنهاء جلسة التصويت — شكراً لمشاركتكم'
-                        : 'في انتظار بدء التصويت'}
+                        ? t('vote_status_exited', 'تم إنهاء جلسة التصويت — شكراً لمشاركتكم')
+                        : t('vote_waiting_title', 'في انتظار بدء التصويت')}
                     </span>
                   </div>
                   <h2 className="text-3xl sm:text-5xl font-black text-white leading-tight">
                     {poll.status === 'exited'
-                      ? 'شكراً لمشاركتكم وتفاعلكم!'
-                      : poll.question}
+                      ? t('vote_exited_thank_title', 'شكراً لمشاركتكم وتفاعلكم!')
+                      : localizedQuestion}
                   </h2>
                 </div>
 
@@ -322,7 +330,7 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
                     <div className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
                       <Users className="w-4 h-4 text-sky-400" />
-                      <span>الدخول الكلي</span>
+                      <span>{t('vote_total_entered_label', 'الدخول الكلي')}</span>
                     </div>
                     <div className="text-3xl sm:text-4xl font-black font-mono tabular-nums text-sky-400 mt-1">
                       {analytics.totalEntered}
@@ -331,7 +339,7 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
                     <div className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
                       <UserCheck className="w-4 h-4 text-emerald-400" />
-                      <span>المصوّتون</span>
+                      <span>{t('vote_total_voted_label', 'المصوّتون')}</span>
                     </div>
                     <div className="text-3xl sm:text-4xl font-black font-mono tabular-nums text-emerald-400 mt-1">
                       {analytics.totalVoted}
@@ -340,7 +348,7 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
                     <div className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
                       <Clock className="w-4 h-4 text-amber-400" />
-                      <span>لم يصوّتوا</span>
+                      <span>{t('vote_not_voted_label', 'لم يصوّتوا')}</span>
                     </div>
                     <div className="text-3xl sm:text-4xl font-black font-mono tabular-nums text-amber-400 mt-1">
                       {analytics.notVoted}
@@ -364,7 +372,7 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {analytics.extraGroupAnalytics.map((ga) => (
                       <div key={ga.group.id} className="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3">
-                        <h3 className="text-sm font-black text-sky-300">{ga.group.name}</h3>
+                        <h3 className="text-sm font-black text-sky-300">{ga.localizedGroupName}</h3>
                         {ga.hasChoiceItems && (
                           <>
                             <VoteChartRenderer
@@ -377,10 +385,10 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
                               {ga.choiceCrossTab.filter((r) => r.total > 0).map((row) => (
                                 <div key={row.categoryId} className="flex flex-wrap items-center justify-between gap-2 text-slate-300">
                                   <span className="font-bold text-white">{row.categoryLabel} ({row.total}):</span>
-                                  <div className="flex items-center gap-2 font-mono tabular-nums">
+                                  <div className="flex items-center gap-2.5 font-mono tabular-nums">
                                     {row.byPrimary.map((bp) => (
                                       <span key={bp.optionId} className={VOTE_COLOR_MAP[bp.color || 'emerald'].text}>
-                                        {bp.optionLabel}: {bp.count} ({bp.percent}%)
+                                        {bp.optionLabel}: {bp.count}
                                       </span>
                                     ))}
                                   </div>
@@ -393,10 +401,10 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
                         {ga.numberFields.map((nf) => (
                           <div key={nf.item.id} className="space-y-2.5">
                             <div className="flex items-center justify-between text-xs text-slate-400">
-                              <span className="font-bold text-slate-200">{nf.item.label}</span>
+                              <span className="font-bold text-slate-200">{nf.localizedItemLabel}</span>
                               {nf.average !== null && (
                                 <span className="font-mono tabular-nums text-amber-300 font-bold">
-                                  المتوسط: {nf.average} ({nf.min} – {nf.max})
+                                  {t('vote_avg_label', 'المتوسط')}: {nf.average} ({nf.min} – {nf.max})
                                 </span>
                               )}
                             </div>
@@ -414,16 +422,19 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
                 )}
               </div>
 
-              {/* Left Column: Instant Guest QR Code */}
+              {/* Side Column: Instant Guest QR Code */}
               <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
                 <span className="text-sm font-black text-amber-300 block">
-                  امسح الرمز للتصويت الفوري (بدون تسجيل)
+                  {t('vote_projector_scan_title', 'امسح الرمز للتصويت الفوري (بدون تسجيل)')}
                 </span>
                 <div className="w-56 h-56 mx-auto p-3 bg-white rounded-2xl flex items-center justify-center">
                   <img src={guestVoteQrUrl} alt="Guest Vote QR" className="w-full h-full object-contain" />
                 </div>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  المشتركون المسجلون يظهر لهم التصويت تلقائياً في شاشاتهم، والضيوف يمسحون هذا الرمز للتصويت مباشرة.
+                  {t(
+                    'vote_projector_scan_desc',
+                    'المشتركون المسجلون يظهر لهم التصويت تلقائياً في شاشاتهم، والضيوف يمسحون هذا الرمز للتصويت مباشرة.'
+                  )}
                 </p>
               </div>
             </div>

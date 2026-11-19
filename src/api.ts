@@ -3420,6 +3420,7 @@ export async function verifyAdminCredentials(
 export {
   DEFAULT_VOTE_PRESET_OPTION_SETS,
   DEFAULT_VOTE_PRESET_QUESTIONS,
+  DEFAULT_VOTE_EXTRA_GROUPS,
   defaultVotingConfigState,
   getGuestVoterId,
   getStudentVoterId,
@@ -3429,10 +3430,12 @@ export {
   startOrUpdatePoll,
   closeActivePoll,
   resetPollRound,
+  exitAndResetVotingSession,
   updateVotingSettings,
   saveVotingPresets,
   registerVoteParticipant,
   submitVoteChoice,
+  submitVoteExtraDetails,
 } from './lib/firebaseLiveService';
 
 export async function setupVotesSheetApi(): Promise<{

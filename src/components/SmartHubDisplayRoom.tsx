@@ -15,6 +15,8 @@ import {
   subscribeToVotingRoundActivity,
   defaultVotingConfigState,
 } from '../api';
+import { computeVoteAnalytics } from '../lib/voteAnalytics';
+import VoteChartRenderer, { VOTE_COLOR_MAP } from './VoteChartRenderer';
 import LiveTeacherRoom from './LiveTeacherRoom';
 import LiveDirectDisplayRoom from './LiveDirectDisplayRoom';
 import LiveQuizArenaDisplay from './LiveQuizArenaDisplay';
@@ -56,12 +58,19 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
 
   const pollRoundId = votingState.activePoll?.roundId || '';
   useEffect(() => {
+    setVoteParticipants([]);
+    setVoteSubmissions([]);
     if (!pollRoundId) return;
+    let active = true;
     const unsub = subscribeToVotingRoundActivity(pollRoundId, ({ participants, votes }) => {
-      setVoteParticipants(participants);
-      setVoteSubmissions(votes);
+      if (!active) return;
+      setVoteParticipants(participants.filter((p) => p.roundId === pollRoundId));
+      setVoteSubmissions(votes.filter((v) => v.roundId === pollRoundId));
     });
-    return () => unsub();
+    return () => {
+      active = false;
+      unsub();
+    };
   }, [pollRoundId]);
 
   // Fullscreen toggle
@@ -78,8 +87,9 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
   // Determine current effective view with strict channel isolation
   const currentMode = sessionState?.activeMode || sessionState?.mode;
   const isQuizActive = Boolean(sessionState?.quizState?.isActive);
+  const pollStatus = votingState.activePoll?.status;
   const isVoteBigScreenActive = Boolean(
-    votingState.activePoll?.status === 'active' && votingState.activePoll?.showOnBigScreen
+    votingState.activePoll?.showOnBigScreen && (pollStatus === 'active' || pollStatus === 'closed')
   );
   const isDirectActive = Boolean(currentMode === 'direct');
   const isVideoActive = Boolean(currentMode === 'video');
@@ -281,27 +291,13 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
       {/* 3b. LIVE VOTING PROJECTOR VIEW */}
       {effectiveView === 'vote' && (() => {
         const poll = votingState.activePoll;
-        const uniqueVoterIds = new Set<string>([
-          ...voteParticipants.map((p) => p.voterId),
-          ...voteSubmissions.map((v) => v.voterId),
-        ]);
-        const totalEntered = uniqueVoterIds.size;
-        const totalVoted = voteSubmissions.length;
-        const notVoted = Math.max(0, totalEntered - totalVoted);
-        const barColors: Record<string, string> = {
-          emerald: 'bg-emerald-500',
-          rose: 'bg-rose-500',
-          sky: 'bg-sky-500',
-          purple: 'bg-purple-500',
-          amber: 'bg-amber-500',
-          slate: 'bg-slate-400',
-        };
+        const analytics = computeVoteAnalytics(poll, voteParticipants, voteSubmissions);
 
         return (
-          <div className="min-h-screen flex flex-col justify-center p-6 sm:p-12 pt-20 max-w-6xl mx-auto space-y-8">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-              {/* Right/Main Column: Question + Live Counters + Bars */}
-              <div className="lg:col-span-8 space-y-6">
+          <div className="min-h-screen flex flex-col justify-center p-6 sm:p-10 pt-20 max-w-6xl mx-auto space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              {/* Right/Main Column: Question + Live Counters + Selected Chart Type */}
+              <div className="lg:col-span-8 space-y-5">
                 <div className="space-y-2">
                   <div className="inline-flex items-center gap-2 text-emerald-400 text-sm font-black">
                     <Vote className="w-5 h-5" />
@@ -310,11 +306,15 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
                         ? 'التصويت المباشر مفتوح الآن'
                         : poll.status === 'closed'
                         ? 'النتائج النهائية للتصويت'
+                        : poll.status === 'exited'
+                        ? 'تم إنهاء جلسة التصويت — شكراً لمشاركتكم'
                         : 'في انتظار بدء التصويت'}
                     </span>
                   </div>
                   <h2 className="text-3xl sm:text-5xl font-black text-white leading-tight">
-                    {poll.question}
+                    {poll.status === 'exited'
+                      ? 'شكراً لمشاركتكم وتفاعلكم!'
+                      : poll.question}
                   </h2>
                 </div>
 
@@ -324,8 +324,8 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
                       <Users className="w-4 h-4 text-sky-400" />
                       <span>الدخول الكلي</span>
                     </div>
-                    <div className="text-3xl sm:text-4xl font-black font-mono text-sky-400 mt-1">
-                      {totalEntered}
+                    <div className="text-3xl sm:text-4xl font-black font-mono tabular-nums text-sky-400 mt-1">
+                      {analytics.totalEntered}
                     </div>
                   </div>
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
@@ -333,8 +333,8 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
                       <UserCheck className="w-4 h-4 text-emerald-400" />
                       <span>المصوّتون</span>
                     </div>
-                    <div className="text-3xl sm:text-4xl font-black font-mono text-emerald-400 mt-1">
-                      {totalVoted}
+                    <div className="text-3xl sm:text-4xl font-black font-mono tabular-nums text-emerald-400 mt-1">
+                      {analytics.totalVoted}
                     </div>
                   </div>
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
@@ -342,36 +342,76 @@ export default function SmartHubDisplayRoom({ onBackToMain, initialMode = 'auto'
                       <Clock className="w-4 h-4 text-amber-400" />
                       <span>لم يصوّتوا</span>
                     </div>
-                    <div className="text-3xl sm:text-4xl font-black font-mono text-amber-400 mt-1">
-                      {notVoted}
+                    <div className="text-3xl sm:text-4xl font-black font-mono tabular-nums text-amber-400 mt-1">
+                      {analytics.notVoted}
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5">
-                  {poll.options.map((opt) => {
-                    const count = voteSubmissions.filter(
-                      (v) => v.optionId === opt.id || v.optionLabel === opt.label
-                    ).length;
-                    const pct = totalVoted > 0 ? Math.round((count / totalVoted) * 100) : 0;
-                    return (
-                      <div key={opt.id} className="space-y-2">
-                        <div className="flex items-center justify-between text-lg sm:text-xl font-black">
-                          <span className="text-white">{opt.label}</span>
-                          <span className="font-mono text-slate-200">
-                            {count} صوت ({pct}%)
-                          </span>
-                        </div>
-                        <div className="w-full h-6 rounded-xl bg-slate-950 border border-slate-800 overflow-hidden">
-                          <div
-                            className={`h-full ${barColors[opt.color || 'emerald']} transition-all duration-500`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
+                {poll.status !== 'exited' && (
+                  <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-5">
+                    <VoteChartRenderer
+                      entries={analytics.optionStats}
+                      chartType={poll.primaryChartType || 'horizontal_bar'}
+                      totalVotes={analytics.totalVoted}
+                      size="projector"
+                    />
+                  </div>
+                )}
+
+                {/* Extra Detail Breakdowns on Projector */}
+                {poll.status !== 'exited' && analytics.extraGroupAnalytics.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {analytics.extraGroupAnalytics.map((ga) => (
+                      <div key={ga.group.id} className="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3">
+                        <h3 className="text-sm font-black text-sky-300">{ga.group.name}</h3>
+                        {ga.hasChoiceItems && (
+                          <>
+                            <VoteChartRenderer
+                              entries={ga.choiceEntries}
+                              chartType={poll.extraChartType || 'horizontal_bar'}
+                              totalVotes={analytics.totalVoted}
+                              size="normal"
+                            />
+                            <div className="pt-2 border-t border-slate-800 space-y-1.5 text-xs">
+                              {ga.choiceCrossTab.filter((r) => r.total > 0).map((row) => (
+                                <div key={row.categoryId} className="flex flex-wrap items-center justify-between gap-2 text-slate-300">
+                                  <span className="font-bold text-white">{row.categoryLabel} ({row.total}):</span>
+                                  <div className="flex items-center gap-2 font-mono tabular-nums">
+                                    {row.byPrimary.map((bp) => (
+                                      <span key={bp.optionId} className={VOTE_COLOR_MAP[bp.color || 'emerald'].text}>
+                                        {bp.optionLabel}: {bp.count} ({bp.percent}%)
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </>
+                        )}
+
+                        {ga.numberFields.map((nf) => (
+                          <div key={nf.item.id} className="space-y-2.5">
+                            <div className="flex items-center justify-between text-xs text-slate-400">
+                              <span className="font-bold text-slate-200">{nf.item.label}</span>
+                              {nf.average !== null && (
+                                <span className="font-mono tabular-nums text-amber-300 font-bold">
+                                  المتوسط: {nf.average} ({nf.min} – {nf.max})
+                                </span>
+                              )}
+                            </div>
+                            <VoteChartRenderer
+                              entries={nf.bracketEntries}
+                              chartType={poll.extraChartType || 'horizontal_bar'}
+                              totalVotes={analytics.totalVoted}
+                              size="normal"
+                            />
+                          </div>
+                        ))}
                       </div>
-                    );
-                  })}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Left Column: Instant Guest QR Code */}

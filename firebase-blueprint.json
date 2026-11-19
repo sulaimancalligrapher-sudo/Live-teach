@@ -68,6 +68,9 @@
         "sheetNumber": { "type": "string", "nullable": true },
         "optionId": { "type": "string" },
         "optionLabel": { "type": "string" },
+        "extraChoices": { "type": "object", "nullable": true },
+        "extraNumbers": { "type": "object", "nullable": true },
+        "extraCompleted": { "type": "boolean", "nullable": true },
         "votedAt": { "type": "number" }
       }
     }

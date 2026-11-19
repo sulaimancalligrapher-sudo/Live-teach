@@ -698,10 +698,30 @@ export interface AdminAccessConfig {
 
 export type VoteButtonColor = 'emerald' | 'rose' | 'amber' | 'sky' | 'purple' | 'slate';
 
+export type VoteChartType = 'numbers' | 'horizontal_bar' | 'vertical_bar' | 'donut';
+
+export type VoteExtraInputType = 'choice' | 'number';
+
 export interface VoteOption {
   id: string;
   label: string;
   color?: VoteButtonColor;
+}
+
+export interface VoteExtraItem {
+  id: string;
+  label: string;
+  inputType: VoteExtraInputType;
+  color?: VoteButtonColor;
+  splitAt?: number; // Optional numeric classification cutoff (e.g. 18 => <18 vs >=18)
+}
+
+export interface VoteExtraGroup {
+  id: string;
+  name: string;
+  items: VoteExtraItem[];
+  required?: boolean;
+  isCustom?: boolean;
 }
 
 export interface VotePresetQuestion {
@@ -722,18 +742,23 @@ export interface ActivePollState {
   roundId: string;
   question: string;
   options: VoteOption[];
-  status: 'idle' | 'active' | 'closed';
+  extraGroups?: VoteExtraGroup[];
+  primaryChartType?: VoteChartType;
+  extraChartType?: VoteChartType;
+  status: 'idle' | 'active' | 'closed' | 'exited';
   showResultsToVoters: boolean;
   showOnBigScreen: boolean;
   allowChangeVote: boolean;
   startedAt: number | null;
   closedAt: number | null;
+  exitedAt?: number | null;
 }
 
 export interface VotingConfigState {
   activePoll: ActivePollState;
   presetQuestions: VotePresetQuestion[];
   presetOptionSets: VotePresetOptionSet[];
+  presetExtraGroups?: VoteExtraGroup[];
   updatedAt?: number;
 }
 
@@ -757,6 +782,9 @@ export interface VoteSubmissionRecord {
   sheetNumber?: string;
   optionId: string;
   optionLabel: string;
+  extraChoices?: Record<string, { itemId: string; label: string }>;
+  extraNumbers?: Record<string, number>;
+  extraCompleted?: boolean;
   votedAt: number;
 }
 
@@ -772,5 +800,3 @@ export interface VoteSheetRecord {
   votersBreakdown?: string;
   notes?: string;
 }
-
-

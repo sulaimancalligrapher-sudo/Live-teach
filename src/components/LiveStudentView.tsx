@@ -11,14 +11,17 @@ import {
 import { Html5Qrcode } from 'html5-qrcode';
 import { 
   LiveSessionState, LiveQuestionItem, evaluateLiveAnswer, LiveStudentMessage, getQuizStudentKey,
-  HeaderConfig, VotingConfigState, VoteOption, VoteSubmissionRecord
+  HeaderConfig, VotingConfigState, VoteOption, VoteSubmissionRecord, VoteExtraGroup, VoteExtraItem
 } from '../types';
 import { 
   getLiveSessionState, joinLiveSession, pingLiveSession, leaveLiveSession, submitLiveAnswer, 
   formatDriveImageUrl, subscribeToLiveSession, sendStudentMessage, replyToStudentMessage, deleteStudentMessage, clearAllStudentMessages, toggleShowChatInRoom,
   joinQuizLobby, verifyStudentInSettings, fetchHeaderConfig,
-  subscribeToVotingConfig, subscribeToVotingRoundActivity, registerVoteParticipant, submitVoteChoice, getStudentVoterId, defaultVotingConfigState
+  subscribeToVotingConfig, subscribeToVotingRoundActivity, registerVoteParticipant, submitVoteChoice, submitVoteExtraDetails, getStudentVoterId, defaultVotingConfigState
 } from '../api';
+import { computeVoteAnalytics, isExtraDetailsComplete } from '../lib/voteAnalytics';
+import VoteChartRenderer from './VoteChartRenderer';
+import VoterExtraDetailsBox from './VoterExtraDetailsBox';
 import LiveChatModal from './LiveChatModal';
 import StudentQuizView from './StudentQuizView';
 import { NativePdfViewer } from './NativePdfViewer';
@@ -161,6 +164,12 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
   const [myVotedOptions, setMyVotedOptions] = useState<Record<string, VoteOption>>({});
   const [isSubmittingVote, setIsSubmittingVote] = useState(false);
   const [isVoteCardMinimized, setIsVoteCardMinimized] = useState(false);
+  const [voteExtraChoices, setVoteExtraChoices] = useState<Record<string, { itemId: string; label: string }>>({});
+  const [voteExtraNumbers, setVoteExtraNumbers] = useState<Record<string, string>>({});
+  const [voteExtraCompletedLocal, setVoteExtraCompletedLocal] = useState(false);
+  const [showVoteExtraPrompt, setShowVoteExtraPrompt] = useState(false);
+  const [isSavingVoteExtra, setIsSavingVoteExtra] = useState(false);
+  const [dismissedExitRoundId, setDismissedExitRoundId] = useState<string>('');
 
   // Student local PDF viewing preferences (default 'contain' so horizontal slides fit completely without clipping)
   const [studentPdfFitMode, setStudentPdfFitMode] = useState<'contain' | 'width'>('contain');
@@ -202,6 +211,20 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
   const activePollStatus = votingState.activePoll?.status || 'idle';
   const studentVoterId = getStudentVoterId(username, sheetNumber);
 
+  // Cleanly reset per-round voting state whenever roundId changes or poll exits
+  useEffect(() => {
+    setVoteRoundVotes([]);
+    setVoteExtraChoices({});
+    setVoteExtraNumbers({});
+    setVoteExtraCompletedLocal(false);
+    setShowVoteExtraPrompt(false);
+    setIsSavingVoteExtra(false);
+    setIsVoteCardMinimized(false);
+    if (activePollStatus === 'exited') {
+      setMyVotedOptions({});
+    }
+  }, [activePollRoundId, activePollStatus]);
+
   useEffect(() => {
     if (!isJoined || !isPinVerified || !activePollRoundId || activePollStatus !== 'active') return;
     setIsVoteCardMinimized(false);
@@ -215,17 +238,37 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
 
   useEffect(() => {
     if (!isJoined || !isPinVerified || !activePollRoundId) return;
+    let active = true;
     const unsub = subscribeToVotingRoundActivity(activePollRoundId, ({ votes }) => {
-      setVoteRoundVotes(votes);
-      const mine = votes.find((v) => v.voterId === studentVoterId);
+      if (!active) return;
+      const roundVotes = votes.filter((v) => v.roundId === activePollRoundId);
+      setVoteRoundVotes(roundVotes);
+      const mine = roundVotes.find((v) => v.voterId === studentVoterId);
       if (mine) {
         setMyVotedOptions((prev) => ({
           ...prev,
           [activePollRoundId]: { id: mine.optionId, label: mine.optionLabel },
         }));
+        if (mine.extraChoices && Object.keys(mine.extraChoices).length > 0) {
+          setVoteExtraChoices(mine.extraChoices);
+        }
+        if (mine.extraNumbers && Object.keys(mine.extraNumbers).length > 0) {
+          const strNums: Record<string, string> = {};
+          Object.entries(mine.extraNumbers).forEach(([k, val]) => {
+            strNums[k] = String(val);
+          });
+          setVoteExtraNumbers(strNums);
+        }
+        if (mine.extraCompleted) {
+          setVoteExtraCompletedLocal(true);
+          setShowVoteExtraPrompt(false);
+        }
       }
     });
-    return () => unsub();
+    return () => {
+      active = false;
+      unsub();
+    };
   }, [isJoined, isPinVerified, activePollRoundId, studentVoterId]);
 
   // Firebase real-time subscription for live updates
@@ -1599,10 +1642,57 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
         {/* LIVE POLL OVERLAY CARD FOR REGISTERED STUDENTS */}
         {(() => {
           const poll = votingState.activePoll;
-          if (!poll || poll.status !== 'active') return null;
+          if (!poll) return null;
+
+          // Exited Thank-You Card (dismissible so student stays in classroom)
+          if (poll.status === 'exited') {
+            if (dismissedExitRoundId === poll.roundId) return null;
+            return (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-4 p-4 rounded-3xl bg-slate-900 border border-emerald-500/40 shadow-xl flex items-center justify-between gap-3 text-right"
+                dir="rtl"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center shrink-0">
+                    <Award className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-black text-white">شكراً لمشاركتكم في التصويت!</div>
+                    <div className="text-xs text-slate-400">
+                      تم إنهاء جلسة التصويت وتصفير الذاكرة. سيظهر أي سؤال جديد تلقائياً هنا.
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDismissedExitRoundId(poll.roundId)}
+                  className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer shrink-0"
+                  title="إخفاء"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </motion.div>
+            );
+          }
+
+          if (poll.status === 'idle') return null;
+
           const myChosen = myVotedOptions[poll.roundId] || null;
-          const isLocked = Boolean(myChosen) && !poll.allowChangeVote;
-          const totalPollVotes = voteRoundVotes.length;
+          const isPollClosed = poll.status === 'closed';
+          // Only show closed card if results are shown to voters (otherwise wait quietly for next round or exit)
+          if (isPollClosed && !poll.showResultsToVoters) return null;
+
+          const extraGroups = poll.extraGroups || [];
+          const parsedNumericMap: Record<string, number> = {};
+          Object.entries(voteExtraNumbers).forEach(([k, v]) => {
+            const tr = String(v || '').trim();
+            if (tr !== '' && !isNaN(Number(tr))) parsedNumericMap[k] = Number(tr);
+          });
+          const extraCheck = isExtraDetailsComplete(extraGroups, voteExtraChoices, parsedNumericMap);
+          const isLocked = isPollClosed || (Boolean(myChosen) && !poll.allowChangeVote);
+          const analytics = computeVoteAnalytics(poll, [], voteRoundVotes);
 
           const voteColorClasses: Record<string, string> = {
             emerald: 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400/60',
@@ -1614,8 +1704,9 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
           };
 
           const handleStudentVoteTap = async (opt: VoteOption) => {
-            if (isLocked || isSubmittingVote) return;
+            if (isLocked || isSubmittingVote || isPollClosed) return;
             setIsSubmittingVote(true);
+            const currentCheck = isExtraDetailsComplete(extraGroups, voteExtraChoices, parsedNumericMap);
             try {
               const res = await submitVoteChoice(
                 poll.roundId,
@@ -1626,13 +1717,86 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
                   sheetNumber: sheetNumber.trim(),
                 },
                 opt,
-                Boolean(poll.allowChangeVote)
+                Boolean(poll.allowChangeVote),
+                {
+                  extraChoices: voteExtraChoices,
+                  extraNumbers: parsedNumericMap,
+                  extraCompleted: currentCheck.complete,
+                }
               );
               if (res.success) {
                 setMyVotedOptions((prev) => ({ ...prev, [poll.roundId]: opt }));
+                if (currentCheck.complete) {
+                  setVoteExtraCompletedLocal(true);
+                  setShowVoteExtraPrompt(false);
+                } else {
+                  setVoteExtraCompletedLocal(false);
+                  setShowVoteExtraPrompt(true);
+                }
               }
             } finally {
               setIsSubmittingVote(false);
+            }
+          };
+
+          const saveStudentExtraToServer = async (
+            nextChoices: Record<string, { itemId: string; label: string }>,
+            nextNumsRaw: Record<string, string>
+          ) => {
+            const numRec: Record<string, number> = {};
+            Object.entries(nextNumsRaw).forEach(([k, v]) => {
+              const tr = String(v || '').trim();
+              if (tr !== '' && !isNaN(Number(tr))) numRec[k] = Number(tr);
+            });
+            const chk = isExtraDetailsComplete(extraGroups, nextChoices, numRec);
+            setIsSavingVoteExtra(true);
+            try {
+              await submitVoteExtraDetails(
+                poll.roundId,
+                {
+                  voterId: studentVoterId,
+                  voterType: 'student',
+                  name: username.trim(),
+                  sheetNumber: sheetNumber.trim(),
+                },
+                {
+                  extraChoices: nextChoices,
+                  extraNumbers: numRec,
+                  extraCompleted: chk.complete,
+                }
+              );
+              if (chk.complete) {
+                setVoteExtraCompletedLocal(true);
+                setShowVoteExtraPrompt(false);
+              } else {
+                setVoteExtraCompletedLocal(false);
+                setShowVoteExtraPrompt(true);
+              }
+            } finally {
+              setIsSavingVoteExtra(false);
+            }
+          };
+
+          const handleStudentExtraChoice = (group: VoteExtraGroup, item: VoteExtraItem) => {
+            const nextChoices = {
+              ...voteExtraChoices,
+              [group.id]: { itemId: item.id, label: item.label },
+            };
+            setVoteExtraChoices(nextChoices);
+
+            if (myChosen && !isPollClosed) {
+              const numRec: Record<string, number> = {};
+              Object.entries(voteExtraNumbers).forEach(([k, v]) => {
+                const tr = String(v || '').trim();
+                if (tr !== '' && !isNaN(Number(tr))) numRec[k] = Number(tr);
+              });
+              const chk = isExtraDetailsComplete(extraGroups, nextChoices, numRec);
+              const hasUnfilledNumber = extraGroups.some((g) =>
+                g.items.some((i) => i.inputType === 'number' && !String(voteExtraNumbers[`${g.id}__${i.id}`] || '').trim())
+              );
+              if (chk.complete || !hasUnfilledNumber) {
+                saveStudentExtraToServer(nextChoices, voteExtraNumbers);
+              }
             }
           };
 
@@ -1665,13 +1829,13 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
                 <div className="space-y-1">
                   <div className="flex items-center gap-1.5 text-emerald-400 text-xs font-black">
                     <Vote className="w-4 h-4" />
-                    <span>تصويت مباشر الآن</span>
+                    <span>{isPollClosed ? 'النتائج النهائية للتصويت' : 'تصويت مباشر الآن'}</span>
                   </div>
                   <h4 className="text-base sm:text-lg font-black text-white leading-snug">
                     {poll.question}
                   </h4>
                 </div>
-                {myChosen && (
+                {(myChosen || isPollClosed) && (
                   <button
                     type="button"
                     onClick={() => setIsVoteCardMinimized(true)}
@@ -1683,55 +1847,102 @@ export default function LiveStudentView({ onBackToMain, headerConfig: propHeader
                 )}
               </div>
 
-              <div className={`grid gap-2.5 ${poll.options.length === 2 ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-2'}`}>
-                {poll.options.map((opt) => {
-                  const chosen = myChosen?.id === opt.id;
-                  const cls = voteColorClasses[opt.color || 'emerald'] || voteColorClasses.emerald;
-                  return (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      disabled={isLocked || isSubmittingVote}
-                      onClick={() => handleStudentVoteTap(opt)}
-                      className={`py-3 px-4 rounded-2xl border font-black text-sm sm:text-base transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] ${
-                        chosen
-                          ? `${cls} ring-2 ring-white shadow-lg`
-                          : isLocked
-                          ? 'bg-slate-800/70 border-slate-700 text-slate-500 cursor-not-allowed'
-                          : cls
-                      }`}
-                    >
-                      {chosen && <CheckCircle2 className="w-4 h-4 shrink-0" />}
-                      <span>{opt.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              {!isPollClosed && (
+                <>
+                  <div className={`grid gap-2.5 ${poll.options.length === 2 ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-2'}`}>
+                    {poll.options.map((opt) => {
+                      const chosen = myChosen?.id === opt.id;
+                      const cls = voteColorClasses[opt.color || 'emerald'] || voteColorClasses.emerald;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          disabled={isLocked || isSubmittingVote}
+                          onClick={() => handleStudentVoteTap(opt)}
+                          className={`py-3 px-4 rounded-2xl border font-black text-sm sm:text-base transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] ${
+                            chosen
+                              ? `${cls} ring-2 ring-white shadow-lg`
+                              : isLocked
+                              ? 'bg-slate-800/70 border-slate-700 text-slate-500 cursor-not-allowed'
+                              : cls
+                          }`}
+                        >
+                          {chosen && <CheckCircle2 className="w-4 h-4 shrink-0" />}
+                          <span>{opt.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {extraGroups.length > 0 && (
+                    <VoterExtraDetailsBox
+                      extraGroups={extraGroups}
+                      extraChoices={voteExtraChoices}
+                      extraNumbers={voteExtraNumbers}
+                      missingGroupIds={extraCheck.missingGroupIds}
+                      missingGroupNames={extraCheck.missingGroupNames}
+                      showUrgentPrompt={showVoteExtraPrompt}
+                      hasPrimaryVote={Boolean(myChosen)}
+                      isSavingExtra={isSavingVoteExtra}
+                      extraCompleted={voteExtraCompletedLocal}
+                      disabled={isPollClosed}
+                      onSelectChoice={handleStudentExtraChoice}
+                      onChangeNumber={(grpId, itemId, val) =>
+                        setVoteExtraNumbers((prev) => ({ ...prev, [`${grpId}__${itemId}`]: val }))
+                      }
+                      onConfirmExtra={() => saveStudentExtraToServer(voteExtraChoices, voteExtraNumbers)}
+                    />
+                  )}
+                </>
+              )}
 
               {myChosen && (
-                <div className="text-xs font-bold text-emerald-300 flex items-center justify-center gap-1.5">
+                <div
+                  className={`text-xs font-bold flex items-center justify-center gap-1.5 ${
+                    extraGroups.length > 0 && !extraCheck.complete
+                      ? 'text-amber-300'
+                      : 'text-emerald-300'
+                  }`}
+                >
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>تم استلام صوتك: {myChosen.label}</span>
+                  <span>
+                    {extraGroups.length > 0 && !extraCheck.complete
+                      ? `تم استلام صوتك (${myChosen.label}) — يرجى استكمال التفاصيل الإضافية أعلاه`
+                      : `تم استلام صوتك بنجاح: ${myChosen.label}`}
+                  </span>
                 </div>
               )}
 
-              {poll.showResultsToVoters && myChosen && (
-                <div className="pt-2 border-t border-slate-800 space-y-2">
-                  {poll.options.map((opt) => {
-                    const c = voteRoundVotes.filter((v) => v.optionId === opt.id || v.optionLabel === opt.label).length;
-                    const pct = totalPollVotes > 0 ? Math.round((c / totalPollVotes) * 100) : 0;
-                    return (
-                      <div key={opt.id} className="space-y-1 text-xs">
-                        <div className="flex justify-between font-bold text-slate-300">
-                          <span>{opt.label}</span>
-                          <span className="font-mono">{c} ({pct}%)</span>
-                        </div>
-                        <div className="w-full h-2.5 rounded-lg bg-slate-950 overflow-hidden">
-                          <div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
+              {poll.showResultsToVoters && (myChosen || isPollClosed) && (
+                <div className="pt-3 border-t border-slate-800 space-y-3">
+                  <VoteChartRenderer
+                    entries={analytics.optionStats}
+                    chartType={poll.primaryChartType || 'horizontal_bar'}
+                    totalVotes={analytics.totalVoted}
+                    size="compact"
+                  />
+                  {analytics.extraGroupAnalytics.map((ga) => (
+                    <div key={ga.group.id} className="pt-2 border-t border-slate-800/80 space-y-2">
+                      <div className="text-[11px] font-black text-sky-300">{ga.group.name}</div>
+                      {ga.hasChoiceItems && (
+                        <VoteChartRenderer
+                          entries={ga.choiceEntries}
+                          chartType={poll.extraChartType || 'horizontal_bar'}
+                          totalVotes={analytics.totalVoted}
+                          size="compact"
+                        />
+                      )}
+                      {ga.numberFields.map((nf) => (
+                        <VoteChartRenderer
+                          key={nf.item.id}
+                          entries={nf.bracketEntries}
+                          chartType={poll.extraChartType || 'horizontal_bar'}
+                          totalVotes={analytics.totalVoted}
+                          size="compact"
+                        />
+                      ))}
+                    </div>
+                  ))}
                 </div>
               )}
             </motion.div>

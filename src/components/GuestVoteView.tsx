@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Clock, Loader2, Vote } from 'lucide-react';
+import { Award, CheckCircle2, Clock, Loader2, Vote } from 'lucide-react';
 import {
   HeaderConfig,
   VoteButtonColor,
+  VoteExtraGroup,
+  VoteExtraItem,
   VoteOption,
   VoteSubmissionRecord,
   VotingConfigState,
@@ -14,9 +16,13 @@ import {
   getGuestVoterId,
   registerVoteParticipant,
   submitVoteChoice,
+  submitVoteExtraDetails,
   subscribeToVotingConfig,
   subscribeToVotingRoundActivity,
 } from '../api';
+import { computeVoteAnalytics, isExtraDetailsComplete } from '../lib/voteAnalytics';
+import VoteChartRenderer from './VoteChartRenderer';
+import VoterExtraDetailsBox from './VoterExtraDetailsBox';
 
 const GUEST_BUTTON_CLASSES: Record<VoteButtonColor, string> = {
   emerald: 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400/60 shadow-emerald-600/20',
@@ -27,14 +33,17 @@ const GUEST_BUTTON_CLASSES: Record<VoteButtonColor, string> = {
   slate: 'bg-slate-700 hover:bg-slate-600 text-white border-slate-500 shadow-slate-700/20',
 };
 
-const BAR_COLOR_CLASSES: Record<VoteButtonColor, string> = {
-  emerald: 'bg-emerald-500',
-  rose: 'bg-rose-500',
-  sky: 'bg-sky-500',
-  purple: 'bg-purple-500',
-  amber: 'bg-amber-500',
-  slate: 'bg-slate-400',
-};
+function parseNumericRecord(raw: Record<string, string>): Record<string, number> {
+  const out: Record<string, number> = {};
+  Object.entries(raw).forEach(([k, v]) => {
+    const trimmed = String(v || '').trim();
+    if (trimmed !== '') {
+      const n = Number(trimmed);
+      if (!isNaN(n)) out[k] = n;
+    }
+  });
+  return out;
+}
 
 export default function GuestVoteView() {
   const [headerConfig, setHeaderConfig] = useState<HeaderConfig | null>(null);
@@ -43,6 +52,13 @@ export default function GuestVoteView() {
   const [submittingOptionId, setSubmittingOptionId] = useState<string | null>(null);
   const [localVotedMap, setLocalVotedMap] = useState<Record<string, VoteOption>>({});
   const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+
+  // Additional Details State (reset cleanly on every new roundId or exit)
+  const [extraChoices, setExtraChoices] = useState<Record<string, { itemId: string; label: string }>>({});
+  const [extraNumbers, setExtraNumbers] = useState<Record<string, string>>({});
+  const [extraCompletedLocal, setExtraCompletedLocal] = useState<boolean>(false);
+  const [showExtraPrompt, setShowExtraPrompt] = useState<boolean>(false);
+  const [isSavingExtra, setIsSavingExtra] = useState<boolean>(false);
 
   const guestId = useMemo(() => getGuestVoterId(), []);
 
@@ -61,37 +77,122 @@ export default function GuestVoteView() {
 
   const activePoll = votingState.activePoll;
   const roundId = activePoll?.roundId || '';
+  const pollStatus = activePoll?.status || 'idle';
+  const extraGroups = activePoll?.extraGroups || [];
+
+  // CRITICAL FIX: Cleanly wipe all local per-round messages & extra fields whenever roundId changes or session exits
+  useEffect(() => {
+    setVotes([]);
+    setFeedbackMsg(null);
+    setSubmittingOptionId(null);
+    setExtraChoices({});
+    setExtraNumbers({});
+    setExtraCompletedLocal(false);
+    setShowExtraPrompt(false);
+    setIsSavingExtra(false);
+
+    if (pollStatus === 'exited') {
+      setLocalVotedMap({});
+    }
+  }, [roundId, pollStatus]);
 
   // Register device presence immediately when opening guest vote page during an active poll
   useEffect(() => {
-    if (!roundId || activePoll?.status !== 'active') return;
+    if (!roundId || pollStatus !== 'active') return;
     registerVoteParticipant(roundId, {
       voterId: guestId,
       voterType: 'guest',
     });
-  }, [roundId, activePoll?.status, guestId]);
+  }, [roundId, pollStatus, guestId]);
 
-  // Subscribe to round votes (to restore own vote on refresh & display public results if enabled)
+  // Subscribe strictly to current roundId votes (restore own vote on refresh only for THIS roundId)
   useEffect(() => {
     if (!roundId) return;
+    let active = true;
     const unsub = subscribeToVotingRoundActivity(roundId, ({ votes: v }) => {
-      setVotes(v);
-      const myVote = v.find((item) => item.voterId === guestId);
+      if (!active) return;
+      const roundVotes = v.filter((item) => item.roundId === roundId);
+      setVotes(roundVotes);
+
+      const myVote = roundVotes.find((item) => item.voterId === guestId);
       if (myVote) {
         setLocalVotedMap((prev) => ({
           ...prev,
           [roundId]: { id: myVote.optionId, label: myVote.optionLabel },
         }));
+        if (myVote.extraChoices && Object.keys(myVote.extraChoices).length > 0) {
+          setExtraChoices(myVote.extraChoices);
+        }
+        if (myVote.extraNumbers && Object.keys(myVote.extraNumbers).length > 0) {
+          const strMap: Record<string, string> = {};
+          Object.entries(myVote.extraNumbers).forEach(([k, n]) => {
+            strMap[k] = String(n);
+          });
+          setExtraNumbers(strMap);
+        }
+        if (myVote.extraCompleted) {
+          setExtraCompletedLocal(true);
+          setShowExtraPrompt(false);
+        }
       }
     });
-    return () => unsub();
+    return () => {
+      active = false;
+      unsub();
+    };
   }, [roundId, guestId]);
 
   const mySelectedOption = localVotedMap[roundId] || null;
-  const isPollActive = activePoll?.status === 'active';
+  const isPollActive = pollStatus === 'active';
+
+  const numericMap = useMemo(() => parseNumericRecord(extraNumbers), [extraNumbers]);
+  const extraCheck = useMemo(
+    () => isExtraDetailsComplete(extraGroups, extraChoices, numericMap),
+    [extraGroups, extraChoices, numericMap]
+  );
+
   const canShowResults =
     Boolean(activePoll?.showResultsToVoters) &&
-    (Boolean(mySelectedOption) || activePoll?.status === 'closed');
+    (Boolean(mySelectedOption) || pollStatus === 'closed');
+
+  const analytics = useMemo(
+    () => computeVoteAnalytics(activePoll, [], votes),
+    [activePoll, votes]
+  );
+
+  const persistExtraToServer = async (
+    nextChoices: Record<string, { itemId: string; label: string }>,
+    nextNumbersRaw: Record<string, string>
+  ) => {
+    const parsedNums = parseNumericRecord(nextNumbersRaw);
+    const check = isExtraDetailsComplete(extraGroups, nextChoices, parsedNums);
+    setIsSavingExtra(true);
+    try {
+      await submitVoteExtraDetails(
+        roundId,
+        { voterId: guestId, voterType: 'guest' },
+        {
+          extraChoices: nextChoices,
+          extraNumbers: parsedNums,
+          extraCompleted: check.complete,
+        }
+      );
+      if (check.complete) {
+        setExtraCompletedLocal(true);
+        setShowExtraPrompt(false);
+        setFeedbackMsg(
+          `تم تسجيل تصويتك (${mySelectedOption?.label || ''}) والتفاصيل الإضافية بنجاح`
+        );
+      } else {
+        setExtraCompletedLocal(false);
+        setShowExtraPrompt(true);
+      }
+    } catch {
+      setFeedbackMsg('تعذر حفظ التفاصيل الإضافية، يرجى المحاولة مرة أخرى.');
+    } finally {
+      setIsSavingExtra(false);
+    }
+  };
 
   const handleVote = async (opt: VoteOption) => {
     if (!isPollActive || submittingOptionId) return;
@@ -99,16 +200,36 @@ export default function GuestVoteView() {
 
     setSubmittingOptionId(opt.id);
     setFeedbackMsg(null);
+
+    const parsedNums = parseNumericRecord(extraNumbers);
+    const check = isExtraDetailsComplete(extraGroups, extraChoices, parsedNums);
+
     try {
       const res = await submitVoteChoice(
         roundId,
         { voterId: guestId, voterType: 'guest' },
         opt,
-        Boolean(activePoll.allowChangeVote)
+        Boolean(activePoll.allowChangeVote),
+        {
+          extraChoices,
+          extraNumbers: parsedNums,
+          extraCompleted: check.complete,
+        }
       );
+
       if (res.success) {
         setLocalVotedMap((prev) => ({ ...prev, [roundId]: opt }));
-        setFeedbackMsg(`تم تسجيل تصويتك بنجاح: ${opt.label}`);
+        if (check.complete) {
+          setExtraCompletedLocal(true);
+          setShowExtraPrompt(false);
+          setFeedbackMsg(`تم تسجيل تصويتك بنجاح: ${opt.label}`);
+        } else {
+          setExtraCompletedLocal(false);
+          setShowExtraPrompt(true);
+          setFeedbackMsg(
+            `تم اختيار (${opt.label}) — أرجو أن تجيب على التفاصيل الإضافية أدناه: ${check.missingGroupNames.join(' ، ')}`
+          );
+        }
       } else if (res.alreadyVoted) {
         setFeedbackMsg('تم تسجيل تصويتك في هذه الجولة مسبقاً.');
       }
@@ -119,7 +240,34 @@ export default function GuestVoteView() {
     }
   };
 
-  const totalVotes = votes.length;
+  const handleSelectExtraChoice = (group: VoteExtraGroup, item: VoteExtraItem) => {
+    const nextChoices = {
+      ...extraChoices,
+      [group.id]: { itemId: item.id, label: item.label },
+    };
+    setExtraChoices(nextChoices);
+
+    if (mySelectedOption && isPollActive) {
+      const check = isExtraDetailsComplete(extraGroups, nextChoices, parseNumericRecord(extraNumbers));
+      // Auto-save immediately whenever user already picked main option (especially on single-tap choice groups!)
+      const hasUnfilledNumber = extraGroups.some((g) =>
+        g.items.some((i) => i.inputType === 'number' && !String(extraNumbers[`${g.id}__${i.id}`] || '').trim())
+      );
+      if (check.complete || !hasUnfilledNumber) {
+        persistExtraToServer(nextChoices, extraNumbers);
+      }
+    }
+  };
+
+  const handleChangeExtraNumber = (groupId: string, itemId: string, rawVal: string) => {
+    setExtraNumbers((prev) => ({ ...prev, [`${groupId}__${itemId}`]: rawVal }));
+  };
+
+  const handleConfirmExtra = () => {
+    if (!mySelectedOption || !isPollActive) return;
+    persistExtraToServer(extraChoices, extraNumbers);
+  };
+
   const logoUrl = formatDriveImageUrl(headerConfig?.logoUrl || '');
 
   return (
@@ -147,53 +295,74 @@ export default function GuestVoteView() {
       {/* Main Public Voting Card */}
       <main className="flex-1 flex items-center justify-center">
         <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 text-center">
-          {!isPollActive ? (
+          {pollStatus === 'exited' ? (
+            /* EXITED & RESET THANK YOU SCREEN */
+            <div className="space-y-4 py-6">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 mx-auto flex items-center justify-center">
+                <Award className="w-8 h-8" />
+              </div>
+              <h2 className="text-xl sm:text-2xl font-black text-white">
+                شكراً لمشاركتكم وتفاعلكم في التصويت!
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
+                تم إنهاء جلسة التصويت وتصفير الذاكرة بنجاح. إذا أطلق المحاضر سؤالاً جديداً سيظهر هنا تلقائياً كصفحة جديدة.
+              </p>
+            </div>
+          ) : !isPollActive ? (
+            /* IDLE OR CLOSED SCREEN */
             <div className="space-y-4 py-6">
               <div className="w-16 h-16 rounded-2xl bg-slate-800 text-amber-400 mx-auto flex items-center justify-center">
                 <Clock className="w-8 h-8" />
               </div>
               <h2 className="text-xl font-black text-white">
-                {activePoll?.status === 'closed'
+                {pollStatus === 'closed'
                   ? 'انتهى التصويت الحالي'
                   : 'في انتظار بدء التصويت المباشر'}
               </h2>
               <p className="text-xs sm:text-sm text-slate-400 leading-relaxed">
-                {activePoll?.status === 'closed'
+                {pollStatus === 'closed'
                   ? 'شكراً لمشاركتكم، ستظهر جولة التصويت الجديدة هنا تلقائياً عند فتحها.'
                   : 'أبقِ هذه الصفحة مفتوحة؛ بمجرد أن يبدأ المحاضر التصويت ستظهر الأزرار هنا فوراً.'}
               </p>
 
               {canShowResults && activePoll.options.length > 0 && (
-                <div className="pt-4 border-t border-slate-800 text-right space-y-3">
+                <div className="pt-4 border-t border-slate-800 text-right space-y-4">
                   <div className="text-xs font-bold text-slate-300 text-center">
-                    {activePoll.question} (إجمالي الأصوات: {totalVotes})
+                    {activePoll.question} (إجمالي الأصوات: {analytics.totalVoted})
                   </div>
-                  {activePoll.options.map((opt) => {
-                    const count = votes.filter(
-                      (v) => v.optionId === opt.id || v.optionLabel === opt.label
-                    ).length;
-                    const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-                    return (
-                      <div key={opt.id} className="space-y-1">
-                        <div className="flex justify-between text-xs font-bold">
-                          <span>{opt.label}</span>
-                          <span className="font-mono text-slate-300">
-                            {count} ({pct}%)
-                          </span>
-                        </div>
-                        <div className="w-full h-3 rounded-lg bg-slate-950 overflow-hidden">
-                          <div
-                            className={`h-full ${BAR_COLOR_CLASSES[opt.color || 'emerald']} transition-all`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <VoteChartRenderer
+                    entries={analytics.optionStats}
+                    chartType={activePoll.primaryChartType || 'horizontal_bar'}
+                    totalVotes={analytics.totalVoted}
+                    size="compact"
+                  />
+                  {analytics.extraGroupAnalytics.map((ga) => (
+                    <div key={ga.group.id} className="pt-3 border-t border-slate-800/80 space-y-2">
+                      <div className="text-[11px] font-black text-sky-300">{ga.group.name}</div>
+                      {ga.hasChoiceItems && (
+                        <VoteChartRenderer
+                          entries={ga.choiceEntries}
+                          chartType={activePoll.extraChartType || 'horizontal_bar'}
+                          totalVotes={analytics.totalVoted}
+                          size="compact"
+                        />
+                      )}
+                      {ga.numberFields.map((nf) => (
+                        <VoteChartRenderer
+                          key={nf.item.id}
+                          entries={nf.bracketEntries}
+                          chartType={activePoll.extraChartType || 'horizontal_bar'}
+                          totalVotes={analytics.totalVoted}
+                          size="compact"
+                        />
+                      ))}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
           ) : (
+            /* ACTIVE POLL VIEW */
             <>
               <div className="space-y-2">
                 <div className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-400">
@@ -205,7 +374,7 @@ export default function GuestVoteView() {
                 </h2>
               </div>
 
-              {/* Large Tap Voting Buttons */}
+              {/* Large Primary Tap Voting Buttons */}
               <div
                 className={`grid gap-3 ${
                   activePoll.options.length === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'
@@ -242,9 +411,34 @@ export default function GuestVoteView() {
                 })}
               </div>
 
-              {/* Confirmation */}
+              {/* Compact Mandatory Additional Details Underneath Primary Buttons */}
+              {extraGroups.length > 0 && (
+                <VoterExtraDetailsBox
+                  extraGroups={extraGroups}
+                  extraChoices={extraChoices}
+                  extraNumbers={extraNumbers}
+                  missingGroupIds={extraCheck.missingGroupIds}
+                  missingGroupNames={extraCheck.missingGroupNames}
+                  showUrgentPrompt={showExtraPrompt}
+                  hasPrimaryVote={Boolean(mySelectedOption)}
+                  isSavingExtra={isSavingExtra}
+                  extraCompleted={extraCompletedLocal}
+                  disabled={!isPollActive}
+                  onSelectChoice={handleSelectExtraChoice}
+                  onChangeNumber={handleChangeExtraNumber}
+                  onConfirmExtra={handleConfirmExtra}
+                />
+              )}
+
+              {/* Confirmation / Prompt Feedback */}
               {(mySelectedOption || feedbackMsg) && (
-                <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs sm:text-sm font-bold flex items-center justify-center gap-2">
+                <div
+                  className={`p-3.5 rounded-2xl border text-xs sm:text-sm font-bold flex items-center justify-center gap-2 ${
+                    extraGroups.length > 0 && !extraCheck.complete
+                      ? 'bg-amber-500/10 border-amber-500/40 text-amber-200'
+                      : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                  }`}
+                >
                   <CheckCircle2 className="w-4 h-4 shrink-0" />
                   <span>
                     {feedbackMsg || `تم تسجيل تصويتك: ${mySelectedOption?.label}`}
@@ -254,32 +448,38 @@ export default function GuestVoteView() {
 
               {/* Live Results if allowed by teacher */}
               {canShowResults && (
-                <div className="pt-4 border-t border-slate-800 text-right space-y-3">
+                <div className="pt-4 border-t border-slate-800 text-right space-y-4">
                   <div className="text-xs font-bold text-slate-400">
-                    النتائج المباشرة (إجمالي المصوّتين: {totalVotes})
+                    النتائج المباشرة (إجمالي المصوّتين: {analytics.totalVoted})
                   </div>
-                  {activePoll.options.map((opt) => {
-                    const count = votes.filter(
-                      (v) => v.optionId === opt.id || v.optionLabel === opt.label
-                    ).length;
-                    const pct = totalVotes > 0 ? Math.round((count / totalVotes) * 100) : 0;
-                    return (
-                      <div key={opt.id} className="space-y-1">
-                        <div className="flex justify-between text-xs font-bold">
-                          <span className="text-slate-200">{opt.label}</span>
-                          <span className="font-mono text-slate-300">
-                            {count} ({pct}%)
-                          </span>
-                        </div>
-                        <div className="w-full h-3 rounded-lg bg-slate-950 overflow-hidden">
-                          <div
-                            className={`h-full ${BAR_COLOR_CLASSES[opt.color || 'emerald']} transition-all`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <VoteChartRenderer
+                    entries={analytics.optionStats}
+                    chartType={activePoll.primaryChartType || 'horizontal_bar'}
+                    totalVotes={analytics.totalVoted}
+                    size="compact"
+                  />
+                  {analytics.extraGroupAnalytics.map((ga) => (
+                    <div key={ga.group.id} className="pt-3 border-t border-slate-800/80 space-y-2">
+                      <div className="text-[11px] font-black text-sky-300">{ga.group.name}</div>
+                      {ga.hasChoiceItems && (
+                        <VoteChartRenderer
+                          entries={ga.choiceEntries}
+                          chartType={activePoll.extraChartType || 'horizontal_bar'}
+                          totalVotes={analytics.totalVoted}
+                          size="compact"
+                        />
+                      )}
+                      {ga.numberFields.map((nf) => (
+                        <VoteChartRenderer
+                          key={nf.item.id}
+                          entries={nf.bracketEntries}
+                          chartType={activePoll.extraChartType || 'horizontal_bar'}
+                          totalVotes={analytics.totalVoted}
+                          size="compact"
+                        />
+                      ))}
+                    </div>
+                  ))}
                 </div>
               )}
             </>

@@ -30,6 +30,9 @@ import {
   VoteOption,
   VotePresetQuestion,
   VotePresetOptionSet,
+  VoteExtraGroup,
+  VoteExtraItem,
+  VoteChartType,
   ActivePollState,
   VotingConfigState,
   VoteParticipantRecord,
@@ -2618,20 +2621,64 @@ export const DEFAULT_VOTE_PRESET_QUESTIONS: VotePresetQuestion[] = [
   },
 ];
 
+export const DEFAULT_VOTE_EXTRA_GROUPS: VoteExtraGroup[] = [
+  {
+    id: 'extra_gender',
+    name: 'ذكر / أنثى',
+    required: true,
+    items: [
+      { id: 'ex_male', label: 'ذكر', inputType: 'choice', color: 'sky' },
+      { id: 'ex_female', label: 'أنثى', inputType: 'choice', color: 'rose' },
+    ],
+  },
+  {
+    id: 'extra_age_group',
+    name: 'العمر (صغير / كبير)',
+    required: true,
+    items: [
+      { id: 'ex_young', label: 'صغير', inputType: 'choice', color: 'amber' },
+      { id: 'ex_adult', label: 'كبير', inputType: 'choice', color: 'purple' },
+    ],
+  },
+  {
+    id: 'extra_age_number',
+    name: 'العمر (إضافة عدد)',
+    required: true,
+    items: [
+      { id: 'ex_age_num', label: 'العمر', inputType: 'number', color: 'sky', splitAt: 18 },
+    ],
+  },
+  {
+    id: 'extra_gender_age',
+    name: 'ذكر / أنثى + العمر (عدد)',
+    required: true,
+    items: [
+      { id: 'ex_ga_male', label: 'ذكر', inputType: 'choice', color: 'sky' },
+      { id: 'ex_ga_female', label: 'أنثى', inputType: 'choice', color: 'rose' },
+      { id: 'ex_ga_age', label: 'العمر', inputType: 'number', color: 'amber', splitAt: 18 },
+    ],
+  },
+];
+
 export const defaultVotingConfigState: VotingConfigState = {
   activePoll: {
     roundId: 'poll_initial',
     question: DEFAULT_VOTE_PRESET_QUESTIONS[0].text,
     options: DEFAULT_VOTE_PRESET_OPTION_SETS[0].options,
+    extraGroups: [],
+    primaryChartType: 'horizontal_bar',
+    extraChartType: 'horizontal_bar',
     status: 'idle',
     showResultsToVoters: false,
     showOnBigScreen: true,
     allowChangeVote: false,
     startedAt: null,
     closedAt: null,
+    exitedAt: null,
   },
   presetQuestions: DEFAULT_VOTE_PRESET_QUESTIONS,
   presetOptionSets: DEFAULT_VOTE_PRESET_OPTION_SETS,
+  presetExtraGroups: DEFAULT_VOTE_EXTRA_GROUPS,
   updatedAt: 0,
 };
 
@@ -2653,6 +2700,36 @@ export function getStudentVoterId(username: string, sheetNumber?: string): strin
   return safeSheet ? `stu_${safeName}_${safeSheet}` : `stu_${safeName}`;
 }
 
+function sanitizeChartType(val: any): VoteChartType {
+  if (val === 'numbers' || val === 'horizontal_bar' || val === 'vertical_bar' || val === 'donut') {
+    return val;
+  }
+  return 'horizontal_bar';
+}
+
+function sanitizeExtraGroups(rawGroups: any): VoteExtraGroup[] {
+  if (!Array.isArray(rawGroups)) return [];
+  return rawGroups
+    .map((g: any, gIdx: number) => ({
+      id: String(g?.id || `extra_grp_${gIdx + 1}`),
+      name: String(g?.name || '').trim(),
+      required: g?.required !== false,
+      isCustom: g?.isCustom !== undefined ? Boolean(g.isCustom) : undefined,
+      items: Array.isArray(g?.items)
+        ? g.items
+            .map((it: any, iIdx: number): VoteExtraItem => ({
+              id: String(it?.id || `ex_it_${iIdx + 1}`),
+              label: String(it?.label || '').trim(),
+              inputType: it?.inputType === 'number' ? 'number' : 'choice',
+              color: it?.color || 'sky',
+              ...(typeof it?.splitAt === 'number' && !isNaN(it.splitAt) ? { splitAt: it.splitAt } : {}),
+            }))
+            .filter((it: VoteExtraItem) => it.label.length > 0)
+        : [],
+    }))
+    .filter((g: VoteExtraGroup) => g.name.length > 0 && g.items.length > 0);
+}
+
 function sanitizeVotingState(data: any): VotingConfigState {
   const rawPoll = data?.activePoll || {};
   const rawOptions: VoteOption[] = Array.isArray(rawPoll.options) && rawPoll.options.length > 0
@@ -2671,20 +2748,36 @@ function sanitizeVotingState(data: any): VotingConfigState {
     ? data.presetOptionSets
     : DEFAULT_VOTE_PRESET_OPTION_SETS;
 
+  const presetExtraGroups: VoteExtraGroup[] = Array.isArray(data?.presetExtraGroups)
+    ? (data.presetExtraGroups.length > 0 ? sanitizeExtraGroups(data.presetExtraGroups) : [])
+    : DEFAULT_VOTE_EXTRA_GROUPS;
+
+  const validStatus =
+    rawPoll.status === 'active' ||
+    rawPoll.status === 'closed' ||
+    rawPoll.status === 'exited'
+      ? rawPoll.status
+      : 'idle';
+
   return {
     activePoll: {
       roundId: String(rawPoll.roundId || 'poll_initial'),
       question: String(rawPoll.question || DEFAULT_VOTE_PRESET_QUESTIONS[0].text),
       options: rawOptions,
-      status: rawPoll.status === 'active' || rawPoll.status === 'closed' ? rawPoll.status : 'idle',
+      extraGroups: sanitizeExtraGroups(rawPoll.extraGroups),
+      primaryChartType: sanitizeChartType(rawPoll.primaryChartType),
+      extraChartType: sanitizeChartType(rawPoll.extraChartType),
+      status: validStatus,
       showResultsToVoters: Boolean(rawPoll.showResultsToVoters),
       showOnBigScreen: rawPoll.showOnBigScreen !== false,
       allowChangeVote: Boolean(rawPoll.allowChangeVote),
       startedAt: typeof rawPoll.startedAt === 'number' ? rawPoll.startedAt : null,
       closedAt: typeof rawPoll.closedAt === 'number' ? rawPoll.closedAt : null,
+      exitedAt: typeof rawPoll.exitedAt === 'number' ? rawPoll.exitedAt : null,
     },
     presetQuestions,
     presetOptionSets,
+    presetExtraGroups,
     updatedAt: typeof data?.updatedAt === 'number' ? data.updatedAt : 0,
   };
 }
@@ -2777,16 +2870,16 @@ export function subscribeToVotingRoundActivity(
 export async function startOrUpdatePoll(params: {
   question: string;
   options: VoteOption[];
+  extraGroups?: VoteExtraGroup[];
+  primaryChartType?: VoteChartType;
+  extraChartType?: VoteChartType;
   showResultsToVoters?: boolean;
   showOnBigScreen?: boolean;
   allowChangeVote?: boolean;
   newRound?: boolean;
 }): Promise<{ success: boolean; roundId: string }> {
   const existing = await getVotingConfig();
-  const roundId = params.newRound || existing.activePoll.status !== 'active'
-    ? `poll_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
-    : existing.activePoll.roundId;
-
+  const nextQuestion = String(params.question || '').trim() || DEFAULT_VOTE_PRESET_QUESTIONS[0].text;
   const cleanOptions = (params.options || [])
     .map((o, i) => ({
       id: o.id || `opt_${i + 1}`,
@@ -2794,11 +2887,38 @@ export async function startOrUpdatePoll(params: {
       color: o.color || 'emerald',
     }))
     .filter((o) => o.label.length > 0);
+  const effectiveOptions = cleanOptions.length > 0 ? cleanOptions : DEFAULT_VOTE_PRESET_OPTION_SETS[0].options;
+  const effectiveExtraGroups = params.extraGroups !== undefined
+    ? sanitizeExtraGroups(params.extraGroups)
+    : sanitizeExtraGroups(existing.activePoll.extraGroups);
+
+  // Detect if question or options or extraGroups changed compared to active poll -> always start fresh round!
+  const questionChanged = nextQuestion !== String(existing.activePoll.question || '').trim();
+  const optionsSignatureNew = effectiveOptions.map((o) => `${o.id}:${o.label}`).join('|');
+  const optionsSignatureOld = (existing.activePoll.options || []).map((o) => `${o.id}:${o.label}`).join('|');
+  const optionsChanged = optionsSignatureNew !== optionsSignatureOld;
+  const extrasSigNew = effectiveExtraGroups.map((g) => `${g.id}:${g.items.map((i) => i.id).join(',')}`).join('|');
+  const extrasSigOld = (existing.activePoll.extraGroups || []).map((g) => `${g.id}:${g.items.map((i) => i.id).join(',')}`).join('|');
+  const extrasChanged = extrasSigNew !== extrasSigOld;
+
+  const shouldStartFreshRound =
+    Boolean(params.newRound) ||
+    existing.activePoll.status !== 'active' ||
+    questionChanged ||
+    optionsChanged ||
+    extrasChanged;
+
+  const roundId = shouldStartFreshRound
+    ? `poll_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+    : existing.activePoll.roundId;
 
   const nextPoll: ActivePollState = {
     roundId,
-    question: String(params.question || '').trim() || DEFAULT_VOTE_PRESET_QUESTIONS[0].text,
-    options: cleanOptions.length > 0 ? cleanOptions : DEFAULT_VOTE_PRESET_OPTION_SETS[0].options,
+    question: nextQuestion,
+    options: effectiveOptions,
+    extraGroups: effectiveExtraGroups,
+    primaryChartType: params.primaryChartType || existing.activePoll.primaryChartType || 'horizontal_bar',
+    extraChartType: params.extraChartType || existing.activePoll.extraChartType || 'horizontal_bar',
     status: 'active',
     showResultsToVoters:
       params.showResultsToVoters !== undefined
@@ -2812,8 +2932,9 @@ export async function startOrUpdatePoll(params: {
       params.allowChangeVote !== undefined
         ? params.allowChangeVote
         : existing.activePoll.allowChangeVote,
-    startedAt: Date.now(),
+    startedAt: shouldStartFreshRound ? Date.now() : (existing.activePoll.startedAt || Date.now()),
     closedAt: null,
+    exitedAt: null,
   };
 
   await setDoc(VOTING_DOC_REF, {
@@ -2852,6 +2973,7 @@ export async function resetPollRound(keepIdle: boolean = false): Promise<{ succe
       status: keepIdle ? 'idle' : 'active',
       startedAt: keepIdle ? null : Date.now(),
       closedAt: null,
+      exitedAt: null,
     },
     updatedAt: Date.now(),
     serverUpdatedAt: serverTimestamp(),
@@ -2859,8 +2981,39 @@ export async function resetPollRound(keepIdle: boolean = false): Promise<{ succe
   return { success: true, roundId: nextRoundId };
 }
 
+export async function exitAndResetVotingSession(): Promise<{ success: boolean; roundId: string }> {
+  const existing = await getVotingConfig();
+  const nextRoundId = `poll_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const now = Date.now();
+  await setDoc(VOTING_DOC_REF, {
+    ...existing,
+    activePoll: {
+      ...existing.activePoll,
+      roundId: nextRoundId,
+      status: 'exited',
+      closedAt: now,
+      exitedAt: now,
+    },
+    updatedAt: now,
+    serverUpdatedAt: serverTimestamp(),
+  });
+  return { success: true, roundId: nextRoundId };
+}
+
 export async function updateVotingSettings(
-  partial: Partial<Pick<ActivePollState, 'showResultsToVoters' | 'showOnBigScreen' | 'allowChangeVote' | 'question' | 'options'>>
+  partial: Partial<
+    Pick<
+      ActivePollState,
+      | 'showResultsToVoters'
+      | 'showOnBigScreen'
+      | 'allowChangeVote'
+      | 'question'
+      | 'options'
+      | 'extraGroups'
+      | 'primaryChartType'
+      | 'extraChartType'
+    >
+  >
 ): Promise<{ success: boolean }> {
   const existing = await getVotingConfig();
   await setDoc(VOTING_DOC_REF, {
@@ -2877,13 +3030,18 @@ export async function updateVotingSettings(
 
 export async function saveVotingPresets(
   presetQuestions: VotePresetQuestion[],
-  presetOptionSets: VotePresetOptionSet[]
+  presetOptionSets: VotePresetOptionSet[],
+  presetExtraGroups?: VoteExtraGroup[]
 ): Promise<{ success: boolean }> {
   const existing = await getVotingConfig();
   await setDoc(VOTING_DOC_REF, {
     ...existing,
     presetQuestions,
     presetOptionSets,
+    presetExtraGroups:
+      presetExtraGroups !== undefined
+        ? sanitizeExtraGroups(presetExtraGroups)
+        : (existing.presetExtraGroups || DEFAULT_VOTE_EXTRA_GROUPS),
     updatedAt: Date.now(),
     serverUpdatedAt: serverTimestamp(),
   });
@@ -2931,7 +3089,12 @@ export async function submitVoteChoice(
     sheetNumber?: string;
   },
   option: VoteOption,
-  allowChangeVote: boolean = false
+  allowChangeVote: boolean = false,
+  extraPayload?: {
+    extraChoices?: Record<string, { itemId: string; label: string }>;
+    extraNumbers?: Record<string, number>;
+    extraCompleted?: boolean;
+  }
 ): Promise<{ success: boolean; alreadyVoted?: boolean }> {
   if (!roundId || !voter.voterId || !option?.id) {
     return { success: false };
@@ -2962,17 +3125,55 @@ export async function submitVoteChoice(
       },
       { merge: true }
     ),
-    setDoc(voteRef, {
-      roundId,
-      voterId: voter.voterId,
-      voterType: voter.voterType,
-      name: voter.name || '',
-      sheetNumber: voter.sheetNumber || '',
-      optionId: option.id,
-      optionLabel: option.label,
-      votedAt: now,
-    }),
+    setDoc(
+      voteRef,
+      {
+        roundId,
+        voterId: voter.voterId,
+        voterType: voter.voterType,
+        name: voter.name || '',
+        sheetNumber: voter.sheetNumber || '',
+        optionId: option.id,
+        optionLabel: option.label,
+        extraChoices: extraPayload?.extraChoices || {},
+        extraNumbers: extraPayload?.extraNumbers || {},
+        extraCompleted: extraPayload?.extraCompleted !== undefined ? extraPayload.extraCompleted : true,
+        votedAt: now,
+      },
+      { merge: true }
+    ),
   ]);
+
+  return { success: true };
+}
+
+export async function submitVoteExtraDetails(
+  roundId: string,
+  voter: {
+    voterId: string;
+    voterType: 'student' | 'guest';
+    name?: string;
+    sheetNumber?: string;
+  },
+  extraPayload: {
+    extraChoices: Record<string, { itemId: string; label: string }>;
+    extraNumbers: Record<string, number>;
+    extraCompleted: boolean;
+  }
+): Promise<{ success: boolean }> {
+  if (!roundId || !voter.voterId) return { success: false };
+  const docId = `${roundId}_${voter.voterId}`.replace(/[^a-zA-Z0-9_\u0600-\u06FF-]/g, '_');
+  const voteRef = doc(db, 'live_sessions', 'voting', 'votes', docId);
+
+  await setDoc(
+    voteRef,
+    {
+      extraChoices: extraPayload.extraChoices || {},
+      extraNumbers: extraPayload.extraNumbers || {},
+      extraCompleted: extraPayload.extraCompleted,
+    },
+    { merge: true }
+  );
 
   return { success: true };
 }
